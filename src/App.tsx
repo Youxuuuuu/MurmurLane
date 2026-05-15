@@ -123,19 +123,21 @@ const staticModeApiMap = {
   Patterns: "patterns",
 };
 
-let remoteConversationEntries = {};
-let remoteTimelineState = {};
-let remoteDiaryEntries = {};
-let remoteDailySummaryEntries = {};
-let remoteLetterEntries = {};
-let remoteStaticModeEntries = {};
-let remoteDateIndex = null;
-let remoteSearchCache = {
-  conversations: {},
-  diary: {},
-  dailySummary: {},
-  letters: {},
-  timeline: {},
+const emptyRemoteData = {
+  conversationEntries: {},
+  timelineState: {},
+  diaryEntries: {},
+  dailySummaryEntries: {},
+  letterEntries: {},
+  staticModeEntries: {},
+  dateIndex: null,
+  searchCache: {
+    conversations: {},
+    diary: {},
+    dailySummary: {},
+    letters: {},
+    timeline: {},
+  },
 };
 
 function section(no, title, text) {
@@ -934,11 +936,11 @@ function getDateLookupKeys(dateText) {
   const dotDate = toDotDate(dateText);
   return [dotDate, toHyphenDate(dotDate), String(dateText)];
 }
-function getTimelineStateSource() {
+function getTimelineStateSource(remoteData = emptyRemoteData) {
   return {
     ...timelineState,
-    ...remoteSearchCache.timeline,
-    ...remoteTimelineState,
+    ...remoteData.searchCache.timeline,
+    ...remoteData.timelineState,
   };
 }
 function getRemoteDateIndexKey(pageMode) {
@@ -949,14 +951,21 @@ function getRemoteDateIndexKey(pageMode) {
   if (pageMode === "Letters") return "letters";
   return null;
 }
-function hasRemoteDateIndexMark(pageMode, dateText) {
+function hasRemoteDateIndexMark(
+  pageMode,
+  dateText,
+  remoteData = emptyRemoteData,
+) {
   const key = getRemoteDateIndexKey(pageMode);
-  if (!key || !remoteDateIndex) return null;
-  return remoteDateIndex[key]?.includes(toHyphenDate(dateText)) ?? false;
+  if (!key || !remoteData.dateIndex) return null;
+  return remoteData.dateIndex[key]?.includes(toHyphenDate(dateText)) ?? false;
 }
-function getSearchConversationRecordsForDate(dateText) {
+function getSearchConversationRecordsForDate(
+  dateText,
+  remoteData = emptyRemoteData,
+) {
   const dotDate = toDotDate(dateText);
-  return remoteSearchCache.conversations[dotDate] ?? {};
+  return remoteData.searchCache.conversations[dotDate] ?? {};
 }
 function getMockConversationRecordsForDate(dateText, threadId) {
   const dotDate = toDotDate(dateText);
@@ -972,19 +981,28 @@ function groupConversationRecordsByThread(records) {
     return groups;
   }, {});
 }
-function getConversationRecordsForDate(dateText, threadId) {
+function getConversationRecordsForDate(
+  dateText,
+  threadId,
+  remoteData = emptyRemoteData,
+) {
   const dotDate = toDotDate(dateText);
   const remoteRecords =
-    remoteConversationEntries[dotDate]?.[threadId] ??
-    getSearchConversationRecordsForDate(dotDate)?.[threadId];
+    remoteData.conversationEntries[dotDate]?.[threadId] ??
+    getSearchConversationRecordsForDate(dotDate, remoteData)?.[threadId];
   if (remoteRecords?.length) return remoteRecords;
   return getMockConversationRecordsForDate(dotDate, threadId);
 }
-function getConversationThreadIdsForDate(dateText) {
+function getConversationThreadIdsForDate(
+  dateText,
+  remoteData = emptyRemoteData,
+) {
   const dotDate = toDotDate(dateText);
-  const remoteThreadIds = Object.keys(remoteConversationEntries[dotDate] ?? {});
+  const remoteThreadIds = Object.keys(
+    remoteData.conversationEntries[dotDate] ?? {},
+  );
   const searchThreadIds = Object.keys(
-    getSearchConversationRecordsForDate(dotDate) ?? {},
+    getSearchConversationRecordsForDate(dotDate, remoteData) ?? {},
   );
   const mockThreadIds = Object.keys(conversationEntries[dotDate] ?? {});
   const merged = Array.from(
@@ -992,54 +1010,65 @@ function getConversationThreadIdsForDate(dateText) {
   );
   return merged.length ? merged : conversationThreadIds;
 }
-function hasConversationForDate(dateText, threadId) {
-  if (threadId) return Boolean(getConversationRecordsForDate(dateText, threadId).length);
-  return getConversationThreadIdsForDate(dateText).some((id) =>
-    getConversationRecordsForDate(dateText, id).length,
+function hasConversationForDate(
+  dateText,
+  threadId,
+  remoteData = emptyRemoteData,
+) {
+  if (threadId)
+    return Boolean(
+      getConversationRecordsForDate(dateText, threadId, remoteData).length,
+    );
+  return getConversationThreadIdsForDate(dateText, remoteData).some((id) =>
+    getConversationRecordsForDate(dateText, id, remoteData).length,
   );
 }
 function getRemoteEntryByDate(entries, dateText) {
   const dotDate = toDotDate(dateText);
   return entries[dotDate] ?? entries[toHyphenDate(dotDate)] ?? null;
 }
-function getRemoteDatedEntriesSource(mode) {
+function getRemoteDatedEntriesSource(mode, remoteData = emptyRemoteData) {
   if (mode === "Diary")
-    return { ...remoteSearchCache.diary, ...remoteDiaryEntries };
+    return { ...remoteData.searchCache.diary, ...remoteData.diaryEntries };
   if (mode === "DailySummary")
     return {
-      ...remoteSearchCache.dailySummary,
-      ...remoteDailySummaryEntries,
+      ...remoteData.searchCache.dailySummary,
+      ...remoteData.dailySummaryEntries,
     };
   if (mode === "Letters")
-    return { ...remoteSearchCache.letters, ...remoteLetterEntries };
+    return { ...remoteData.searchCache.letters, ...remoteData.letterEntries };
   return {};
 }
-function getDatedEntriesSource(mode) {
+function getDatedEntriesSource(mode, remoteData = emptyRemoteData) {
   if (mode === "Diary")
     return {
       ...diaryEntries,
-      ...remoteSearchCache.diary,
-      ...remoteDiaryEntries,
+      ...remoteData.searchCache.diary,
+      ...remoteData.diaryEntries,
     };
   if (mode === "DailySummary")
     return {
       ...dailySummaryEntries,
-      ...remoteSearchCache.dailySummary,
-      ...remoteDailySummaryEntries,
+      ...remoteData.searchCache.dailySummary,
+      ...remoteData.dailySummaryEntries,
     };
   if (mode === "Letters")
     return {
       ...letterEntries,
-      ...remoteSearchCache.letters,
-      ...remoteLetterEntries,
+      ...remoteData.searchCache.letters,
+      ...remoteData.letterEntries,
     };
   return {};
 }
-function getStaticEntryForMode(mode) {
-  return remoteStaticModeEntries[mode] ?? staticModeEntries[mode] ?? staticModeEntries.Facts;
+function getStaticEntryForMode(mode, remoteData = emptyRemoteData) {
+  return (
+    remoteData.staticModeEntries[mode] ??
+    staticModeEntries[mode] ??
+    staticModeEntries.Facts
+  );
 }
-function getTimelineDay(dateText) {
-  const source = getTimelineStateSource();
+function getTimelineDay(dateText, remoteData = emptyRemoteData) {
+  const source = getTimelineStateSource(remoteData);
   return (
     source[dateText] ??
     source[toHyphenDate(dateText)] ??
@@ -1231,10 +1260,14 @@ function aggregateTimelineEvents(events) {
       percent: total ? Math.round((minutes / total) * 100) : 0,
     }));
 }
-function getTimelineEventsForPeriod(dateText, period) {
-  if (period === "day") return getTimelineDay(dateText).events;
+function getTimelineEventsForPeriod(
+  dateText,
+  period,
+  remoteData = emptyRemoteData,
+) {
+  if (period === "day") return getTimelineDay(dateText, remoteData).events;
   const { year, month } = getDateParts(dateText);
-  return Object.entries(getTimelineStateSource())
+  return Object.entries(getTimelineStateSource(remoteData))
     .filter(([key]) =>
       period === "month"
         ? toDotDate(key).startsWith(`${year}.${month}`)
@@ -1309,18 +1342,21 @@ function createBlankEntry(mode = "Diary") {
     sections: [],
   };
 }
-function getEntryForMode(mode, dateText) {
+function getEntryForMode(mode, dateText, remoteData = emptyRemoteData) {
   const remoteEntry =
     mode === "Diary"
-      ? getRemoteEntryByDate(getRemoteDatedEntriesSource("Diary"), dateText)
+      ? getRemoteEntryByDate(
+          getRemoteDatedEntriesSource("Diary", remoteData),
+          dateText,
+        )
       : mode === "DailySummary"
         ? getRemoteEntryByDate(
-            getRemoteDatedEntriesSource("DailySummary"),
+            getRemoteDatedEntriesSource("DailySummary", remoteData),
             dateText,
           )
         : mode === "Letters"
           ? getRemoteEntryByDate(
-              getRemoteDatedEntriesSource("Letters"),
+              getRemoteDatedEntriesSource("Letters", remoteData),
               dateText,
             )
           : null;
@@ -1348,51 +1384,61 @@ function getEntryForMode(mode, dateText) {
       hasEntry: Boolean(letterEntries[dateText]),
     };
   return {
-    entry: getStaticEntryForMode(mode),
+    entry: getStaticEntryForMode(mode, remoteData),
     hasEntry: true,
   };
 }
-function hasDatedEntry(dateText, mode = "Diary") {
-  if (mode === "Conversation") return hasConversationForDate(dateText);
+function hasDatedEntry(dateText, mode = "Diary", remoteData = emptyRemoteData) {
+  if (mode === "Conversation") return hasConversationForDate(dateText, null, remoteData);
   if (mode === "Timeline")
-    return Boolean(getTimelineDay(dateText).events.length);
+    return Boolean(getTimelineDay(dateText, remoteData).events.length);
   if (mode === "DailySummary")
     return Boolean(
       getRemoteEntryByDate(
-        getRemoteDatedEntriesSource("DailySummary"),
+        getRemoteDatedEntriesSource("DailySummary", remoteData),
         dateText,
       ) ?? dailySummaryEntries[dateText],
     );
   if (mode === "Letters")
     return Boolean(
       getRemoteEntryByDate(
-        getRemoteDatedEntriesSource("Letters"),
+        getRemoteDatedEntriesSource("Letters", remoteData),
         dateText,
       ) ?? letterEntries[dateText],
     );
   return Boolean(
-    getRemoteEntryByDate(getRemoteDatedEntriesSource("Diary"), dateText) ??
+    getRemoteEntryByDate(
+      getRemoteDatedEntriesSource("Diary", remoteData),
+      dateText,
+    ) ??
       diaryEntries[dateText],
   );
 }
 
-function hasCalendarMarkForPage(page, dateText) {
-  const indexedMark = hasRemoteDateIndexMark(page.mode, dateText);
+function hasCalendarMarkForPage(
+  page,
+  dateText,
+  remoteData = page.remoteData ?? emptyRemoteData,
+) {
+  const indexedMark = hasRemoteDateIndexMark(page.mode, dateText, remoteData);
   if (indexedMark != null) {
     return indexedMark;
   }
 
   if (page.mode === "Conversation") {
-    return hasConversationForDate(dateText, page.threadId);
+    return hasConversationForDate(dateText, page.threadId, remoteData);
   }
 
   if (page.mode === "Timeline") {
-    return Boolean(getTimelineDay(dateText).events.length);
+    return Boolean(getTimelineDay(dateText, remoteData).events.length);
   }
 
   if (page.mode === "Diary") {
     return Boolean(
-      getRemoteEntryByDate(getRemoteDatedEntriesSource("Diary"), dateText) ??
+      getRemoteEntryByDate(
+        getRemoteDatedEntriesSource("Diary", remoteData),
+        dateText,
+      ) ??
         diaryEntries[dateText],
     );
   }
@@ -1400,7 +1446,7 @@ function hasCalendarMarkForPage(page, dateText) {
   if (page.mode === "DailySummary") {
     return Boolean(
       getRemoteEntryByDate(
-        getRemoteDatedEntriesSource("DailySummary"),
+        getRemoteDatedEntriesSource("DailySummary", remoteData),
         dateText,
       ) ??
         dailySummaryEntries[dateText],
@@ -1409,7 +1455,10 @@ function hasCalendarMarkForPage(page, dateText) {
 
   if (page.mode === "Letters") {
     return Boolean(
-      getRemoteEntryByDate(getRemoteDatedEntriesSource("Letters"), dateText) ??
+      getRemoteEntryByDate(
+        getRemoteDatedEntriesSource("Letters", remoteData),
+        dateText,
+      ) ??
         letterEntries[dateText],
     );
   }
@@ -1575,11 +1624,17 @@ function legacyConversationMessageToRecord(message, dateText, threadId) {
   };
 }
 
-function buildConversationPage(styleTheme, dateText, threadId) {
+function buildConversationPage(
+  styleTheme,
+  dateText,
+  threadId,
+  remoteData = emptyRemoteData,
+) {
   const { month, day } = getDateParts(dateText);
-  const messages = getConversationRecordsForDate(dateText, threadId);
+  const messages = getConversationRecordsForDate(dateText, threadId, remoteData);
   return {
     ...styleTheme,
+    remoteData,
     mode: "Conversation",
     modeTitle: "对话",
     date: dateText,
@@ -1593,10 +1648,11 @@ function buildConversationPage(styleTheme, dateText, threadId) {
     hasEntry: messages.length > 0,
   };
 }
-function buildTimelinePage(styleTheme, dateText) {
+function buildTimelinePage(styleTheme, dateText, remoteData = emptyRemoteData) {
   const { month, day } = getDateParts(dateText);
   return {
     ...styleTheme,
+    remoteData,
     mode: "Timeline",
     modeTitle: "时间轴",
     date: dateText,
@@ -1605,16 +1661,22 @@ function buildTimelinePage(styleTheme, dateText) {
     sourcePath: buildContentPath("Timeline", dateText),
     color: monthColors[month] ?? "#667064",
     pale: monthPales[month] ?? "#e9ebe4",
-    hasEntry: getTimelineDay(dateText).events.length > 0,
+    hasEntry: getTimelineDay(dateText, remoteData).events.length > 0,
   };
 }
-function buildDisplayPage(styleTheme, dateText, mode = "Diary") {
+function buildDisplayPage(
+  styleTheme,
+  dateText,
+  mode = "Diary",
+  remoteData = emptyRemoteData,
+) {
   const { month, day } = getDateParts(dateText);
-  const { entry, hasEntry } = getEntryForMode(mode, dateText);
+  const { entry, hasEntry } = getEntryForMode(mode, dateText, remoteData);
   const modeMeta = pageModeMeta[mode] ?? pageModeMeta.Diary;
   return {
     ...styleTheme,
     ...entry,
+    remoteData,
     mode,
     modeTitle: modeMeta.title,
     dateBased: modeMeta.dateBased,
@@ -1706,20 +1768,20 @@ function HighlightText({ text, query, color = "#c28a4a" }) {
     </>
   );
 }
-function getAllSearchResults(query) {
+function getAllSearchResults(query, remoteData = emptyRemoteData) {
   const normalizedQuery = normalizeSearchText(query);
   if (!normalizedQuery) return [];
   const results = [];
   const allConversationDates = Array.from(
     new Set([
       ...Object.keys(conversationEntries),
-      ...Object.keys(remoteConversationEntries),
-      ...Object.keys(remoteSearchCache.conversations),
+      ...Object.keys(remoteData.conversationEntries),
+      ...Object.keys(remoteData.searchCache.conversations),
     ]),
   );
   allConversationDates.forEach((date) =>
-    getConversationThreadIdsForDate(date).forEach((threadId) =>
-      getConversationRecordsForDate(date, threadId)
+    getConversationThreadIdsForDate(date, remoteData).forEach((threadId) =>
+      getConversationRecordsForDate(date, threadId, remoteData)
         .filter((record) => !shouldHideConversationRecord(record))
         .forEach((record) => {
           const displayText = getConversationDisplayText(record);
@@ -1793,7 +1855,7 @@ function getAllSearchResults(query) {
         }),
     ),
   );
-  Object.entries(getTimelineStateSource()).forEach(([date, day]) =>
+  Object.entries(getTimelineStateSource(remoteData)).forEach(([date, day]) =>
     day.events.forEach((event) => {
       const fields = [
         { label: "事件标题", value: event.title },
@@ -1822,9 +1884,9 @@ function getAllSearchResults(query) {
     }),
   );
   [
-    ["Diary", getDatedEntriesSource("Diary")],
-    ["DailySummary", getDatedEntriesSource("DailySummary")],
-    ["Letters", getDatedEntriesSource("Letters")],
+    ["Diary", getDatedEntriesSource("Diary", remoteData)],
+    ["DailySummary", getDatedEntriesSource("DailySummary", remoteData)],
+    ["Letters", getDatedEntriesSource("Letters", remoteData)],
   ].forEach(([mode, entries]) =>
     Object.entries(entries).forEach(([date, entry]) => {
       const baseFields = [
@@ -1859,11 +1921,11 @@ function getAllSearchResults(query) {
     }),
   );
   Object.entries({
-    Project: getStaticEntryForMode("Project"),
-    Preference: getStaticEntryForMode("Preference"),
-    Openloops: getStaticEntryForMode("Openloops"),
-    Facts: getStaticEntryForMode("Facts"),
-    Patterns: getStaticEntryForMode("Patterns"),
+    Project: getStaticEntryForMode("Project", remoteData),
+    Preference: getStaticEntryForMode("Preference", remoteData),
+    Openloops: getStaticEntryForMode("Openloops", remoteData),
+    Facts: getStaticEntryForMode("Facts", remoteData),
+    Patterns: getStaticEntryForMode("Patterns", remoteData),
   }).forEach(([mode, entry]) => {
     const baseFields = [
       { label: "标题", value: entry.title },
@@ -2013,13 +2075,14 @@ function DiarySearchBox({
   page,
   onSelectResult,
   onSearchQueryChange,
+  searchRemoteData,
   searchDataVersion,
 }) {
   const [query, setQuery] = useState("");
   const [focused, setFocused] = useState(false);
   const results = useMemo(
-    () => getAllSearchResults(query),
-    [query, searchDataVersion],
+    () => getAllSearchResults(query, searchRemoteData),
+    [query, searchDataVersion, searchRemoteData],
   );
   const showPanel = focused && query.trim().length > 0;
   return (
@@ -3650,7 +3713,7 @@ function TimelineEventDetailModal({ event, page, onClose }) {
 
 function TimelineDayView({ page, highlightResult }) {
   const [selectedEvent, setSelectedEvent] = useState(null);
-  const events = getTimelineDay(page.date).events;
+  const events = getTimelineDay(page.date, page.remoteData).events;
   const range = getTimelineRange(events);
   const laidOutEvents = useMemo(
     () => layoutTimelineEvents(events, range),
@@ -3759,7 +3822,7 @@ function TimelineDonut({ aggregates }) {
 }
 
 function TimelineStatsView({ page, period, onSelectPeriod }) {
-  const events = getTimelineEventsForPeriod(page.date, period);
+  const events = getTimelineEventsForPeriod(page.date, period, page.remoteData);
   const aggregates = aggregateTimelineEvents(events);
   return (
     <div className="pt-2">
@@ -3804,7 +3867,7 @@ function TimelineStatsView({ page, period, onSelectPeriod }) {
 }
 
 function TimelineMiniStrip({ page }) {
-  const events = getTimelineDay(page.date).events;
+  const events = getTimelineDay(page.date, page.remoteData).events;
   const ticks = Array.from({ length: 13 }, (_, index) => index * 2);
   const boundaries = Array.from(
     new Set([
@@ -3941,7 +4004,7 @@ function ReminderList({ page }) {
 }
 
 function TimelinePeriodList({ page, onSelectEvent }) {
-  const events = [...getTimelineDay(page.date).events].sort(
+  const events = [...getTimelineDay(page.date, page.remoteData).events].sort(
     (a, b) => toMinutes(a.startAt) - toMinutes(b.startAt),
   );
   return (
@@ -4148,18 +4211,32 @@ export default function InsDiaryPrototype() {
     letters: new Set(),
   });
 
-  remoteConversationEntries = remoteConversationsState;
-  remoteTimelineState = remoteTimelineStateValue;
-  remoteDiaryEntries = remoteDiaryEntriesState;
-  remoteDailySummaryEntries = remoteDailySummaryEntriesState;
-  remoteLetterEntries = remoteLetterEntriesState;
-  remoteStaticModeEntries = remoteStaticModeEntriesState;
-  remoteDateIndex = remoteDateIndexState;
-  remoteSearchCache = remoteSearchCacheState;
+  const remoteData = useMemo(
+    () => ({
+      conversationEntries: remoteConversationsState,
+      timelineState: remoteTimelineStateValue,
+      diaryEntries: remoteDiaryEntriesState,
+      dailySummaryEntries: remoteDailySummaryEntriesState,
+      letterEntries: remoteLetterEntriesState,
+      staticModeEntries: remoteStaticModeEntriesState,
+      dateIndex: remoteDateIndexState,
+      searchCache: remoteSearchCacheState,
+    }),
+    [
+      remoteConversationsState,
+      remoteTimelineStateValue,
+      remoteDiaryEntriesState,
+      remoteDailySummaryEntriesState,
+      remoteLetterEntriesState,
+      remoteStaticModeEntriesState,
+      remoteDateIndexState,
+      remoteSearchCacheState,
+    ],
+  );
 
   const availableThreadIds = useMemo(
-    () => getConversationThreadIdsForDate(selectedDate),
-    [selectedDate, remoteConversationsState, remoteSearchCacheState],
+    () => getConversationThreadIdsForDate(selectedDate, remoteData),
+    [selectedDate, remoteData],
   );
 
   useEffect(() => {
@@ -4167,6 +4244,58 @@ export default function InsDiaryPrototype() {
       setSelectedThreadId(availableThreadIds[0] ?? conversationThreadIds[0]);
     }
   }, [availableThreadIds, selectedThreadId]);
+
+  useEffect(() => {
+    const dotDate = toDotDate(selectedDate);
+    const remoteConversationCount = Object.values(
+      remoteConversationsState[dotDate] ?? {},
+    ).reduce((sum, records) => sum + records.length, 0);
+    const remoteDiaryEntry = getRemoteEntryByDate(
+      getRemoteDatedEntriesSource("Diary", remoteData),
+      selectedDate,
+    );
+    const remoteLettersEntry = getRemoteEntryByDate(
+      getRemoteDatedEntriesSource("Letters", remoteData),
+      selectedDate,
+    );
+    const diarySource = remoteDiaryEntry
+      ? "remote"
+      : diaryEntries[selectedDate]
+        ? "mock"
+        : "blank";
+    const lettersSource = remoteLettersEntry
+      ? "remote"
+      : letterEntries[selectedDate]
+        ? "mock"
+        : "blank";
+
+    console.debug("[MurmurLane Debug] remoteDateIndex", remoteDateIndexState);
+    console.debug("[MurmurLane Debug] selectedDate", selectedDate);
+    console.debug(
+      "[MurmurLane Debug] remote conversations count for selectedDate",
+      remoteConversationCount,
+    );
+    console.debug(
+      "[MurmurLane Debug] threadIds for selectedDate",
+      availableThreadIds,
+    );
+    console.debug("[MurmurLane Debug] selectedThreadId", selectedThreadId);
+    console.debug(
+      "[MurmurLane Debug] diary source for selectedDate",
+      diarySource,
+    );
+    console.debug(
+      "[MurmurLane Debug] letters source for selectedDate",
+      lettersSource,
+    );
+  }, [
+    selectedDate,
+    selectedThreadId,
+    availableThreadIds,
+    remoteConversationsState,
+    remoteDateIndexState,
+    remoteData,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -4563,10 +4692,15 @@ export default function InsDiaryPrototype() {
   );
   const page = useMemo(() => {
     if (activeSection === "Conversation")
-      return buildConversationPage(styleTheme, selectedDate, selectedThreadId);
+      return buildConversationPage(
+        styleTheme,
+        selectedDate,
+        selectedThreadId,
+        remoteData,
+      );
     if (activeSection === "Timeline")
-      return buildTimelinePage(timelineStyleTheme, selectedDate);
-    return buildDisplayPage(styleTheme, selectedDate, selectedMode);
+      return buildTimelinePage(timelineStyleTheme, selectedDate, remoteData);
+    return buildDisplayPage(styleTheme, selectedDate, selectedMode, remoteData);
   }, [
     styleTheme,
     timelineStyleTheme,
@@ -4580,6 +4714,8 @@ export default function InsDiaryPrototype() {
     remoteDailySummaryEntriesState,
     remoteLetterEntriesState,
     remoteStaticModeEntriesState,
+    remoteDateIndexState,
+    remoteSearchCacheState,
   ]);
 
   const handleSwipeDate = (offset) => {
@@ -4630,6 +4766,7 @@ export default function InsDiaryPrototype() {
                 <DiarySearchBox
                   page={page}
                   onSearchQueryChange={setSearchQuery}
+                  searchRemoteData={remoteData}
                   searchDataVersion={searchDataVersion}
                   onSelectResult={(result) => {
                     if (result.mode === "Conversation") {
