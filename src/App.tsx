@@ -2305,13 +2305,6 @@ function DiarySearchBox({
                     >
                       {result.label}
                     </div>
-                    <div className="mt-1 text-[11px] leading-snug text-black/72">
-                      <HighlightText
-                        text={result.title}
-                        query={result.query}
-                        color={page.color}
-                      />
-                    </div>
                     <div className="mt-1 font-mono text-[8px] uppercase tracking-[0.1em] text-black/35">
                       {result.fieldLabel}
                     </div>
@@ -2689,6 +2682,19 @@ function MemoryContent({ page, highlightResult }) {
     return <ChecklistMemoryContent page={page} highlightResult={highlightResult} />;
   }
 
+ if (
+  page.mode === "Preference" ||
+  page.mode === "Facts" ||
+  page.mode === "Patterns"
+) {
+  return (
+    <ContinuousStaticMemoryContent
+      page={page}
+      highlightResult={highlightResult}
+    />
+  );
+}
+
   if (kind === "grouped") {
     return <GroupedMemoryContent page={page} highlightResult={highlightResult} />;
   }
@@ -2838,7 +2844,150 @@ function ChecklistMemoryContent({ page, highlightResult }) {
     </div>
   );
 }
+// function ContinuousStaticMemoryContent({ page, highlightResult }) {
+//   const groups = page.sections.reduce((list, item) => {
+//     const groupName = item.group || item.title || "";
 
+//     let group = list.find((entry) => entry.name === groupName);
+
+//     if (!group) {
+//       group = {
+//         name: groupName,
+//         items: [],
+//       };
+//       list.push(group);
+//     }
+
+//     group.items.push(item);
+//     return list;
+//   }, []);
+
+//   return (
+//     <div className="space-y-8">
+//       {groups.map((group, groupIndex) => {
+//         const groupText = group.items
+//           .map((item) => item.text)
+//           .filter(Boolean)
+//           .join("\n");
+
+//         const active = group.items.some((item) => {
+//           const targetId = `${page.mode}-static-${item.no}`;
+//           return highlightResult?.targetId === targetId;
+//         });
+
+//         return (
+//           <section
+//             key={group.name || `group-${groupIndex}`}
+//             className="relative pl-4 transition"
+//             style={{ background: active ? `${page.color}10` : "transparent" }}
+//           >
+//             {group.name && (
+//               <>
+//                 <span
+//                   className="absolute left-0 top-[7px] h-px w-2"
+//                   style={{ background: page.color, opacity: 0.7 }}
+//                 />
+//                 <h3
+//                   className="font-serif text-[15px] leading-5"
+//                   style={{ color: page.color }}
+//                 >
+//                   {group.name}
+//                 </h3>
+//               </>
+//             )}
+
+//             <p className="mt-3 whitespace-pre-line text-[11px] leading-[1.9] text-black/56">
+//               <HighlightText
+//                 text={groupText}
+//                 query={active ? highlightResult?.query : ""}
+//                 color={page.color}
+//               />
+//             </p>
+//           </section>
+//         );
+//       })}
+//     </div>
+//   );
+// }
+function groupContinuousStaticSections(sections) {
+  return sections.reduce((groups, item) => {
+    const groupName = String(item.group ?? "").trim();
+
+    let group = groups.find((entry) => entry.name === groupName);
+
+    if (!group) {
+      group = {
+        name: groupName,
+        items: [],
+      };
+      groups.push(group);
+    }
+
+    group.items.push(item);
+    return groups;
+  }, []);
+}
+function ContinuousStaticMemoryContent({ page, highlightResult }) {
+  const groups = groupContinuousStaticSections(page.sections);
+
+  return (
+    <div className="space-y-8">
+      {groups.map((group, groupIndex) => (
+        <section
+          key={group.name || `group-${groupIndex}`}
+          className="relative pl-4"
+        >
+          {group.name && (
+            <>
+              <span
+                className="absolute left-0 top-[7px] h-px w-2"
+                style={{ background: page.color, opacity: 0.7 }}
+              />
+
+              <h3
+                className="font-serif text-[15px] leading-5"
+                style={{ color: page.color }}
+              >
+                {group.name}
+              </h3>
+            </>
+          )}
+
+          <div className={group.name ? "mt-3 space-y-2.5" : "space-y-2.5"}>
+            {group.items.map((item) => {
+              const targetId = `${page.mode}-static-${item.no}`;
+              const active = highlightResult?.targetId === targetId;
+
+              return (
+                <p
+                  id={`hit-${targetId}`}
+                  key={item.no}
+                  className="flex gap-2 text-[11px] leading-[1.9] text-black/56 transition"
+                  style={{
+                    background: active ? `${page.color}10` : "transparent",
+                  }}
+                >
+                  <span
+                    className="mt-[9px] h-1 w-1 shrink-0 rounded-full"
+                    style={{ background: page.color, opacity: 0.55 }}
+                  />
+
+                  <span className="min-w-0 flex-1">
+                    <HighlightText
+                      text={item.text}
+                      query={active ? highlightResult?.query : ""}
+                      color={page.color}
+                    />
+                  </span>
+                </p>
+              );
+            })}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
 function GroupedMemoryContent({ page, highlightResult }) {
   return (
     <div className="space-y-4">
@@ -3402,7 +3551,7 @@ function MessageTime({ message, align = "left" }) {
     <span
       className={`shrink-0 pb-1 font-serif text-[9px] italic tracking-[0.1em] text-black/30 ${align === "right" ? "text-right" : "text-left"}`}
     >
-      {formatConversationTime(message.timestamp)} ✉
+      {formatConversationTime(message.timestamp)}
     </span>
   );
 }
@@ -3465,24 +3614,24 @@ function ChatBubble({ message, page }) {
 
   if (visualKind === "thinking") {
     return (
-      <BubbleRow message={message} side="left">
-        <div className="max-w-[244px] bg-white/28 px-3 py-2 text-left">
-          <div className="mb-1 flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.12em] text-black/35">
+      <div className="flex justify-start">
+        <div className="max-w-[320px] bg-white/28 px-3 py-2 text-left">
+          <div className="mb-1 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-black/35">
             <span className="h-1.5 w-1.5 rounded-full bg-black/30" />
             Thinking
           </div>
-          <div className="whitespace-pre-line text-[11px] leading-[1.45] text-black/48">
+          <div className="whitespace-pre-line text-[9px] leading-[1.45] text-black/48">
             {displayText}
           </div>
         </div>
-      </BubbleRow>
+      </div>
     );
   }
 
   if (fromUser && quoteText) {
     return (
       <BubbleRow message={message} side="right">
-        <div className="max-w-[190px] text-right">
+        <div className="max-w-[280px] text-right">
           <div
             className="inline-block border bg-[#cbc5bb] px-2.5 py-1.5 text-left text-[12px] leading-relaxed text-white"
             style={{ borderColor: "transparent" }}
@@ -3490,7 +3639,7 @@ function ChatBubble({ message, page }) {
             {displayText}
           </div>
           <div
-            className="ml-auto mt-1 max-w-[168px] border-l-4 bg-white/35 px-2 py-1.5 text-left font-mono text-[8px] text-black/42"
+            className="ml-auto mt-1 max-w-[260px] border-l-4 bg-white/35 px-2 py-1.5 text-left font-mono text-[8px] text-black/42"
             style={{ borderLeftColor: page.line }}
           >
             {quoteText}
@@ -3551,24 +3700,32 @@ function ChatBubble({ message, page }) {
 
     return (
       <BubbleRow message={message} side={fromUser ? "right" : "left"}>
-        <div className={visualKind === "sticker" ? "max-w-[96px]" : "max-w-[136px]"}>
-          <div
-            className={`${visualKind === "sticker" ? "h-[92px] w-[92px] rounded-xl bg-white/30" : "h-[116px] w-[132px] bg-black/10"} flex items-center justify-center overflow-hidden`}
-            title={mediaLabel}
-          >
-            {mediaSrc && !mediaFailed ? (
-              <img
-                className="h-full w-full object-contain"
-                src={mediaSrc}
-                alt={mediaLabel}
-                loading="lazy"
-                onError={() => setMediaFailed(true)}
-              />
-            ) : (
-              <TinyIcon color="rgba(0,0,0,.38)" />
-            )}
-          </div>
-        </div>
+      <div className={visualKind === "sticker" ? "max-w-[96px]" : "max-w-[220px]"}>
+  <div
+    className={
+      visualKind === "sticker"
+        ? "flex h-[92px] w-[92px] items-center justify-center overflow-hidden rounded-xl bg-white/30"
+        : "inline-flex max-w-[220px] overflow-hidden rounded-[6px] bg-black/5"
+    }
+    title={mediaLabel}
+  >
+    {mediaSrc && !mediaFailed ? (
+      <img
+        className={
+          visualKind === "sticker"
+            ? "h-full w-full object-contain"
+            : "block max-h-[280px] max-w-[220px] object-contain"
+        }
+        src={mediaSrc}
+        alt={mediaLabel}
+        loading="lazy"
+        onError={() => setMediaFailed(true)}
+      />
+    ) : (
+      <TinyIcon color="rgba(0,0,0,.38)" />
+    )}
+  </div>
+</div>
       </BubbleRow>
     );
   }
@@ -3576,7 +3733,7 @@ function ChatBubble({ message, page }) {
   return (
     <BubbleRow message={message} side={fromUser ? "right" : "left"}>
       <div
-        className={`${fromUser ? "bg-[#cbc5bb] text-white" : "border bg-white/62 text-black/72"} max-w-[240px] border px-2.5 py-1.5 whitespace-pre-line text-[12px] leading-[1.45]`}
+        className={`${fromUser ? "bg-[#d7d0c4] text-white" : "border bg-[#f7efe4]/80 text-black/72"} max-w-[300px] border px-2.5 py-1.5 whitespace-pre-line text-[12px] leading-[1.45]`}
         style={{ borderColor: fromUser ? "transparent" : page.line }}
       >
         {displayText}

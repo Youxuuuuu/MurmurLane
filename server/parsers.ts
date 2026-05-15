@@ -230,17 +230,32 @@ export function parseStaticMemoryMarkdown(
     }
 
     const { date, content } = extractDatePrefix(bullet.trim());
-    const split = splitTitleAndText(content);
-    const titleText =
-      split.title !== split.text
-        ? split.title
-        : currentGroup || split.title;
 
-    const section: MemorySection = {
-      no: String(sections.length + 1),
-      title: titleText,
-      text: split.title !== split.text ? split.text : content.trim(),
-    };
+let section: MemorySection;
+
+if (
+  mode === "preferences" ||
+  mode === "facts" ||
+  mode === "patterns"
+) {
+  section = {
+    no: String(sections.length + 1),
+    title: "",
+    text: content.trim(),
+  };
+} else {
+  const split = splitTitleAndText(content);
+  const titleText =
+    split.title !== split.text
+      ? split.title
+      : currentGroup || split.title;
+
+  section = {
+    no: String(sections.length + 1),
+    title: titleText,
+    text: split.title !== split.text ? split.text : content.trim(),
+  };
+}
 
     if (currentGroup) {
       section.group = currentGroup;
