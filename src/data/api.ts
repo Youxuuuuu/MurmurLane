@@ -6,9 +6,12 @@ function normalizeDate(date: string) {
   return String(date).replace(/\./g, "-");
 }
 
+function buildApiUrl(path: string) {
+  return API_BASE_URL ? `${API_BASE_URL}${path}` : path;
+}
+
 async function requestJson(path: string) {
-  const url = API_BASE_URL ? `${API_BASE_URL}${path}` : path;
-  const response = await fetch(url);
+  const response = await fetch(buildApiUrl(path));
 
   if (!response.ok) {
     throw new Error(`Request failed: ${response.status} ${response.statusText}`);
@@ -53,4 +56,10 @@ export function fetchMemoryStatic(mode: string) {
   return requestJson(`/api/memory/static?mode=${encodeURIComponent(mode)}`);
 }
 
-export { API_BASE_URL };
+export function resolveApiFileUrl(filePath: string) {
+  return buildApiUrl(
+    `/api/file?path=${encodeURIComponent(String(filePath ?? ""))}`,
+  );
+}
+
+export { API_BASE_URL, buildApiUrl };

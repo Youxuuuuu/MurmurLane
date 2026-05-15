@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { toPng } from "html-to-image";
 import {
+  resolveApiFileUrl,
   fetchConversations,
   fetchDateIndex,
   fetchMemoryDailySummary,
@@ -1480,6 +1481,15 @@ function formatConversationTime(timestamp) {
   return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
 }
 
+function getTodayDateText() {
+  const today = new Date();
+  return formatDiaryDate(
+    today.getFullYear(),
+    today.getMonth() + 1,
+    today.getDate(),
+  );
+}
+
 function safeParseActionText(text) {
   if (!text || typeof text !== "string") return null;
 
@@ -1501,12 +1511,104 @@ function isAttachmentInputRecord(record) {
   );
 }
 
-function hasRecordMedia(record) {
-  return Boolean(
-    record?.meta?.attachments?.length ||
-      record?.meta?.stickers?.length ||
-      record?.meta?.files?.length,
+function getConversationMediaItems(record) {
+  const attachments = Array.isArray(record?.meta?.attachments)
+    ? record.meta.attachments
+    : [];
+  const stickers = Array.isArray(record?.meta?.stickers)
+    ? record.meta.stickers
+    : [];
+  const files = Array.isArray(record?.meta?.files) ? record.meta.files : [];
+
+  return [
+    ...attachments.map((item, index) => ({
+      ...item,
+      sourceType: "attachment",
+      mediaKey: `attachment-${index}-${item?.fileName || item?.relativePath || item?.path || ""}`,
+    })),
+    ...stickers.map((item, index) => ({
+      ...item,
+      sourceType: "sticker",
+      mediaKey: `sticker-${index}-${item?.stickerId || item?.fileName || item?.relativePath || ""}`,
+    })),
+    ...files.map((item, index) => ({
+      ...item,
+      sourceType: "file",
+      mediaKey: `file-${index}-${item?.fileName || item?.relativePath || item?.path || ""}`,
+    })),
+  ];
+}
+
+function getConversationMediaPath(item) {
+  return (
+    item?.url ||
+    item?.filePath ||
+    item?.path ||
+    item?.localPath ||
+    item?.savedPath ||
+    item?.relativePath ||
+    ""
   );
+}
+
+function isImageLikeMedia(item) {
+  const mimeType = String(item?.mimeType || item?.contentType || "").toLowerCase();
+  const filePath = String(
+    item?.fileName || item?.relativePath || item?.path || item?.url || "",
+  ).toLowerCase();
+
+  return Boolean(
+    item?.isImage ||
+      item?.kind === "image" ||
+      item?.type === "image" ||
+      mimeType.startsWith("image/") ||
+      /\.(png|jpg|jpeg|webp|bmp|svg)$/i.test(filePath),
+  );
+}
+
+function isStickerLikeMedia(item) {
+  const filePath = String(
+    item?.fileName || item?.relativePath || item?.path || item?.url || "",
+  ).toLowerCase();
+
+  return Boolean(
+    item?.kind === "sticker" ||
+      item?.type === "sticker" ||
+      item?.sourceType === "sticker" ||
+      /\.gif$/i.test(filePath),
+  );
+}
+
+function isFileLikeMedia(item) {
+  return !isStickerLikeMedia(item) && !isImageLikeMedia(item);
+}
+
+function getConversationMediaSrc(item) {
+  const mediaPath = String(getConversationMediaPath(item) || "").trim();
+
+  if (!mediaPath) {
+    return "";
+  }
+
+  if (/^(https?:|data:|blob:)/i.test(mediaPath)) {
+    return mediaPath;
+  }
+
+  return resolveApiFileUrl(mediaPath);
+}
+
+function getConversationPrimaryMediaItem(record) {
+  const items = getConversationMediaItems(record);
+  return (
+    items.find((item) => isStickerLikeMedia(item)) ??
+    items.find((item) => isImageLikeMedia(item)) ??
+    items.find((item) => isFileLikeMedia(item)) ??
+    null
+  );
+}
+
+function hasRecordMedia(record) {
+  return getConversationMediaItems(record).length > 0;
 }
 
 function shouldHideConversationRecord(record) {
@@ -1565,9 +1667,13 @@ function getConversationVisualKind(record) {
     return "system";
   }
 
-  if (record?.meta?.stickers?.length) return "sticker";
-  if (record?.meta?.attachments?.length) return "image";
-  if (record?.meta?.files?.length) return "file";
+  const mediaItem = getConversationPrimaryMediaItem(record);
+
+  if (mediaItem) {
+    if (isStickerLikeMedia(mediaItem)) return "sticker";
+    if (isImageLikeMedia(mediaItem)) return "image";
+    if (isFileLikeMedia(mediaItem)) return "file";
+  }
 
   if (isAttachmentInputRecord(record)) return "hidden";
 
@@ -1577,6 +1683,57 @@ function getConversationVisualKind(record) {
   if (record?.type === "assistant") return "assistant";
 
   return "assistant";
+}
+
+function getOperationDisplayPaths(record) {
+  const candidates = [
+    record?.meta?.displayPath,
+    record?.meta?.relativePath,
+    record?.meta?.path,
+  ]
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean);
+
+  const normalized = [];
+
+  candidates.forEach((candidate) => {
+    const normalizedCandidate = candidate.replaceAll("\\", "/").toLowerCase();
+    const duplicateIndex = normalized.findIndex((item) => {
+      if (item.normalized === normalizedCandidate) {
+        return true;
+      }
+
+      if (
+        item.normalized.length < normalizedCandidate.length &&
+        normalizedCandidate.endsWith(item.normalized)
+      ) {
+        return true;
+      }
+
+      if (
+        normalizedCandidate.length < item.normalized.length &&
+        item.normalized.endsWith(normalizedCandidate)
+      ) {
+        item.value = candidate;
+        item.normalized = normalizedCandidate;
+        return true;
+      }
+
+      return false;
+    });
+
+    if (duplicateIndex === -1) {
+      normalized.push({
+        value: candidate,
+        normalized: normalizedCandidate,
+      });
+    }
+  });
+
+  return normalized
+    .map((item) => item.value)
+    .sort((left, right) => left.length - right.length)
+    .slice(0, 2);
 }
 
 function legacyConversationMessageToRecord(message, dateText, threadId) {
@@ -3255,13 +3412,10 @@ function ChatBubble({ message, page }) {
   const displayText = getConversationDisplayText(message);
   const fromUser = message.type === "user";
   const quoteText = getConversationQuoteText(message);
-  const firstFile = message.meta?.files?.[0];
-  const firstAttachment = message.meta?.attachments?.[0];
-  const firstSticker = message.meta?.stickers?.[0];
-  const operationPaths = [message.meta?.displayPath, message.meta?.path]
-    .filter(Boolean)
-    .join(" ");
+  const primaryMediaItem = getConversationPrimaryMediaItem(message);
+  const operationPaths = getOperationDisplayPaths(message);
   const [actionOpen, setActionOpen] = useState(false);
+  const [mediaFailed, setMediaFailed] = useState(false);
 
   if (visualKind === "hidden") {
     return null;
@@ -3295,9 +3449,9 @@ function ChatBubble({ message, page }) {
             />
             <span className="break-all leading-[1.25]">{displayText}</span>
           </div>
-          {actionOpen && operationPaths && (
+          {actionOpen && operationPaths.length > 0 && (
             <div className="mt-1 space-y-0.5 text-[8px] font-normal leading-[1.25] tracking-normal text-black/34">
-              {operationPaths.split(" ").map((path) => (
+              {operationPaths.map((path) => (
                 <div key={path} className="break-all">
                   {path}
                 </div>
@@ -3347,9 +3501,14 @@ function ChatBubble({ message, page }) {
   }
 
   if (visualKind === "file") {
+    const firstFile = primaryMediaItem;
     const fileName =
       firstFile?.fileName || firstFile?.label || displayText || "文件";
-    const fileMeta = firstFile?.fileMeta || firstFile?.relativePath || "FILE";
+    const fileMeta =
+      firstFile?.fileMeta ||
+      firstFile?.relativePath ||
+      firstFile?.path ||
+      "FILE";
 
     return (
       <BubbleRow message={message} side={fromUser ? "right" : "left"}>
@@ -3377,15 +3536,17 @@ function ChatBubble({ message, page }) {
   }
 
   if (visualKind === "image" || visualKind === "sticker") {
+    const mediaItem = primaryMediaItem;
+    const mediaSrc = getConversationMediaSrc(mediaItem);
     const mediaLabel =
       visualKind === "sticker"
-        ? firstSticker?.label ||
-          firstSticker?.fileName ||
-          firstSticker?.stickerId ||
+        ? mediaItem?.label ||
+          mediaItem?.fileName ||
+          mediaItem?.stickerId ||
           "表情包"
-        : firstAttachment?.label ||
-          firstAttachment?.fileName ||
-          firstAttachment?.relativePath ||
+        : mediaItem?.label ||
+          mediaItem?.fileName ||
+          mediaItem?.relativePath ||
           "图片";
 
     return (
@@ -3395,7 +3556,17 @@ function ChatBubble({ message, page }) {
             className={`${visualKind === "sticker" ? "h-[92px] w-[92px] rounded-xl bg-white/30" : "h-[116px] w-[132px] bg-black/10"} flex items-center justify-center overflow-hidden`}
             title={mediaLabel}
           >
-            <TinyIcon color="rgba(0,0,0,.38)" />
+            {mediaSrc && !mediaFailed ? (
+              <img
+                className="h-full w-full object-contain"
+                src={mediaSrc}
+                alt={mediaLabel}
+                loading="lazy"
+                onError={() => setMediaFailed(true)}
+              />
+            ) : (
+              <TinyIcon color="rgba(0,0,0,.38)" />
+            )}
           </div>
         </div>
       </BubbleRow>
@@ -4136,18 +4307,43 @@ function TimelinePage({
 }
 
 function SwipeDateArea({ children, onSwipeDate }) {
+  const gestureRef = useRef(null);
+
   return (
-    <motion.div
-      drag="x"
-      dragConstraints={{ left: 0, right: 0 }}
-      dragElastic={0.08}
-      onDragEnd={(event, info) => {
-        if (info.offset.x > 88) onSwipeDate(-1);
-        if (info.offset.x < -88) onSwipeDate(1);
+    <div
+      style={{ touchAction: "pan-y" }}
+      onPointerDown={(event) => {
+        gestureRef.current = {
+          pointerId: event.pointerId,
+          startX: event.clientX,
+          startY: event.clientY,
+        };
+      }}
+      onPointerUp={(event) => {
+        if (
+          !gestureRef.current ||
+          gestureRef.current.pointerId !== event.pointerId
+        ) {
+          return;
+        }
+
+        const offsetX = event.clientX - gestureRef.current.startX;
+        const offsetY = event.clientY - gestureRef.current.startY;
+        gestureRef.current = null;
+
+        if (
+          Math.abs(offsetX) > 88 &&
+          Math.abs(offsetX) > Math.abs(offsetY)
+        ) {
+          onSwipeDate(offsetX > 0 ? -1 : 1);
+        }
+      }}
+      onPointerCancel={() => {
+        gestureRef.current = null;
       }}
     >
       {children}
-    </motion.div>
+    </div>
   );
 }
 
@@ -4185,7 +4381,7 @@ function BottomNav({ activeSection, onSelectSection, page }) {
 
 export default function InsDiaryPrototype() {
   const [selectedStyleId, setSelectedStyleId] = useState("cafe");
-  const [selectedDate, setSelectedDate] = useState("2026.04.28");
+  const [selectedDate, setSelectedDate] = useState(() => getTodayDateText());
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [selectedMode, setSelectedMode] = useState("Diary");
   const [activeSection, setActiveSection] = useState("Conversation");

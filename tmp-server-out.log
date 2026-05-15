@@ -1,0 +1,5 @@
+
+> murmur-lane@0.0.0 server
+> tsx server/index.ts
+
+[cyberboss-api] listening on http://127.0.0.1:8788 (data root: D:\study\.cyberboss)

@@ -16,6 +16,58 @@ export function resolveDataPath(...parts: string[]) {
   return path.resolve(getCyberbossDataRoot(), ...parts);
 }
 
+function isPathWithinRoot(targetPath: string, rootPath: string) {
+  const relative = path.relative(rootPath, targetPath);
+  return (
+    relative === "" ||
+    (!relative.startsWith("..") && !path.isAbsolute(relative))
+  );
+}
+
+function getEmbeddedCyberbossRoot(filePath: string) {
+  const normalizedPath = path.resolve(filePath);
+  const parts = normalizedPath.split(path.sep);
+  const cyberbossIndex = parts.findIndex(
+    (part) => part.toLowerCase() === ".cyberboss",
+  );
+
+  if (cyberbossIndex === -1) {
+    return null;
+  }
+
+  if (cyberbossIndex === 0) {
+    return `${path.sep}.cyberboss`;
+  }
+
+  return parts.slice(0, cyberbossIndex + 1).join(path.sep);
+}
+
+export function resolveReadableCyberbossFilePath(filePath: string) {
+  const rawPath = String(filePath ?? "").trim();
+
+  if (!rawPath) {
+    return null;
+  }
+
+  const resolvedPath = path.isAbsolute(rawPath)
+    ? path.resolve(rawPath)
+    : resolveDataPath(rawPath);
+  const allowedRoots = new Set<string>([getCyberbossDataRoot()]);
+  const embeddedRoot = getEmbeddedCyberbossRoot(resolvedPath);
+
+  if (embeddedRoot) {
+    allowedRoots.add(path.resolve(embeddedRoot));
+  }
+
+  for (const rootPath of allowedRoots) {
+    if (isPathWithinRoot(resolvedPath, rootPath)) {
+      return resolvedPath;
+    }
+  }
+
+  return null;
+}
+
 export async function fileExists(filePath: string) {
   try {
     await access(filePath);

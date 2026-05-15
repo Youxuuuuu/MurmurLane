@@ -1,11 +1,13 @@
 import express from "express";
 import {
+  fileExists,
   findExistingDataPath,
   getCyberbossDataRoot,
   listDataFileNames,
   readDataJsonFile,
   readDataTextFile,
   readJsonLinesFile,
+  resolveReadableCyberbossFilePath,
   readTextFile,
   resolveDataPath,
 } from "./fileLoaders.js";
@@ -173,6 +175,34 @@ app.get("/api/conversations", async (request, response, next) => {
 app.get("/api/index/dates", async (_request, response, next) => {
   try {
     response.json(await getDateIndex());
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/file", async (request, response, next) => {
+  try {
+    const requestedPath =
+      typeof request.query.path === "string" ? request.query.path : "";
+    const filePath = resolveReadableCyberbossFilePath(requestedPath);
+
+    if (!filePath) {
+      response.status(403).json({
+        error: "Forbidden file path.",
+      });
+      return;
+    }
+
+    if (!(await fileExists(filePath))) {
+      response.status(404).json({
+        error: "File not found.",
+      });
+      return;
+    }
+
+    response.sendFile(filePath, {
+      dotfiles: "allow",
+    });
   } catch (error) {
     next(error);
   }
