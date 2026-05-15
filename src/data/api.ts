@@ -1,15 +1,14 @@
 const env = (import.meta as { env?: Record<string, string | undefined> }).env;
 
-const API_BASE_URL = String(
-  env?.VITE_API_BASE_URL || "http://127.0.0.1:8787",
-).replace(/\/+$/, "");
+const API_BASE_URL = String(env?.VITE_API_BASE_URL || "").replace(/\/+$/, "");
 
 function normalizeDate(date: string) {
   return String(date).replace(/\./g, "-");
 }
 
 async function requestJson(path: string) {
-  const response = await fetch(`${API_BASE_URL}${path}`);
+  const url = API_BASE_URL ? `${API_BASE_URL}${path}` : path;
+  const response = await fetch(url);
 
   if (!response.ok) {
     throw new Error(`Request failed: ${response.status} ${response.statusText}`);

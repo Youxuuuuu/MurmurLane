@@ -1004,11 +1004,16 @@ function getConversationThreadIdsForDate(
   const searchThreadIds = Object.keys(
     getSearchConversationRecordsForDate(dotDate, remoteData) ?? {},
   );
-  const mockThreadIds = Object.keys(conversationEntries[dotDate] ?? {});
-  const merged = Array.from(
-    new Set([...remoteThreadIds, ...searchThreadIds, ...mockThreadIds]),
+  const realThreadIds = Array.from(
+    new Set([...remoteThreadIds, ...searchThreadIds]),
   );
-  return merged.length ? merged : conversationThreadIds;
+
+  if (realThreadIds.length) {
+    return realThreadIds;
+  }
+
+  const mockThreadIds = Object.keys(conversationEntries[dotDate] ?? {});
+  return mockThreadIds.length ? mockThreadIds : conversationThreadIds;
 }
 function hasConversationForDate(
   dateText,
@@ -1541,6 +1546,17 @@ function getConversationDisplayText(record) {
   return record?.text || "";
 }
 
+function getConversationQuoteText(record) {
+  const quote = record?.meta?.quote;
+
+  if (!quote) return "";
+  if (typeof quote === "string") return quote;
+  if (typeof quote?.text === "string" && quote.text.trim()) return quote.text;
+  if (typeof quote?.title === "string" && quote.title.trim()) return quote.title;
+
+  return "";
+}
+
 function getConversationVisualKind(record) {
   if (
     record?.type === "user" &&
@@ -1817,7 +1833,7 @@ function getAllSearchResults(query, remoteData = emptyRemoteData) {
                     : "消息",
               value: displayText,
             },
-            { label: "引用", value: record.meta?.quote },
+            { label: "引用", value: getConversationQuoteText(record) },
             { label: "工具", value: record.meta?.toolName },
             {
               label: "路径",
@@ -1842,7 +1858,7 @@ function getAllSearchResults(query, remoteData = emptyRemoteData) {
             targetId: record.id,
             title:
               displayText ||
-              record.meta?.quote ||
+              getConversationQuoteText(record) ||
               filesText ||
               attachmentsText ||
               stickersText ||
@@ -3238,7 +3254,7 @@ function ChatBubble({ message, page }) {
   const visualKind = getConversationVisualKind(message);
   const displayText = getConversationDisplayText(message);
   const fromUser = message.type === "user";
-  const quoteText = message.meta?.quote;
+  const quoteText = getConversationQuoteText(message);
   const firstFile = message.meta?.files?.[0];
   const firstAttachment = message.meta?.attachments?.[0];
   const firstSticker = message.meta?.stickers?.[0];
@@ -4288,6 +4304,7 @@ export default function InsDiaryPrototype() {
       "[MurmurLane Debug] letters source for selectedDate",
       lettersSource,
     );
+    console.debug("[MurmurLane Debug] remoteError", remoteError);
   }, [
     selectedDate,
     selectedThreadId,
@@ -4295,6 +4312,7 @@ export default function InsDiaryPrototype() {
     remoteConversationsState,
     remoteDateIndexState,
     remoteData,
+    remoteError,
   ]);
 
   useEffect(() => {

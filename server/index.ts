@@ -27,6 +27,27 @@ const host = process.env.API_HOST || "127.0.0.1";
 const port = Number(process.env.PORT || process.env.API_PORT || 8787);
 
 app.use(express.json());
+app.use((request, response, next) => {
+  const origin = request.headers.origin;
+
+  if (
+    origin &&
+    /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)
+  ) {
+    response.setHeader("Access-Control-Allow-Origin", origin);
+    response.setHeader("Vary", "Origin");
+  }
+
+  response.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
+  response.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  if (request.method === "OPTIONS") {
+    response.status(204).end();
+    return;
+  }
+
+  next();
+});
 
 function isIsoDate(value: unknown): value is string {
   return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
