@@ -97,6 +97,25 @@ const pageModeMeta = {
 };
 
 const pageModes = Object.keys(pageModeMeta);
+const searchModeOptions = [
+  { value: "All", label: "全部" },
+  { value: "Conversation", label: "对话" },
+  { value: "Timeline", label: "时间轴" },
+  { value: "Diary", label: "日记" },
+  { value: "DailySummary", label: "摘要" },
+  { value: "Letters", label: "信件" },
+  { value: "Project", label: "长期任务" },
+  { value: "Preference", label: "偏好" },
+  { value: "Openloops", label: "Openloops" },
+  { value: "Facts", label: "Facts" },
+  { value: "Patterns", label: "Patterns" },
+];
+const searchTimeOptions = [
+  { value: "All", label: "全部时间" },
+  { value: "Day", label: "当前日期" },
+  { value: "Month", label: "当前月份" },
+  { value: "Year", label: "当前年份" },
+];
 const conversationThreadIds = [
   "019dbec2-994e-75a3-b36f-2b83dba0fc49",
   "226dbec2-994e-75a3-b36f-2b45dba0fc56",
@@ -1867,9 +1886,126 @@ function normalizeSearchText(value) {
     .filter((char) => char.trim())
     .join("");
 }
-function findMatchedSnippet(query, fields) {
+function useDebouncedValue(value, delay = 300) {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => window.clearTimeout(timer);
+  }, [value, delay]);
+
+  return debouncedValue;
+}
+function buildSearchFields(fields) {
+  return fields.map((field) => {
+    const value = String(field.value ?? "");
+
+    return {
+      ...field,
+      value,
+      normalizedValue: normalizeSearchText(value),
+    };
+  });
+}
+function countNormalizedSearchOccurrences(normalizedValue, normalizedQuery) {
+  if (!normalizedQuery) return 0;
+
+  let count = 0;
+  let cursor = 0;
+
+  while (cursor <= normalizedValue.length - normalizedQuery.length) {
+    const index = normalizedValue.indexOf(normalizedQuery, cursor);
+
+    if (index < 0) break;
+
+    count += 1;
+    cursor = index + normalizedQuery.length;
+  }
+
+  return count;
+}
+function countSearchOccurrences(value, query) {
+  return countNormalizedSearchOccurrences(
+    normalizeSearchText(value),
+    normalizeSearchText(query),
+  );
+}
+function matchesSearchFilters(
+  result,
+  filters = {},
+  selectedDate = getTodayDateText(),
+) {
+  const { modeFilter = "All", timeFilter = "All" } = filters;
+
+  if (modeFilter !== "All" && result.mode !== modeFilter) return false;
+  if (timeFilter === "All") return true;
+
+  const resultDate = result.filterDate ?? result.date;
+  if (!resultDate) return false;
+
+  if (timeFilter === "Day") {
+    return toDotDate(resultDate) === toDotDate(selectedDate);
+  }
+
+  const resultParts = getDateParts(resultDate);
+  const selectedParts = getDateParts(selectedDate);
+
+  if (timeFilter === "Month") {
+    return (
+      resultParts.year === selectedParts.year &&
+      resultParts.month === selectedParts.month
+    );
+  }
+
+  if (timeFilter === "Year") {
+    return resultParts.year === selectedParts.year;
+  }
+
+  return true;
+}
+function getSearchResultSortTime(result) {
+  if (result.timestamp) {
+    const timestamp = new Date(result.timestamp).getTime();
+
+    if (!Number.isNaN(timestamp)) return timestamp;
+  }
+
+  const sortDate = result.filterDate ?? result.date;
+  if (!sortDate) return null;
+
+  const dateTime = new Date(
+    `${toHyphenDate(sortDate)}T23:59:59.999+08:00`,
+  ).getTime();
+
+  return Number.isNaN(dateTime) ? null : dateTime;
+}
+function sortSearchResults(results) {
+  return [...results].sort((left, right) => {
+    const leftTime = getSearchResultSortTime(left);
+    const rightTime = getSearchResultSortTime(right);
+
+    if (leftTime === null && rightTime !== null) return 1;
+    if (leftTime !== null && rightTime === null) return -1;
+    if (leftTime !== null && rightTime !== null && leftTime !== rightTime) {
+      return rightTime - leftTime;
+    }
+
+    const leftDate = String(left.filterDate ?? left.date ?? "");
+    const rightDate = String(right.filterDate ?? right.date ?? "");
+    const dateCompare = rightDate.localeCompare(leftDate);
+
+    if (dateCompare) return dateCompare;
+
+    return String(left.label ?? "").localeCompare(String(right.label ?? ""));
+  });
+}
+function findMatchedSnippet(query, fields, normalizedQueryOverride) {
   const cleanQuery = String(query).trim();
-  const normalizedQuery = normalizeSearchText(cleanQuery);
+  const normalizedQuery =
+    normalizedQueryOverride ?? normalizeSearchText(cleanQuery);
   const fallback = fields.find((field) => field.value)?.value ?? "";
   if (!normalizedQuery)
     return { fieldLabel: "内容", snippet: fallback, matchedText: "" };
@@ -1888,7 +2024,9 @@ function findMatchedSnippet(query, fields) {
   }
   for (const field of fields) {
     const value = String(field.value ?? "");
-    if (normalizeSearchText(value).includes(normalizedQuery))
+    const normalizedValue =
+      field.normalizedValue ?? normalizeSearchText(value);
+    if (normalizedValue.includes(normalizedQuery))
       return {
         fieldLabel: field.label,
         snippet: value.slice(0, 68),
@@ -1934,17 +2072,87 @@ function HighlightText({ text, query, color = "#c28a4a" }) {
           >
             {part.text}
           </mark>
-        ) : (
+      ) : (
           <span key={index}>{part.text}</span>
         ),
       )}
     </>
   );
 }
-function getAllSearchResults(query, remoteData = emptyRemoteData) {
-  const normalizedQuery = normalizeSearchText(query);
-  if (!normalizedQuery) return [];
+function buildSearchResultState(
+  query,
+  remoteData = emptyRemoteData,
+  {
+    modeFilter = "All",
+    timeFilter = "All",
+    selectedDate = getTodayDateText(),
+    limit = 50,
+  } = {},
+) {
+  const cleanQuery = String(query ?? "").trim();
+  const normalizedQuery = normalizeSearchText(cleanQuery);
+
+  if (!normalizedQuery) {
+    return {
+      results: [],
+      totalOccurrences: 0,
+    };
+  }
+
   const results = [];
+  let totalOccurrences = 0;
+  const filters = { modeFilter, timeFilter };
+
+  const appendSearchResult = ({
+    mode,
+    date = null,
+    filterDate = null,
+    timestamp = null,
+    threadId = null,
+    targetId,
+    title,
+    label,
+    fields,
+    haystackParts,
+  }) => {
+    const normalizedHaystack = haystackParts
+      .map((part) => normalizeSearchText(part))
+      .join("");
+
+    if (!normalizedHaystack.includes(normalizedQuery)) return;
+
+    const result = {
+      mode,
+      date,
+      filterDate: filterDate ? toDotDate(filterDate) : null,
+      timestamp,
+      threadId,
+      targetId,
+      title,
+      query: cleanQuery,
+      label,
+    };
+
+    if (!matchesSearchFilters(result, filters, selectedDate)) return;
+
+    const occurrences = countNormalizedSearchOccurrences(
+      normalizedHaystack,
+      normalizedQuery,
+    );
+
+    if (!occurrences) return;
+
+    totalOccurrences += occurrences;
+
+    const match = findMatchedSnippet(cleanQuery, fields, normalizedQuery);
+
+    results.push({
+      ...result,
+      excerpt: match.snippet,
+      fieldLabel: match.fieldLabel,
+    });
+  };
+
   const allConversationDates = Array.from(
     new Set([
       ...Object.keys(conversationEntries),
@@ -1980,7 +2188,7 @@ function getAllSearchResults(query, remoteData = emptyRemoteData) {
                 item.label || item.fileName || item.relativePath || "",
             )
             .join(" ");
-          const fields = [
+          const fields = buildSearchFields([
             {
               label:
                 record.type === "thinking"
@@ -2001,16 +2209,12 @@ function getAllSearchResults(query, remoteData = emptyRemoteData) {
             { label: "表情包", value: stickersText },
             { label: "文件名", value: filesText },
             { label: "线程", value: threadId },
-          ];
-          const haystack = fields.map((field) => field.value ?? "").join(" ");
-          if (
-            !normalizeSearchText(`${date} ${haystack}`).includes(normalizedQuery)
-          )
-            return;
-          const match = findMatchedSnippet(query, fields);
-          results.push({
+          ]);
+          appendSearchResult({
             mode: "Conversation",
             date,
+            filterDate: date,
+            timestamp: record.timestamp,
             threadId,
             targetId: record.id,
             title:
@@ -2020,17 +2224,16 @@ function getAllSearchResults(query, remoteData = emptyRemoteData) {
               attachmentsText ||
               stickersText ||
               "对话消息",
-            excerpt: match.snippet,
-            fieldLabel: match.fieldLabel,
-            query,
             label: `对话 · ${date}`,
+            fields,
+            haystackParts: [date, ...fields.map((field) => field.normalizedValue)],
           });
         }),
     ),
   );
   Object.entries(getTimelineStateSource(remoteData)).forEach(([date, day]) =>
     day.events.forEach((event) => {
-      const fields = [
+      const fields = buildSearchFields([
         { label: "事件标题", value: event.title },
         { label: "事件备注", value: event.note },
         {
@@ -2039,20 +2242,17 @@ function getAllSearchResults(query, remoteData = emptyRemoteData) {
             timelineCategories[event.categoryId]?.label ?? event.categoryId,
         },
         { label: "标签", value: (event.tags ?? []).join(" ") },
-      ];
-      const haystack = fields.map((field) => field.value ?? "").join(" ");
-      if (!normalizeSearchText(`${date} ${haystack}`).includes(normalizedQuery))
-        return;
-      const match = findMatchedSnippet(query, fields);
-      results.push({
+      ]);
+      appendSearchResult({
         mode: "Timeline",
         date: toDotDate(date),
+        filterDate: toDotDate(date),
+        timestamp: event.startAt,
         targetId: event.id,
         title: event.title,
-        excerpt: match.snippet,
-        fieldLabel: match.fieldLabel,
-        query,
         label: `时间轴 · ${toDotDate(date)}`,
+        fields,
+        haystackParts: [date, ...fields.map((field) => field.normalizedValue)],
       });
     }),
   );
@@ -2062,34 +2262,33 @@ function getAllSearchResults(query, remoteData = emptyRemoteData) {
     ["Letters", getDatedEntriesSource("Letters", remoteData)],
   ].forEach(([mode, entries]) =>
     Object.entries(entries).forEach(([date, entry]) => {
-      const baseFields = [
+      const baseFields = buildSearchFields([
         { label: "标题", value: entry.title },
         { label: "摘要", value: entry.excerpt },
-      ];
-      const sectionFields = entry.sections.map((item) => ({
-        label: item.title,
-        value: `${item.title} ${item.text}`,
-        sectionNo: item.no,
-      }));
-      const fields = [...baseFields, ...sectionFields];
-      const haystack = fields.map((field) => field.value ?? "").join(" ");
-      if (!normalizeSearchText(`${date} ${haystack}`).includes(normalizedQuery))
-        return;
-      const match = findMatchedSnippet(query, fields);
-      const matchedSection = sectionFields.find((field) =>
-        normalizeSearchText(field.value).includes(normalizedQuery),
+      ]);
+      const sectionFields = buildSearchFields(
+        entry.sections.map((item) => ({
+          label: item.title,
+          value: `${item.title} ${item.text}`,
+          sectionNo: item.no,
+          sectionDate: item.date || date,
+        })),
       );
-      results.push({
+      const fields = [...baseFields, ...sectionFields];
+      const matchedSection = sectionFields.find((field) =>
+        field.normalizedValue.includes(normalizedQuery),
+      );
+      appendSearchResult({
         mode,
         date,
+        filterDate: matchedSection?.sectionDate || date,
         targetId: matchedSection
           ? `${mode}-${date}-${matchedSection.sectionNo}`
           : `${mode}-${date}-title`,
         title: entry.title,
-        excerpt: match.snippet,
-        fieldLabel: match.fieldLabel,
-        query,
         label: `${pageModeMeta[mode]?.title ?? mode} · ${date}`,
+        fields,
+        haystackParts: [date, ...fields.map((field) => field.normalizedValue)],
       });
     }),
   );
@@ -2100,39 +2299,42 @@ function getAllSearchResults(query, remoteData = emptyRemoteData) {
     Facts: getStaticEntryForMode("Facts", remoteData),
     Patterns: getStaticEntryForMode("Patterns", remoteData),
   }).forEach(([mode, entry]) => {
-    const baseFields = [
+    const baseFields = buildSearchFields([
       { label: "标题", value: entry.title },
       { label: "摘要", value: entry.excerpt },
-    ];
-    const sectionFields = entry.sections.map((item) => ({
-      label: item.title,
-      value: `${item.title} ${item.text}`,
-      sectionNo: item.no,
-    }));
-    const fields = [...baseFields, ...sectionFields];
-    const haystack = fields.map((field) => field.value ?? "").join(" ");
-    if (!normalizeSearchText(haystack).includes(normalizedQuery)) return;
-    const match = findMatchedSnippet(query, fields);
-    const matchedSection = sectionFields.find((field) =>
-      normalizeSearchText(field.value).includes(normalizedQuery),
+    ]);
+    const sectionFields = buildSearchFields(
+      entry.sections.map((item) => ({
+        label: item.title,
+        value: `${item.title} ${item.text}`,
+        sectionNo: item.no,
+        sectionDate: item.date || null,
+      })),
     );
-    results.push({
+    const fields = [...baseFields, ...sectionFields];
+    const matchedSection = sectionFields.find((field) =>
+      field.normalizedValue.includes(normalizedQuery),
+    );
+    appendSearchResult({
       mode,
       date: null,
+      filterDate: matchedSection?.sectionDate || null,
       targetId: matchedSection
         ? `${mode}-static-${matchedSection.sectionNo}`
         : `${mode}-static-title`,
       title: entry.title,
-      excerpt: match.snippet,
-      fieldLabel: match.fieldLabel,
-      query,
       label: pageModeMeta[mode]?.title ?? mode,
+      fields,
+      haystackParts: fields.map((field) => field.normalizedValue),
     });
   });
-  // return results.slice(0, 50);
-  return results
-  .sort((a, b) => String(b.date ?? "").localeCompare(String(a.date ?? "")))
-  .slice(0, 50);
+  return {
+    results: sortSearchResults(results).slice(0, limit),
+    totalOccurrences,
+  };
+}
+function getAllSearchResults(query, remoteData = emptyRemoteData) {
+  return buildSearchResultState(query, remoteData).results;
 }
 function validateTimelineData() {
   const events = getTimelineDay("2026.04.25").events;
@@ -2154,7 +2356,9 @@ function validateTimelineData() {
     getTimelineEventHeight(longEvent, range) >
       getTimelineEventHeight(shortEvent, range) &&
     hasDatedEntry("2026.04.28", "Timeline") === true &&
-    getAllSearchResults("有声小说").some((result) => result.mode === "Timeline")
+    buildSearchResultState("有声小说").results.some(
+      (result) => result.mode === "Timeline",
+    )
   );
 }
 function validateConversationData() {
@@ -2177,7 +2381,7 @@ function validateConversationData() {
     allMessages
       .filter((message) => message.type === "quote")
       .every((message) => message.role === "user") &&
-    getAllSearchResults("日记草稿").some(
+    buildSearchResultState("日记草稿").results.some(
       (result) => result.fieldLabel === "文件名",
     )
   );
@@ -2249,82 +2453,210 @@ function TinyIcon({ color = "currentColor" }) {
 }
 function DiarySearchBox({
   page,
+  selectedDate,
   onSelectResult,
   onSearchQueryChange,
   searchRemoteData,
   searchDataVersion,
 }) {
-  const [query, setQuery] = useState("");
+  const [inputQuery, setInputQuery] = useState("");
   const [focused, setFocused] = useState(false);
-  const results = useMemo(
-    () => getAllSearchResults(query, searchRemoteData),
-    [query, searchDataVersion, searchRemoteData],
+  const [searchFilterOpen, setSearchFilterOpen] = useState(false);
+  const [searchModeFilter, setSearchModeFilter] = useState("All");
+  const [searchTimeFilter, setSearchTimeFilter] = useState("All");
+  const debouncedQuery = useDebouncedValue(inputQuery, 300);
+  const searchState = useMemo(
+    () =>
+      buildSearchResultState(debouncedQuery, searchRemoteData, {
+        modeFilter: searchModeFilter,
+        timeFilter: searchTimeFilter,
+        selectedDate,
+        limit: 50,
+      }),
+    [
+      debouncedQuery,
+      searchModeFilter,
+      searchTimeFilter,
+      selectedDate,
+      searchDataVersion,
+    ],
   );
-  const showPanel = focused && query.trim().length > 0;
+  const results = searchState.results;
+  const showResultPanel = focused && inputQuery.trim().length > 0;
+  const showPanel = searchFilterOpen || showResultPanel;
+  const pendingSearch =
+    inputQuery.trim().length > 0 &&
+    normalizeSearchText(inputQuery) !== normalizeSearchText(debouncedQuery);
+
+  useEffect(() => {
+    onSearchQueryChange(debouncedQuery);
+  }, [debouncedQuery, onSearchQueryChange]);
+
   return (
-    <div className="relative z-50 w-[132px] font-mono">
-      <input
-        className="w-full border bg-white/25 px-2.5 py-2 text-[9px] uppercase leading-none tracking-[0.08em] text-black/55 outline-none placeholder:text-black/28"
-        style={{ borderColor: page.line }}
-        value={query}
-        placeholder="SEARCH"
-        onChange={(event) => {
-          const nextQuery = event.target.value;
-          setQuery(nextQuery);
-          onSearchQueryChange(nextQuery);
-          setFocused(true);
-        }}
-        onFocus={() => setFocused(true)}
-      />
+    <div className="relative z-50 w-[206px] font-mono">
+      <div className="flex items-stretch gap-1">
+        <button
+          className="shrink-0 border bg-white/30 px-2 text-[8px] uppercase tracking-[0.12em] text-black/55 transition hover:bg-white/45"
+          style={{ borderColor: page.line }}
+          type="button"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => {
+            setSearchFilterOpen((current) => !current);
+            setFocused(true);
+          }}
+        >
+          筛选
+        </button>
+        <input
+          className="min-w-0 flex-1 border bg-white/25 px-2.5 py-2 text-[9px] uppercase leading-none tracking-[0.08em] text-black/55 outline-none placeholder:text-black/28"
+          style={{ borderColor: page.line }}
+          value={inputQuery}
+          placeholder="SEARCH"
+          onChange={(event) => {
+            setInputQuery(event.target.value);
+            setFocused(true);
+          }}
+          onFocus={() => setFocused(true)}
+        />
+      </div>
       <AnimatePresence>
         {showPanel && (
           <motion.div
-            className="absolute right-0 top-[calc(100%+6px)] w-[210px] border bg-[#f4f0e8] p-2"
+            className="absolute left-0 top-[calc(100%+6px)] w-[236px] border bg-[#f4f0e8] p-2"
             style={{ borderColor: page.line }}
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
           >
             <PaperTexture mode={page.texture} />
-            <div className="search-scroll relative max-h-[230px] overflow-y-auto space-y-1.5 pr-0">
-              {results.length ? (
-                results.map((result) => (
-                  <button
-                    key={`${result.mode}-${result.date}-${result.targetId}`}
-                    className="w-full border px-2 py-2 text-left"
-                    style={{ borderColor: page.line }}
-                    type="button"
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => {
-                      onSelectResult(result);
-                      setQuery("");
-                      onSearchQueryChange("");
-                      setFocused(false);
-                    }}
-                  >
+            <div className="relative">
+              {searchFilterOpen ? (
+                <div className="space-y-3 pb-2">
+                  <div>
                     <div
-                      className="text-[9px] tracking-[0.12em]"
+                      className="text-[8px] uppercase tracking-[0.12em]"
                       style={{ color: page.color }}
                     >
-                      {result.label}
+                      页面类型
                     </div>
-                    <div className="mt-1 font-mono text-[8px] uppercase tracking-[0.1em] text-black/35">
-                      {result.fieldLabel}
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {searchModeOptions.map((option) => {
+                        const active = option.value === searchModeFilter;
+
+                        return (
+                          <button
+                            key={option.value}
+                            className="border px-2 py-1 text-[8px] leading-none tracking-[0.08em] transition"
+                            style={{
+                              borderColor: active ? page.color : page.line,
+                              color: active ? page.color : "rgba(0,0,0,0.5)",
+                              background: active ? `${page.color}10` : "transparent",
+                            }}
+                            type="button"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => setSearchModeFilter(option.value)}
+                          >
+                            {option.label}
+                          </button>
+                        );
+                      })}
                     </div>
-                    <div className="mt-1 line-clamp-2 text-[9px] leading-4 text-black/38">
-                      <HighlightText
-                        text={result.excerpt}
-                        query={result.query}
-                        color={page.color}
-                      />
+                  </div>
+                  <div>
+                    <div
+                      className="text-[8px] uppercase tracking-[0.12em]"
+                      style={{ color: page.color }}
+                    >
+                      时间筛选
                     </div>
-                  </button>
-                ))
-              ) : (
-                <div className="px-2 py-3 text-[10px] text-black/38">
-                  没有搜到内容碎片
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {searchTimeOptions.map((option) => {
+                        const active = option.value === searchTimeFilter;
+
+                        return (
+                          <button
+                            key={option.value}
+                            className="border px-2 py-1 text-[8px] leading-none tracking-[0.08em] transition"
+                            style={{
+                              borderColor: active ? page.color : page.line,
+                              color: active ? page.color : "rgba(0,0,0,0.5)",
+                              background: active ? `${page.color}10` : "transparent",
+                            }}
+                            type="button"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => setSearchTimeFilter(option.value)}
+                          >
+                            {option.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
-              )}
+              ) : null}
+              {searchFilterOpen && showResultPanel ? (
+                <div
+                  className="mb-2 h-px"
+                  style={{ background: `${page.line}` }}
+                />
+              ) : null}
+              {showResultPanel ? (
+                pendingSearch ? (
+                  <div className="px-2 py-3 text-[10px] text-black/38">
+                    正在整理搜索范围…
+                  </div>
+                ) : (
+                  <div>
+                    <div className="mb-2 px-1 text-[9px] text-black/48">
+                      <span className="font-mono uppercase tracking-[0.08em]">
+                        “{debouncedQuery.trim()}”
+                      </span>{" "}
+                      出现 {searchState.totalOccurrences} 次
+                    </div>
+                    <div className="search-scroll relative max-h-[230px] overflow-y-auto space-y-1.5 pr-0">
+                      {results.length ? (
+                        results.map((result) => (
+                          <button
+                            key={`${result.mode}-${result.date}-${result.targetId}`}
+                            className="w-full border px-2 py-2 text-left"
+                            style={{ borderColor: page.line }}
+                            type="button"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => {
+                              onSelectResult(result);
+                              setInputQuery("");
+                              onSearchQueryChange("");
+                              setFocused(false);
+                              setSearchFilterOpen(false);
+                            }}
+                          >
+                            <div
+                              className="text-[9px] tracking-[0.12em]"
+                              style={{ color: page.color }}
+                            >
+                              {result.label}
+                            </div>
+                            <div className="mt-1 font-mono text-[8px] uppercase tracking-[0.1em] text-black/35">
+                              {result.fieldLabel}
+                            </div>
+                            <div className="mt-1 line-clamp-2 text-[9px] leading-4 text-black/38">
+                              <HighlightText
+                                text={result.excerpt}
+                                query={result.query}
+                                color={page.color}
+                              />
+                            </div>
+                          </button>
+                        ))
+                      ) : (
+                        <div className="px-2 py-3 text-[10px] text-black/38">
+                          没有搜到内容碎片
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              ) : null}
             </div>
           </motion.div>
         )}
@@ -5092,6 +5424,7 @@ export default function InsDiaryPrototype() {
               <div className="flex flex-col items-end gap-2">
                 <DiarySearchBox
                   page={page}
+                  selectedDate={selectedDate}
                   onSearchQueryChange={setSearchQuery}
                   searchRemoteData={remoteData}
                   searchDataVersion={searchDataVersion}
