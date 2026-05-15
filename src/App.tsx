@@ -2129,7 +2129,10 @@ function getAllSearchResults(query, remoteData = emptyRemoteData) {
       label: pageModeMeta[mode]?.title ?? mode,
     });
   });
-  return results.slice(0, 20);
+  // return results.slice(0, 50);
+  return results
+  .sort((a, b) => String(b.date ?? "").localeCompare(String(a.date ?? "")))
+  .slice(0, 50);
 }
 function validateTimelineData() {
   const events = getTimelineDay("2026.04.25").events;
@@ -2844,71 +2847,6 @@ function ChecklistMemoryContent({ page, highlightResult }) {
     </div>
   );
 }
-// function ContinuousStaticMemoryContent({ page, highlightResult }) {
-//   const groups = page.sections.reduce((list, item) => {
-//     const groupName = item.group || item.title || "";
-
-//     let group = list.find((entry) => entry.name === groupName);
-
-//     if (!group) {
-//       group = {
-//         name: groupName,
-//         items: [],
-//       };
-//       list.push(group);
-//     }
-
-//     group.items.push(item);
-//     return list;
-//   }, []);
-
-//   return (
-//     <div className="space-y-8">
-//       {groups.map((group, groupIndex) => {
-//         const groupText = group.items
-//           .map((item) => item.text)
-//           .filter(Boolean)
-//           .join("\n");
-
-//         const active = group.items.some((item) => {
-//           const targetId = `${page.mode}-static-${item.no}`;
-//           return highlightResult?.targetId === targetId;
-//         });
-
-//         return (
-//           <section
-//             key={group.name || `group-${groupIndex}`}
-//             className="relative pl-4 transition"
-//             style={{ background: active ? `${page.color}10` : "transparent" }}
-//           >
-//             {group.name && (
-//               <>
-//                 <span
-//                   className="absolute left-0 top-[7px] h-px w-2"
-//                   style={{ background: page.color, opacity: 0.7 }}
-//                 />
-//                 <h3
-//                   className="font-serif text-[15px] leading-5"
-//                   style={{ color: page.color }}
-//                 >
-//                   {group.name}
-//                 </h3>
-//               </>
-//             )}
-
-//             <p className="mt-3 whitespace-pre-line text-[11px] leading-[1.9] text-black/56">
-//               <HighlightText
-//                 text={groupText}
-//                 query={active ? highlightResult?.query : ""}
-//                 color={page.color}
-//               />
-//             </p>
-//           </section>
-//         );
-//       })}
-//     </div>
-//   );
-// }
 function groupContinuousStaticSections(sections) {
   return sections.reduce((groups, item) => {
     const groupName = String(item.group ?? "").trim();
@@ -2926,6 +2864,24 @@ function groupContinuousStaticSections(sections) {
     group.items.push(item);
     return groups;
   }, []);
+}
+function getContinuousStaticDisplayText(item) {
+  const date = String(item.date ?? "").trim();
+  const title = String(item.title ?? "").trim();
+  const text = String(item.text ?? "").trim();
+  const group = String(item.group ?? "").trim();
+
+  let body = text;
+
+  if (title && title !== group && title !== text) {
+    body = body ? `${title}：${body}` : title;
+  }
+
+  if (date) {
+    return body ? `${date}：${body}` : date;
+  }
+
+  return body;
 }
 function ContinuousStaticMemoryContent({ page, highlightResult }) {
   const groups = groupContinuousStaticSections(page.sections);
@@ -2974,7 +2930,7 @@ function ContinuousStaticMemoryContent({ page, highlightResult }) {
 
                   <span className="min-w-0 flex-1">
                     <HighlightText
-                      text={item.text}
+                      text={getContinuousStaticDisplayText(item)}
                       query={active ? highlightResult?.query : ""}
                       color={page.color}
                     />
