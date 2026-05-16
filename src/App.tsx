@@ -132,7 +132,9 @@ const searchTimeOptions = [
   { value: "Month", label: "当前月份" },
   { value: "Year", label: "当前年份" },
 ];
+const defaultConversationThreadId = "266618a6-b29f-4a8d-abd4-12ff874eb859";
 const conversationThreadIds = [
+  defaultConversationThreadId,
   "019dbec2-994e-75a3-b36f-2b83dba0fc49",
   "226dbec2-994e-75a3-b36f-2b45dba0fc56",
 ];
@@ -1052,6 +1054,99 @@ function getConversationThreadIdsForDate(
   const mockThreadIds = Object.keys(conversationEntries[dotDate] ?? {});
   return mockThreadIds.length ? mockThreadIds : conversationThreadIds;
 }
+function getAllConversationThreadIds(remoteData = emptyRemoteData) {
+  const threadIds = new Set(conversationThreadIds);
+  const collectFromDateGroups = (dateGroups) => {
+    Object.values(dateGroups ?? {}).forEach((threads) => {
+      Object.keys(threads ?? {}).forEach((threadId) => {
+        if (threadId) threadIds.add(threadId);
+      });
+    });
+  };
+
+  collectFromDateGroups(conversationEntries);
+  collectFromDateGroups(remoteData.conversationEntries);
+  collectFromDateGroups(remoteData.searchCache.conversations);
+
+  return Array.from(threadIds).filter(Boolean);
+}
+function getConversationRecordSortTime(dateText, record) {
+  const timestamp = record?.timestamp ?? record?.createdAt;
+  const timestampTime = timestamp ? new Date(timestamp).getTime() : NaN;
+
+  if (!Number.isNaN(timestampTime)) return timestampTime;
+
+  const clock = String(record?.time ?? "").match(/^(\d{1,2}):(\d{2})/)?.[0];
+  if (clock) {
+    const clockTime = new Date(
+      `${toHyphenDate(dateText)}T${clock}:00+08:00`,
+    ).getTime();
+
+    if (!Number.isNaN(clockTime)) return clockTime;
+  }
+
+  return new Date(`${toHyphenDate(dateText)}T23:59:59.999+08:00`).getTime();
+}
+function getLatestConversationThreadId(remoteData = emptyRemoteData) {
+  const createLatest = () => ({
+    threadId: "",
+    time: Number.NEGATIVE_INFINITY,
+  });
+  const realLatest = createLatest();
+  const mockLatest = createLatest();
+  const visitRecords = (dateText, threadId, records) => {
+    if (!threadId || !records?.length) return;
+
+    records.forEach((record) => {
+      const time = getConversationRecordSortTime(dateText, record);
+
+      if (time > realLatest.time) {
+        realLatest.threadId = threadId;
+        realLatest.time = time;
+      }
+    });
+  };
+  const visitMockRecords = (dateText, threadId, records) => {
+    if (!threadId || !records?.length) return;
+
+    records.forEach((record) => {
+      const time = getConversationRecordSortTime(dateText, record);
+
+      if (time > mockLatest.time) {
+        mockLatest.threadId = threadId;
+        mockLatest.time = time;
+      }
+    });
+  };
+  const collectFromDateGroups = (dateGroups) => {
+    Object.entries(dateGroups ?? {}).forEach(([dateText, threads]) => {
+      Object.entries(threads ?? {}).forEach(([threadId, records]) => {
+        visitRecords(toDotDate(dateText), threadId, records);
+      });
+    });
+  };
+  const collectFromMockEntries = () => {
+    Object.entries(conversationEntries ?? {}).forEach(([dateText, threads]) => {
+      Object.keys(threads ?? {}).forEach((threadId) => {
+        visitMockRecords(
+          toDotDate(dateText),
+          threadId,
+          getMockConversationRecordsForDate(dateText, threadId),
+        );
+      });
+    });
+  };
+
+  collectFromDateGroups(remoteData.conversationEntries);
+  collectFromDateGroups(remoteData.searchCache.conversations);
+  collectFromMockEntries();
+
+  return (
+    realLatest.threadId ||
+    mockLatest.threadId ||
+    defaultConversationThreadId
+  );
+}
 function hasConversationForDate(
   dateText,
   threadId,
@@ -1480,13 +1575,13 @@ function hasCalendarMarkForPage(
   dateText,
   remoteData = page.remoteData ?? emptyRemoteData,
 ) {
+  if (page.mode === "Conversation") {
+    return hasConversationForDate(dateText, page.threadId, remoteData);
+  }
+
   const indexedMark = hasRemoteDateIndexMark(page.mode, dateText, remoteData);
   if (indexedMark != null) {
     return indexedMark;
-  }
-
-  if (page.mode === "Conversation") {
-    return hasConversationForDate(dateText, page.threadId, remoteData);
   }
 
   if (page.mode === "Timeline") {
@@ -1918,11 +2013,11 @@ function buildDisplayPage(
 }
 function buildXiaoyePage(
   styleTheme,
+  dateText,
   mode = "Ins",
   remoteData = emptyRemoteData,
 ) {
-  const today = getTodayDateText();
-  const { month, day } = getDateParts(today);
+  const { month, day } = getDateParts(dateText);
   const modeMeta = xiaoyeModeMeta[mode] ?? xiaoyeModeMeta.Ins;
   const { entry, hasEntry } = getXiaoyeEntryForMode(mode, remoteData);
 
@@ -1935,7 +2030,7 @@ function buildXiaoyePage(
     modeTitle: modeMeta.title,
     dateBased: false,
     sourcePath: modeMeta.sourcePath,
-    date: today,
+    date: dateText,
     month,
     day,
     color: monthColors[month] ?? "#667064",
@@ -4024,7 +4119,12 @@ function DiaryPage({
   );
 }
 
-function XiaoyePage({ page, highlightResult }) {
+function XiaoyePage({
+  page,
+  highlightResult,
+  onOpenDatePicker,
+  onMonthSelect,
+}) {
   useEffect(() => {
     if (!highlightResult || highlightResult.mode !== "Xiaoye") return;
     document
@@ -4062,16 +4162,18 @@ function XiaoyePage({ page, highlightResult }) {
             </h2>
           </div>
         </aside>
-        <article className="relative min-h-[900px] pt-24">
+        <article className="relative min-h-[900px] pt-20">
+          <CalendarStrip
+            page={page}
+            onOpenDatePicker={onOpenDatePicker}
+            onMonthSelect={onMonthSelect}
+          />
           {page.hasEntry ? (
             <div className="relative min-h-[780px] pb-16 pt-2">
               <ContinuousStaticMemoryContent
                 page={page}
                 highlightResult={highlightResult}
               />
-              <div className="absolute bottom-5 left-1 max-w-[300px] truncate font-mono text-[10px] tracking-[0.04em] text-black/40">
-                {page.sourcePath}
-              </div>
               <div className="absolute bottom-12 right-1 scale-75 opacity-70">
                 <TinyIcon color={page.color} />
               </div>
@@ -4081,9 +4183,6 @@ function XiaoyePage({ page, highlightResult }) {
               <p className="whitespace-nowrap font-serif text-[11px] leading-none text-black/48">
                 {page.blankText}
               </p>
-              <div className="absolute bottom-5 left-1 max-w-[300px] truncate font-mono text-[10px] tracking-[0.04em] text-black/40">
-                {page.sourcePath}
-              </div>
               <div className="absolute bottom-12 right-1 scale-75 opacity-70">
                 <TinyIcon color={page.color} />
               </div>
@@ -5116,7 +5215,7 @@ export default function InsDiaryPrototype() {
   const [selectedMode, setSelectedMode] = useState("Diary");
   const [activeSection, setActiveSection] = useState("Conversation");
   const [selectedThreadId, setSelectedThreadId] = useState(
-    conversationThreadIds[0],
+    defaultConversationThreadId,
   );
   const [timelineView, setTimelineView] = useState("line");
   const [statsPeriod, setStatsPeriod] = useState("day");
@@ -5148,6 +5247,7 @@ export default function InsDiaryPrototype() {
     dated: false,
   });
   const [remoteError, setRemoteError] = useState({});
+  const threadSelectionTouchedRef = useRef(false);
   const searchPendingRef = useRef({
     conversations: new Set(),
     diary: new Set(),
@@ -5181,15 +5281,35 @@ export default function InsDiaryPrototype() {
   );
 
   const availableThreadIds = useMemo(
-    () => getConversationThreadIdsForDate(selectedDate, remoteData),
-    [selectedDate, remoteData],
+    () => getAllConversationThreadIds(remoteData),
+    [remoteData],
+  );
+  const latestConversationThreadId = useMemo(
+    () => getLatestConversationThreadId(remoteData),
+    [remoteData],
   );
 
   useEffect(() => {
+    if (!availableThreadIds.length) return;
+
     if (!availableThreadIds.includes(selectedThreadId)) {
-      setSelectedThreadId(availableThreadIds[0] ?? conversationThreadIds[0]);
+      setSelectedThreadId(latestConversationThreadId ?? availableThreadIds[0]);
+      return;
     }
-  }, [availableThreadIds, selectedThreadId]);
+
+    if (
+      !threadSelectionTouchedRef.current &&
+      latestConversationThreadId &&
+      latestConversationThreadId !== selectedThreadId
+    ) {
+      setSelectedThreadId(latestConversationThreadId);
+    }
+  }, [availableThreadIds, latestConversationThreadId, selectedThreadId]);
+
+  const handleSelectThread = (threadId) => {
+    threadSelectionTouchedRef.current = true;
+    setSelectedThreadId(threadId);
+  };
 
   useEffect(() => {
     const dotDate = toDotDate(selectedDate);
@@ -5387,6 +5507,78 @@ export default function InsDiaryPrototype() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    const conversationDates = (remoteDateIndexState?.conversations ?? [])
+      .map(toDotDate)
+      .filter((date) => {
+        return (
+          !remoteConversationsState[date] &&
+          !remoteSearchCacheState.conversations[date] &&
+          !searchPendingRef.current.conversations.has(date)
+        );
+      });
+
+    if (!conversationDates.length) return;
+
+    let cancelled = false;
+
+    const loadConversationDateIndex = async () => {
+      const concurrency = 4;
+      let cursor = 0;
+
+      const runTask = async () => {
+        while (!cancelled && cursor < conversationDates.length) {
+          const date = conversationDates[cursor];
+          cursor += 1;
+          searchPendingRef.current.conversations.add(date);
+
+          try {
+            const result = await fetchConversations(date);
+            if (cancelled) continue;
+
+            if (Array.isArray(result) && result.length) {
+              setRemoteSearchCacheState((current) => ({
+                ...current,
+                conversations: {
+                  ...current.conversations,
+                  [date]: groupConversationRecordsByThread(result),
+                },
+              }));
+            }
+          } catch (error) {
+            if (!cancelled) {
+              setRemoteError((current) => ({
+                ...current,
+                [`conversations:index:${date}`]: String(
+                  error?.message || error,
+                ),
+              }));
+            }
+          } finally {
+            searchPendingRef.current.conversations.delete(date);
+          }
+        }
+      };
+
+      await Promise.all(
+        Array.from(
+          { length: Math.min(concurrency, conversationDates.length) },
+          () => runTask(),
+        ),
+      );
+    };
+
+    loadConversationDateIndex();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    remoteDateIndexState,
+    remoteConversationsState,
+    remoteSearchCacheState.conversations,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -5692,7 +5884,12 @@ export default function InsDiaryPrototype() {
     if (activeSection === "Timeline")
       return buildTimelinePage(timelineStyleTheme, selectedDate, remoteData);
     if (activeSection === "Xiaoye")
-      return buildXiaoyePage(styleTheme, selectedXiaoyeMode, remoteData);
+      return buildXiaoyePage(
+        styleTheme,
+        selectedDate,
+        selectedXiaoyeMode,
+        remoteData,
+      );
     return buildDisplayPage(styleTheme, selectedDate, selectedMode, remoteData);
   }, [
     styleTheme,
@@ -5751,9 +5948,7 @@ export default function InsDiaryPrototype() {
                     ? "对话"
                     : activeSection === "Timeline"
                       ? "时间轴"
-                      : activeSection === "Xiaoye"
-                        ? "小叶"
-                        : page.modeTitle}
+                      : page.modeTitle}
                 </h1>
                 <div className="mt-2 font-mono text-[10px] tracking-[0.16em] text-black/45">
                   NO RADIUS · PAPER · INS
@@ -5769,7 +5964,7 @@ export default function InsDiaryPrototype() {
                   onSelectResult={(result) => {
                     if (result.mode === "Conversation") {
                       setActiveSection("Conversation");
-                      if (result.threadId) setSelectedThreadId(result.threadId);
+                      if (result.threadId) handleSelectThread(result.threadId);
                     } else if (result.mode === "Timeline") {
                       setActiveSection("Timeline");
                       setTimelineView("line");
@@ -5790,7 +5985,7 @@ export default function InsDiaryPrototype() {
                   <ThreadSwitch
                     page={page}
                     selectedThreadId={selectedThreadId}
-                    onSelectThread={setSelectedThreadId}
+                    onSelectThread={handleSelectThread}
                     threadIds={availableThreadIds}
                   />
                 ) : activeSection === "Archive" ? (
@@ -5851,6 +6046,10 @@ export default function InsDiaryPrototype() {
                   <XiaoyePage
                     page={page}
                     highlightResult={highlightResult}
+                    onOpenDatePicker={() => setDatePickerOpen(true)}
+                    onMonthSelect={(month) =>
+                      setSelectedDate((current) => changeDateMonth(current, month))
+                    }
                   />
                 ) : (
                   <DiaryPage
