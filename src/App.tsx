@@ -1,5 +1,5 @@
 // @ts-nocheck
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect,useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { toPng } from "html-to-image";
 import {
@@ -11,6 +11,7 @@ import {
   fetchMemoryLetters,
   fetchMemoryStatic,
   fetchTimeline,
+  fetchXiaoyeStatic,
 } from "./data/api";
 
 const TIMELINE_TIMEZONE = "Asia/Shanghai";
@@ -97,10 +98,24 @@ const pageModeMeta = {
 };
 
 const pageModes = Object.keys(pageModeMeta);
+const xiaoyeModeMeta = {
+  Ins: {
+    title: "ins",
+    sourcePath: "~/.cyberboss/weixin-instructions.md",
+    apiMode: "weixin_instructions",
+  },
+  PersonalityAnchor: {
+    title: "人格锚点",
+    sourcePath: "~/.cyberboss/personality-anchor.md",
+    apiMode: "personality_anchor",
+  },
+};
+const xiaoyeModes = Object.keys(xiaoyeModeMeta);
 const searchModeOptions = [
   { value: "All", label: "全部" },
   { value: "Conversation", label: "对话" },
   { value: "Timeline", label: "时间轴" },
+  { value: "Xiaoye", label: "小叶" },
   { value: "Diary", label: "日记" },
   { value: "DailySummary", label: "摘要" },
   { value: "Letters", label: "信件" },
@@ -113,6 +128,7 @@ const searchModeOptions = [
 const searchTimeOptions = [
   { value: "All", label: "全部时间" },
   { value: "Day", label: "当前日期" },
+  { value: "Week", label: "本周" },
   { value: "Month", label: "当前月份" },
   { value: "Year", label: "当前年份" },
 ];
@@ -150,6 +166,7 @@ const emptyRemoteData = {
   dailySummaryEntries: {},
   letterEntries: {},
   staticModeEntries: {},
+  xiaoyeEntries: {},
   dateIndex: null,
   searchCache: {
     conversations: {},
@@ -1367,6 +1384,16 @@ function createBlankEntry(mode = "Diary") {
     sections: [],
   };
 }
+function createBlankXiaoyeEntry(mode = "Ins") {
+  const modeMeta = xiaoyeModeMeta[mode] ?? xiaoyeModeMeta.Ins;
+
+  return {
+    title: modeMeta.title,
+    excerpt: "",
+    blankText: "小叶档案还没有补货......",
+    sections: [],
+  };
+}
 function getEntryForMode(mode, dateText, remoteData = emptyRemoteData) {
   const remoteEntry =
     mode === "Diary"
@@ -1411,6 +1438,14 @@ function getEntryForMode(mode, dateText, remoteData = emptyRemoteData) {
   return {
     entry: getStaticEntryForMode(mode, remoteData),
     hasEntry: true,
+  };
+}
+function getXiaoyeEntryForMode(mode, remoteData = emptyRemoteData) {
+  const entry = remoteData.xiaoyeEntries[mode] ?? null;
+
+  return {
+    entry: entry ?? createBlankXiaoyeEntry(mode),
+    hasEntry: Boolean(entry),
   };
 }
 function hasDatedEntry(dateText, mode = "Diary", remoteData = emptyRemoteData) {
@@ -1881,6 +1916,33 @@ function buildDisplayPage(
     hasEntry,
   };
 }
+function buildXiaoyePage(
+  styleTheme,
+  mode = "Ins",
+  remoteData = emptyRemoteData,
+) {
+  const today = getTodayDateText();
+  const { month, day } = getDateParts(today);
+  const modeMeta = xiaoyeModeMeta[mode] ?? xiaoyeModeMeta.Ins;
+  const { entry, hasEntry } = getXiaoyeEntryForMode(mode, remoteData);
+
+  return {
+    ...styleTheme,
+    ...entry,
+    remoteData,
+    mode: "Xiaoye",
+    xiaoyeMode: mode,
+    modeTitle: modeMeta.title,
+    dateBased: false,
+    sourcePath: modeMeta.sourcePath,
+    date: today,
+    month,
+    day,
+    color: monthColors[month] ?? "#667064",
+    pale: monthPales[month] ?? "#e9ebe4",
+    hasEntry,
+  };
+}
 function normalizeSearchText(value) {
   return Array.from(String(value).toLowerCase())
     .filter((char) => char.trim())
@@ -1933,6 +1995,27 @@ function countSearchOccurrences(value, query) {
     normalizeSearchText(query),
   );
 }
+function getWeekRange(dateText) {
+  const { year, month, day } = getDateParts(dateText);
+  const date = new Date(Number(year), Number(month) - 1, Number(day));
+  const dayOfWeek = date.getDay();
+  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+
+  const start = new Date(date);
+  start.setDate(date.getDate() + mondayOffset);
+  start.setHours(0, 0, 0, 0);
+
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  end.setHours(23, 59, 59, 999);
+
+  return { start, end };
+}
+
+function getDateOnlyTime(dateText) {
+  const { year, month, day } = getDateParts(dateText);
+  return new Date(Number(year), Number(month) - 1, Number(day)).getTime();
+}
 function matchesSearchFilters(
   result,
   filters = {},
@@ -1948,6 +2031,12 @@ function matchesSearchFilters(
 
   if (timeFilter === "Day") {
     return toDotDate(resultDate) === toDotDate(selectedDate);
+  }
+  if (timeFilter === "Week") {
+  const resultTime = getDateOnlyTime(resultDate);
+  const { start, end } = getWeekRange(selectedDate);
+
+  return resultTime >= start.getTime() && resultTime <= end.getTime();
   }
 
   const resultParts = getDateParts(resultDate);
@@ -2109,6 +2198,7 @@ function buildSearchResultState(
     filterDate = null,
     timestamp = null,
     threadId = null,
+    xiaoyeMode = null,
     targetId,
     title,
     label,
@@ -2127,6 +2217,7 @@ function buildSearchResultState(
       filterDate: filterDate ? toDotDate(filterDate) : null,
       timestamp,
       threadId,
+      xiaoyeMode,
       targetId,
       title,
       query: cleanQuery,
@@ -2328,6 +2419,42 @@ function buildSearchResultState(
       haystackParts: fields.map((field) => field.normalizedValue),
     });
   });
+  xiaoyeModes.forEach((xiaoyeMode) => {
+    const entry = remoteData.xiaoyeEntries[xiaoyeMode];
+
+    if (!entry) return;
+
+    const modeMeta = xiaoyeModeMeta[xiaoyeMode] ?? xiaoyeModeMeta.Ins;
+    const baseFields = buildSearchFields([
+      { label: "标题", value: entry.title },
+      { label: "摘要", value: entry.excerpt },
+    ]);
+    const sectionFields = buildSearchFields(
+      entry.sections.map((item) => ({
+        label: item.group || item.title || modeMeta.title,
+        value: `${item.group ?? ""} ${item.title ?? ""} ${item.text ?? ""}`,
+        sectionNo: item.no,
+        sectionDate: item.date || null,
+      })),
+    );
+    const fields = [...baseFields, ...sectionFields];
+    const matchedSection = sectionFields.find((field) =>
+      field.normalizedValue.includes(normalizedQuery),
+    );
+    appendSearchResult({
+      mode: "Xiaoye",
+      xiaoyeMode,
+      date: null,
+      filterDate: matchedSection?.sectionDate || null,
+      targetId: matchedSection
+        ? `Xiaoye-static-${matchedSection.sectionNo}`
+        : "Xiaoye-static-title",
+      title: entry.title,
+      label: `小叶 · ${modeMeta.title}`,
+      fields,
+      haystackParts: fields.map((field) => field.normalizedValue),
+    });
+  });
   return {
     results: sortSearchResults(results).slice(0, limit),
     totalOccurrences,
@@ -2409,7 +2536,7 @@ if (typeof console !== "undefined")
 
 function AppScrollbarStyle() {
   return (
-    <style>{`.diary-scroll,.search-scroll,.share-scroll{scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;scroll-behavior:smooth}.diary-scroll::-webkit-scrollbar,.search-scroll::-webkit-scrollbar,.share-scroll::-webkit-scrollbar{width:0;height:0;display:none}`}</style>
+   <style>{`.diary-scroll,.search-scroll,.share-scroll{scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;scroll-behavior:smooth}#conversation-message-scroll{scroll-behavior:auto}.diary-scroll::-webkit-scrollbar,.search-scroll::-webkit-scrollbar,.share-scroll::-webkit-scrollbar{width:0;height:0;display:none}`}</style>
   );
 }
 function PaperTexture({ mode = "grain" }) {
@@ -2465,6 +2592,23 @@ function DiarySearchBox({
   const [searchModeFilter, setSearchModeFilter] = useState("All");
   const [searchTimeFilter, setSearchTimeFilter] = useState("All");
   const debouncedQuery = useDebouncedValue(inputQuery, 300);
+  const searchBoxRef = useRef(null);
+  useEffect(() => {
+  const handlePointerDown = (event) => {
+    if (!searchBoxRef.current) return;
+
+    if (!searchBoxRef.current.contains(event.target)) {
+      setFocused(false);
+      setSearchFilterOpen(false);
+    }
+  };
+
+  document.addEventListener("pointerdown", handlePointerDown);
+
+  return () => {
+    document.removeEventListener("pointerdown", handlePointerDown);
+  };
+  }, []);
   const searchState = useMemo(
     () =>
       buildSearchResultState(debouncedQuery, searchRemoteData, {
@@ -2493,7 +2637,7 @@ function DiarySearchBox({
   }, [debouncedQuery, onSearchQueryChange]);
 
   return (
-    <div className="relative z-50 w-[206px] font-mono">
+      <div ref={searchBoxRef} className="relative z-50 w-[174px] font-mono">
       <div className="flex items-stretch gap-1">
         <button
           className="shrink-0 border bg-white/30 px-2 text-[8px] uppercase tracking-[0.12em] text-black/55 transition hover:bg-white/45"
@@ -2522,7 +2666,7 @@ function DiarySearchBox({
       <AnimatePresence>
         {showPanel && (
           <motion.div
-            className="absolute left-0 top-[calc(100%+6px)] w-[236px] border bg-[#f4f0e8] p-2"
+            className="absolute right-0 top-[calc(100%+6px)] w-[236px] max-w-[calc(100vw-32px)] border bg-[#f4f0e8] p-2"
             style={{ borderColor: page.line }}
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
@@ -2762,6 +2906,69 @@ function TopModeSwitch({ page, selectedMode, onSelectMode }) {
                 <span>{selectedMode === mode ? "●" : ""}</span>
               </button>
             ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+function XiaoyeModeSwitch({ page, selectedXiaoyeMode, onSelectXiaoyeMode }) {
+  const [open, setOpen] = useState(false);
+  const selectedMeta =
+    xiaoyeModeMeta[selectedXiaoyeMode] ?? xiaoyeModeMeta.Ins;
+
+  return (
+    <div className="relative z-40 mt-1 w-[132px] font-mono">
+      <button
+        className="flex w-full items-center justify-between border px-2.5 py-2 text-[9px] uppercase leading-none tracking-[0.1em]"
+        style={{
+          color: page.color,
+          borderColor: page.color,
+          background: page.pale,
+        }}
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+      >
+        <span>{selectedMeta.title}</span>
+        <span>{open ? "▲" : "▼"}</span>
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            className="absolute right-0 top-[calc(100%+6px)] w-full border bg-[#f4f0e8] p-1"
+            style={{ borderColor: page.line }}
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+          >
+            {xiaoyeModes.map((mode) => {
+              const modeMeta = xiaoyeModeMeta[mode];
+
+              return (
+                <button
+                  key={mode}
+                  className="flex w-full items-center justify-between px-2 py-2 text-left text-[9px] uppercase leading-none"
+                  style={{
+                    color:
+                      selectedXiaoyeMode === mode
+                        ? page.color
+                        : "rgba(0,0,0,.46)",
+                    background:
+                      selectedXiaoyeMode === mode
+                        ? page.pale
+                        : "transparent",
+                  }}
+                  type="button"
+                  onClick={() => {
+                    onSelectXiaoyeMode(mode);
+                    setOpen(false);
+                  }}
+                >
+                  <span>{modeMeta.title}</span>
+                  <span>{selectedXiaoyeMode === mode ? "●" : ""}</span>
+                </button>
+              );
+            })}
           </motion.div>
         )}
       </AnimatePresence>
@@ -3817,6 +4024,77 @@ function DiaryPage({
   );
 }
 
+function XiaoyePage({ page, highlightResult }) {
+  useEffect(() => {
+    if (!highlightResult || highlightResult.mode !== "Xiaoye") return;
+    document
+      .getElementById(`hit-${highlightResult.targetId}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [highlightResult, page.xiaoyeMode]);
+
+  return (
+    <motion.section
+      key={`${page.id}-${page.mode}-${page.xiaoyeMode}`}
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -8 }}
+      className="relative min-h-[980px] border bg-[#f7f5ee] p-5 pb-10"
+      style={{ background: page.paper, borderColor: page.line }}
+    >
+      <PaperTexture mode={page.texture} />
+      <div className="relative min-h-[920px]">
+        <div
+          className="absolute right-0 top-0 z-10 font-mono text-[18px] tracking-[0.12em]"
+          style={{ color: page.color }}
+        >
+          小叶
+        </div>
+        <aside
+          id="hit-Xiaoye-static-title"
+          className="absolute left-0 top-0 z-10 space-y-4"
+        >
+          <div>
+            <div className="mb-1 text-[10px] tracking-[0.22em] text-black/35">
+              XIAOYE · {page.mark}
+            </div>
+            <h2 className="max-w-[270px] font-serif text-3xl leading-[1.15] tracking-[0.08em] text-black/75">
+              {page.title}
+            </h2>
+          </div>
+        </aside>
+        <article className="relative min-h-[900px] pt-24">
+          {page.hasEntry ? (
+            <div className="relative min-h-[780px] pb-16 pt-2">
+              <ContinuousStaticMemoryContent
+                page={page}
+                highlightResult={highlightResult}
+              />
+              <div className="absolute bottom-5 left-1 max-w-[300px] truncate font-mono text-[10px] tracking-[0.04em] text-black/40">
+                {page.sourcePath}
+              </div>
+              <div className="absolute bottom-12 right-1 scale-75 opacity-70">
+                <TinyIcon color={page.color} />
+              </div>
+            </div>
+          ) : (
+            <div className="relative min-h-[780px] pb-16 pt-3">
+              <p className="whitespace-nowrap font-serif text-[11px] leading-none text-black/48">
+                {page.blankText}
+              </p>
+              <div className="absolute bottom-5 left-1 max-w-[300px] truncate font-mono text-[10px] tracking-[0.04em] text-black/40">
+                {page.sourcePath}
+              </div>
+              <div className="absolute bottom-12 right-1 scale-75 opacity-70">
+                <TinyIcon color={page.color} />
+              </div>
+            </div>
+          )}
+        </article>
+      </div>
+    </motion.section>
+  );
+}
+
 function BubbleRow({
   message,
   children,
@@ -3921,7 +4199,7 @@ function ChatBubble({ message, page }) {
       <BubbleRow message={message} side="right">
         <div className="max-w-[280px] text-right">
           <div
-            className="inline-block border bg-[#cbc5bb] px-2.5 py-1.5 text-left text-[12px] leading-relaxed text-white"
+            className="inline-block border bg-[#cbc5bb] px-2.5 py-1.5 text-left text-[11px] leading-relaxed text-white"
             style={{ borderColor: "transparent" }}
           >
             {displayText}
@@ -4021,7 +4299,7 @@ function ChatBubble({ message, page }) {
   return (
     <BubbleRow message={message} side={fromUser ? "right" : "left"}>
       <div
-        className={`${fromUser ? "bg-[#d7d0c4] text-white" : "border bg-[#f7efe4]/80 text-black/72"} max-w-[300px] border px-2.5 py-1.5 whitespace-pre-line text-[12px] leading-[1.45]`}
+        className={`${fromUser ? "bg-[#d7d0c4] text-white" : "border bg-[#f7efe4]/80 text-black/72"} max-w-[300px] border px-2.5 py-1.5 whitespace-pre-line text-[11px] leading-[1.45]`}
         style={{ borderColor: fromUser ? "transparent" : page.line }}
       >
         {displayText}
@@ -4067,18 +4345,24 @@ function ConversationPage({
     });
   }, [highlightResult, page.date, selectedThreadId]);
 
-  useEffect(() => {
-    if (
-      highlightResult?.mode === "Conversation" &&
-      highlightResult.date === page.date &&
-      highlightResult.threadId === selectedThreadId
-    )
-      return;
-    requestAnimationFrame(() => {
-      const scrollBox = document.getElementById("conversation-message-scroll");
-      if (scrollBox) scrollBox.scrollTop = scrollBox.scrollHeight;
-    });
-  }, [page.date, selectedThreadId, page.messages.length, highlightResult]);
+  useLayoutEffect(() => {
+  if (
+    highlightResult?.mode === "Conversation" &&
+    highlightResult.date === page.date &&
+    highlightResult.threadId === selectedThreadId
+  ) {
+    return;
+  }
+
+  const scrollBox = document.getElementById("conversation-message-scroll");
+
+  if (!scrollBox) return;
+
+  scrollBox.scrollTo({
+    top: scrollBox.scrollHeight,
+    behavior: "auto",
+  });
+}, [page.date, selectedThreadId, page.messages.length, highlightResult]);
 
   return (
     <motion.section
@@ -4797,13 +5081,14 @@ function BottomNav({ activeSection, onSelectSection, page }) {
     { id: "Conversation", label: "对话" },
     { id: "Timeline", label: "时间轴" },
     { id: "Archive", label: "回忆" },
+    { id: "Xiaoye", label: "小叶" },
   ];
   return (
     <nav
       className="z-30 shrink-0 border-t bg-[#eeeae1]/95 px-3 py-3 pb-[calc(12px+env(safe-area-inset-bottom))] backdrop-blur"
       style={{ borderColor: page.line }}
     >
-      <div className="grid grid-cols-3 gap-2 font-mono text-[10px] uppercase tracking-[0.12em]">
+      <div className="grid grid-cols-4 gap-2 font-mono text-[10px] uppercase tracking-[0.12em]">
         {items.map((item) => (
           <button
             key={item.id}
@@ -4837,6 +5122,7 @@ export default function InsDiaryPrototype() {
   const [statsPeriod, setStatsPeriod] = useState("day");
   const [highlightResult, setHighlightResult] = useState(null);
   const [diaryShareOpen, setDiaryShareOpen] = useState(false);
+  const [selectedXiaoyeMode, setSelectedXiaoyeMode] = useState("Ins");
   const [remoteConversationsState, setRemoteConversationsState] = useState({});
   const [remoteTimelineStateValue, setRemoteTimelineStateValue] = useState({});
   const [remoteDiaryEntriesState, setRemoteDiaryEntriesState] = useState({});
@@ -4845,6 +5131,7 @@ export default function InsDiaryPrototype() {
   const [remoteLetterEntriesState, setRemoteLetterEntriesState] = useState({});
   const [remoteStaticModeEntriesState, setRemoteStaticModeEntriesState] =
     useState({});
+  const [remoteXiaoyeEntriesState, setRemoteXiaoyeEntriesState] = useState({});
   const [remoteDateIndexState, setRemoteDateIndexState] = useState(null);
   const [remoteSearchCacheState, setRemoteSearchCacheState] = useState({
     conversations: {},
@@ -4876,6 +5163,7 @@ export default function InsDiaryPrototype() {
       dailySummaryEntries: remoteDailySummaryEntriesState,
       letterEntries: remoteLetterEntriesState,
       staticModeEntries: remoteStaticModeEntriesState,
+      xiaoyeEntries: remoteXiaoyeEntriesState,
       dateIndex: remoteDateIndexState,
       searchCache: remoteSearchCacheState,
     }),
@@ -4886,6 +5174,7 @@ export default function InsDiaryPrototype() {
       remoteDailySummaryEntriesState,
       remoteLetterEntriesState,
       remoteStaticModeEntriesState,
+      remoteXiaoyeEntriesState,
       remoteDateIndexState,
       remoteSearchCacheState,
     ],
@@ -4969,13 +5258,27 @@ export default function InsDiaryPrototype() {
         ["Facts", staticModeApiMap.Facts],
         ["Patterns", staticModeApiMap.Patterns],
       ];
+      const xiaoyeRequests = xiaoyeModes.map((mode) => [
+        mode,
+        xiaoyeModeMeta[mode].apiMode,
+      ]);
 
-      const [timelineResult, dateIndexResult, ...staticResults] =
+      const [
+        timelineResult,
+        dateIndexResult,
+        ...staticAndXiaoyeResults
+      ] =
         await Promise.allSettled([
           fetchTimeline(),
           fetchDateIndex(),
-        ...staticRequests.map(([, mode]) => fetchMemoryStatic(mode)),
+          ...staticRequests.map(([, mode]) => fetchMemoryStatic(mode)),
+          ...xiaoyeRequests.map(([, mode]) => fetchXiaoyeStatic(mode)),
         ]);
+      const staticResults = staticAndXiaoyeResults.slice(
+        0,
+        staticRequests.length,
+      );
+      const xiaoyeResults = staticAndXiaoyeResults.slice(staticRequests.length);
 
       if (cancelled) return;
 
@@ -5045,6 +5348,33 @@ export default function InsDiaryPrototype() {
         setRemoteStaticModeEntriesState((current) => ({
           ...current,
           ...nextStaticEntries,
+        }));
+      }
+
+      const nextXiaoyeEntries = {};
+      xiaoyeResults.forEach((result, index) => {
+        const [mode] = xiaoyeRequests[index];
+        if (
+          result.status === "fulfilled" &&
+          result.value?.found === true &&
+          result.value?.entry
+        ) {
+          nextXiaoyeEntries[mode] = result.value.entry;
+          return;
+        }
+
+        if (result.status === "rejected") {
+          setRemoteError((current) => ({
+            ...current,
+            [`Xiaoye:${mode}`]: String(result.reason?.message || result.reason),
+          }));
+        }
+      });
+
+      if (Object.keys(nextXiaoyeEntries).length) {
+        setRemoteXiaoyeEntriesState((current) => ({
+          ...current,
+          ...nextXiaoyeEntries,
         }));
       }
 
@@ -5323,6 +5653,7 @@ export default function InsDiaryPrototype() {
         Object.keys(remoteLetterEntriesState).length,
         Object.keys(remoteTimelineStateValue).length,
         Object.keys(remoteStaticModeEntriesState).length,
+        Object.keys(remoteXiaoyeEntriesState).length,
         Object.keys(remoteSearchCacheState.conversations).length,
         Object.keys(remoteSearchCacheState.diary).length,
         Object.keys(remoteSearchCacheState.dailySummary).length,
@@ -5336,6 +5667,7 @@ export default function InsDiaryPrototype() {
       remoteLetterEntriesState,
       remoteTimelineStateValue,
       remoteStaticModeEntriesState,
+      remoteXiaoyeEntriesState,
       remoteSearchCacheState,
     ],
   );
@@ -5359,12 +5691,15 @@ export default function InsDiaryPrototype() {
       );
     if (activeSection === "Timeline")
       return buildTimelinePage(timelineStyleTheme, selectedDate, remoteData);
+    if (activeSection === "Xiaoye")
+      return buildXiaoyePage(styleTheme, selectedXiaoyeMode, remoteData);
     return buildDisplayPage(styleTheme, selectedDate, selectedMode, remoteData);
   }, [
     styleTheme,
     timelineStyleTheme,
     selectedDate,
     selectedMode,
+    selectedXiaoyeMode,
     activeSection,
     selectedThreadId,
     remoteConversationsState,
@@ -5373,6 +5708,7 @@ export default function InsDiaryPrototype() {
     remoteDailySummaryEntriesState,
     remoteLetterEntriesState,
     remoteStaticModeEntriesState,
+    remoteXiaoyeEntriesState,
     remoteDateIndexState,
     remoteSearchCacheState,
   ]);
@@ -5415,7 +5751,9 @@ export default function InsDiaryPrototype() {
                     ? "对话"
                     : activeSection === "Timeline"
                       ? "时间轴"
-                      : page.modeTitle}
+                      : activeSection === "Xiaoye"
+                        ? "小叶"
+                        : page.modeTitle}
                 </h1>
                 <div className="mt-2 font-mono text-[10px] tracking-[0.16em] text-black/45">
                   NO RADIUS · PAPER · INS
@@ -5435,6 +5773,11 @@ export default function InsDiaryPrototype() {
                     } else if (result.mode === "Timeline") {
                       setActiveSection("Timeline");
                       setTimelineView("line");
+                    } else if (result.mode === "Xiaoye") {
+                      setActiveSection("Xiaoye");
+                      if (result.xiaoyeMode) {
+                        setSelectedXiaoyeMode(result.xiaoyeMode);
+                      }
                     } else {
                       setActiveSection("Archive");
                       setSelectedMode(result.mode);
@@ -5455,6 +5798,12 @@ export default function InsDiaryPrototype() {
                     page={page}
                     selectedMode={selectedMode}
                     onSelectMode={setSelectedMode}
+                  />
+                ) : activeSection === "Xiaoye" ? (
+                  <XiaoyeModeSwitch
+                    page={page}
+                    selectedXiaoyeMode={selectedXiaoyeMode}
+                    onSelectXiaoyeMode={setSelectedXiaoyeMode}
                   />
                 ) : null}
               </div>
@@ -5497,6 +5846,11 @@ export default function InsDiaryPrototype() {
                     onMonthSelect={(month) =>
                       setSelectedDate((current) => changeDateMonth(current, month))
                     }
+                  />
+                ) : activeSection === "Xiaoye" ? (
+                  <XiaoyePage
+                    page={page}
+                    highlightResult={highlightResult}
                   />
                 ) : (
                   <DiaryPage

@@ -236,7 +236,9 @@ let section: MemorySection;
 if (
   mode === "preferences" ||
   mode === "facts" ||
-  mode === "patterns"
+  mode === "patterns" ||
+  mode === "weixin_instructions" ||
+  mode === "personality_anchor"
 ) {
   section = {
     no: String(sections.length + 1),
@@ -274,4 +276,3 @@ if (
     sections,
   };
 }
-

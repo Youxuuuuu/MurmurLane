@@ -5,7 +5,9 @@ export type StaticMemoryMode =
   | "preferences"
   | "open_loops"
   | "facts"
-  | "patterns";
+  | "patterns"
+  | "weixin_instructions"
+  | "personality_anchor";
 
 export interface MemorySection {
   no: string;

@@ -56,6 +56,10 @@ export function fetchMemoryStatic(mode: string) {
   return requestJson(`/api/memory/static?mode=${encodeURIComponent(mode)}`);
 }
 
+export function fetchXiaoyeStatic(mode: string) {
+  return requestJson(`/api/xiaoye/static?mode=${encodeURIComponent(mode)}`);
+}
+
 export function resolveApiFileUrl(filePath: string) {
   return buildApiUrl(
     `/api/file?path=${encodeURIComponent(String(filePath ?? ""))}`,

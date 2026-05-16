@@ -86,6 +86,28 @@ function getStaticModeQuery(value: unknown, response: express.Response) {
   return value as StaticMemoryMode;
 }
 
+type XiaoyeStaticMode = "weixin_instructions" | "personality_anchor";
+
+function getXiaoyeStaticModeQuery(
+  value: unknown,
+  response: express.Response,
+) {
+  const modes: XiaoyeStaticMode[] = [
+    "weixin_instructions",
+    "personality_anchor",
+  ];
+
+  if (typeof value !== "string" || !modes.includes(value as XiaoyeStaticMode)) {
+    response.status(400).json({
+      error:
+        "Missing or invalid mode. Expected weixin_instructions|personality_anchor.",
+    });
+    return null;
+  }
+
+  return value as XiaoyeStaticMode;
+}
+
 function notFoundEntry(response: express.Response<MemoryEntryResponse>) {
   response.json({
     found: false,
@@ -314,7 +336,7 @@ app.get("/api/memory/static", async (request, response, next) => {
       return;
     }
 
-    const candidates: Record<StaticMemoryMode, string[]> = {
+    const candidates: Record<string, string[]> = {
       projects: ["memory/projects.md", "memory/projects"],
       preferences: ["memory/preferences.md", "memory/preferences"],
       open_loops: ["memory/open_loops.md", "memory/open_loops"],
@@ -343,6 +365,34 @@ app.get("/api/memory/static", async (request, response, next) => {
     response.json({
       found: true,
       entry,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/xiaoye/static", async (request, response, next) => {
+  try {
+    const mode = getXiaoyeStaticModeQuery(request.query.mode, response);
+
+    if (!mode) {
+      return;
+    }
+
+    const files: Record<XiaoyeStaticMode, string> = {
+      weixin_instructions: "weixin-instructions.md",
+      personality_anchor: "personality-anchor.md",
+    };
+    const result = await readTextFile(resolveDataPath(files[mode]));
+
+    if (!result.found || result.content == null) {
+      notFoundEntry(response);
+      return;
+    }
+
+    response.json({
+      found: true,
+      entry: parseStaticMemoryMarkdown(mode, result.content),
     });
   } catch (error) {
     next(error);
