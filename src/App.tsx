@@ -745,6 +745,16 @@ const timelineCategories = {
     color: "#9aa957",
     pale: "rgba(241,243,223,.72)",
   },
+  exercise: {
+    label: "运动",
+    color: "#9aa957",
+    pale: "rgba(241,243,223,.72)",
+  },
+  health: {
+    label: "健康",
+    color: "#b44f58",
+    pale: "rgba(245,228,230,.72)",
+  },
   care: {
     label: "照护",
     color: "#5f8fb0",
@@ -765,6 +775,54 @@ const timelineCategories = {
     color: "#7fa66f",
     pale: "rgba(232,245,226,.72)",
   },
+  travel: {
+    label: "出行",
+    color: "#63739d",
+    pale: "rgba(231,235,243,.72)",
+  },
+};
+
+const timelineCategoryAliasMap = {
+  daily: "life",
+  food: "life",
+  relationship: "social",
+  commute: "travel",
+  read: "study",
+};
+
+const timelineSubcategoryAliasMap = {
+  "daily.meals": "life.meal",
+  "daily.meal": "life.meal",
+  "daily.hygiene": "life.hygiene",
+  "daily.commute": "travel.commute",
+  "daily.home": "life.other",
+
+  "food.lunch": "life.meal",
+  "food.beverage": "life.meal",
+  "food.snack": "life.meal",
+
+  "relationship.connection": "social.chat",
+  "relationship.intimacy": "social.chat",
+  "relationship.family": "social.family",
+
+  "commute.home": "travel.commute",
+
+  "work.design": "work.other",
+  "work.chat": "work.communication",
+  "work.off": "work.other",
+
+  "life.computer": "life.other",
+  "life.rest": "rest.idle",
+  "life.scenery": "rest.idle",
+
+  "rest.down": "rest.idle",
+  "rest.home": "rest.idle",
+  "rest.hygiene": "life.hygiene",
+  "rest.recovery": "health.rest",
+
+  "social.friend": "social.other",
+  "travel.trip": "travel.other",
+  "entertainment.sticker": "entertainment.other",
 };
 
 const timelineState = {
@@ -1279,6 +1337,33 @@ function minutesToClock(minutes) {
   const safeMinutes = Math.max(0, Math.min(24 * 60, minutes));
   return `${pad2(Math.floor(safeMinutes / 60))}:${pad2(safeMinutes % 60)}`;
 }
+function normalizeTimelineEventCategory(event) {
+  const originalCategoryId = String(event?.categoryId || "").trim();
+  const originalSubcategoryId = String(event?.subcategoryId || "").trim();
+
+  const subcategoryId =
+    timelineSubcategoryAliasMap[originalSubcategoryId] ||
+    originalSubcategoryId;
+  const categoryFromSubcategory = subcategoryId.includes(".")
+    ? subcategoryId.split(".")[0]
+    : "";
+  const aliasedCategoryId =
+    timelineCategoryAliasMap[originalCategoryId] ||
+    originalCategoryId;
+  const categoryId = timelineCategories[categoryFromSubcategory]
+    ? categoryFromSubcategory
+    : timelineCategories[aliasedCategoryId]
+      ? aliasedCategoryId
+      : "life";
+
+  return {
+    ...event,
+    categoryId,
+    subcategoryId: subcategoryId || `${categoryId}.other`,
+    originalCategoryId,
+    originalSubcategoryId,
+  };
+}
 function getEventDurationMinutes(event) {
   return Math.max(
     1,
@@ -1423,12 +1508,13 @@ function layoutTimelineEvents(events, range = getTimelineRange()) {
   );
 }
 function aggregateTimelineEvents(events) {
-  const total = events.reduce(
+  const normalizedEvents = events.map(normalizeTimelineEventCategory);
+  const total = normalizedEvents.reduce(
     (sum, event) => sum + getEventDurationMinutes(event),
     0,
   );
   const map = {};
-  events.forEach((event) => {
+  normalizedEvents.forEach((event) => {
     const key = event.categoryId || "life";
     map[key] = (map[key] ?? 0) + getEventDurationMinutes(event);
   });
@@ -2467,8 +2553,9 @@ function buildSearchResultState(
         { label: "事件备注", value: event.note },
         {
           label: "分类",
-          value:
-            timelineCategories[event.categoryId]?.label ?? event.categoryId,
+          value: timelineCategories[
+            normalizeTimelineEventCategory(event).categoryId
+          ]?.label ?? event.categoryId,
         },
         { label: "标签", value: (event.tags ?? []).join(" ") },
       ]);
@@ -4624,8 +4711,9 @@ function TimelineEventCard({
   elementId,
   onSelectEvent,
 }) {
+  const normalizedEvent = normalizeTimelineEventCategory(event);
   const category =
-    timelineCategories[event.categoryId] ?? timelineCategories.life;
+    timelineCategories[normalizedEvent.categoryId] ?? timelineCategories.life;
   const start = toMinutes(event.startAt);
   const duration = getEventDurationMinutes(event);
   const topPercent = Math.max(
@@ -4697,8 +4785,9 @@ function TimelineEventCard({
 }
 
 function TimelineEventDetailModal({ event, page, onClose }) {
+  const normalizedEvent = normalizeTimelineEventCategory(event);
   const category =
-    timelineCategories[event.categoryId] ?? timelineCategories.life;
+    timelineCategories[normalizedEvent.categoryId] ?? timelineCategories.life;
   const duration = getEventDurationMinutes(event);
   return (
     <motion.div
@@ -4943,6 +5032,7 @@ function TimelineMiniStrip({ page }) {
       const end = boundaries[index + 1];
       const categoryMinutes = {};
       events.forEach((event) => {
+        const normalizedEvent = normalizeTimelineEventCategory(event);
         const eventStart = toMinutes(event.startAt);
         const eventEnd = toMinutes(event.endAt);
         const overlap = Math.max(
@@ -4950,8 +5040,8 @@ function TimelineMiniStrip({ page }) {
           Math.min(end, eventEnd) - Math.max(start, eventStart),
         );
         if (overlap > 0)
-          categoryMinutes[event.categoryId] =
-            (categoryMinutes[event.categoryId] ?? 0) + overlap;
+          categoryMinutes[normalizedEvent.categoryId] =
+            (categoryMinutes[normalizedEvent.categoryId] ?? 0) + overlap;
       });
       const dominant = Object.entries(categoryMinutes).sort(
         (a, b) => b[1] - a[1],
@@ -5080,8 +5170,10 @@ function TimelinePeriodList({ page, onSelectEvent }) {
       </div>
       <div className="space-y-3">
         {events.map((event) => {
+          const normalizedEvent = normalizeTimelineEventCategory(event);
           const category =
-            timelineCategories[event.categoryId] ?? timelineCategories.life;
+            timelineCategories[normalizedEvent.categoryId] ??
+            timelineCategories.life;
           const start = toMinutes(event.startAt);
           const end = toMinutes(event.endAt);
           const duration = getEventDurationMinutes(event);
