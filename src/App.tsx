@@ -725,60 +725,55 @@ const reminderHistoryEntries = [
 ];
 
 const timelineCategories = {
-  social: {
-    label: "社交",
-    color: "#d47a92",
-    pale: "rgba(247,231,236,.72)",
-  },
   life: {
-    label: "生活",
+    label: "Life",
     color: "#c28a4a",
     pale: "rgba(248,237,222,.72)",
   },
-  entertainment: {
-    label: "影音娱乐",
-    color: "#6fa7b4",
-    pale: "rgba(230,243,245,.72)",
+  work: {
+    label: "Work",
+    color: "#7f6aa3",
+    pale: "rgba(237,232,244,.72)",
   },
   study: {
-    label: "学习",
+    label: "Study",
     color: "#9aa957",
     pale: "rgba(241,243,223,.72)",
   },
   exercise: {
-    label: "运动",
-    color: "#9aa957",
-    pale: "rgba(241,243,223,.72)",
+    label: "Exercise",
+    color: "#8a9f5a",
+    pale: "rgba(238,244,225,.72)",
+  },
+  entertainment: {
+    label: "Entertainment",
+    color: "#6fa7b4",
+    pale: "rgba(230,243,245,.72)",
   },
   health: {
-    label: "健康",
+    label: "Health",
     color: "#b44f58",
     pale: "rgba(245,228,230,.72)",
   },
+  social: {
+    label: "Social",
+    color: "#d47a92",
+    pale: "rgba(247,231,236,.72)",
+  },
   care: {
-    label: "照护",
+    label: "Care",
     color: "#5f8fb0",
     pale: "rgba(231,240,247,.72)",
   },
-  work: {
-    label: "工作",
-    color: "#7f6aa3",
-    pale: "rgba(237,232,244,.72)",
-  },
-  read: {
-    label: "阅读",
-    color: "#a76683",
-    pale: "rgba(242,230,236,.72)",
-  },
-  rest: {
-    label: "休息",
-    color: "#7fa66f",
-    pale: "rgba(232,245,226,.72)",
-  },
   travel: {
-    label: "出行",
+    label: "Travel",
     color: "#63739d",
     pale: "rgba(231,235,243,.72)",
+  },
+  rest: {
+    label: "Rest",
+    color: "#7fa66f",
+    pale: "rgba(232,245,226,.72)",
   },
 };
 
@@ -823,6 +818,87 @@ const timelineSubcategoryAliasMap = {
   "social.friend": "social.other",
   "travel.trip": "travel.other",
   "entertainment.sticker": "entertainment.other",
+};
+
+const timelineSubcategoryLabels = {
+  "life.meal": "Meals",
+  "life.hygiene": "Hygiene",
+  "life.chores": "Chores",
+  "life.shopping": "Shopping",
+  "life.errand": "Errands",
+  "life.other": "Other Life",
+
+  "work.coding": "Coding",
+  "work.meeting": "Meetings",
+  "work.writing": "Writing",
+  "work.communication": "Communication",
+  "work.other": "Other Work",
+
+  "study.reading": "Reading",
+  "study.course": "Courses",
+  "study.practice": "Practice",
+  "study.review": "Review",
+  "study.other": "Other Study",
+
+  "exercise.walk": "Walks",
+  "exercise.workout": "Workouts",
+  "exercise.stretch": "Stretching",
+  "exercise.other": "Other Exercise",
+
+  "entertainment.video": "Video",
+  "entertainment.game": "Games",
+  "entertainment.social_media": "Social Media",
+  "entertainment.music": "Music",
+  "entertainment.other": "Other Entertainment",
+
+  "health.rest": "Recovery",
+  "health.medication": "Medication",
+  "health.pain": "Symptom Care",
+  "health.hospital": "Medical Visit",
+  "health.other": "Other Health",
+
+  "social.chat": "Chat",
+  "social.call": "Calls",
+  "social.family": "Family Time",
+  "social.other": "Other Social",
+
+  "care.pet": "Pet Care",
+  "care.household": "Household Care",
+  "care.self": "Self Care",
+  "care.other": "Other Care",
+
+  "travel.commute": "Commute",
+  "travel.transit": "Transit",
+  "travel.other": "Other Travel",
+
+  "rest.sleep": "Sleep",
+  "rest.nap": "Nap",
+  "rest.idle": "Idle Time",
+  "rest.other": "Other Rest",
+};
+
+const timelineEventNodeLabels = {
+  "evt.breakfast": "Breakfast",
+  "evt.lunch": "Lunch",
+  "evt.dinner": "Dinner",
+  "evt.shower": "Shower",
+  "evt.cleanup": "Cleanup",
+  "evt.commute": "Commute",
+  "evt.focus_coding": "Focused Coding",
+  "evt.meeting": "Meeting",
+  "evt.reading": "Reading",
+  "evt.learning": "Course Study",
+  "evt.walk": "Walk",
+  "evt.workout": "Workout",
+  "evt.watch_show": "Watch a Show",
+  "evt.short_video": "Short Video Scroll",
+  "evt.phone_scroll": "Phone Scroll",
+  "evt.headache_rest": "Headache Recovery",
+  "evt.medication": "Medication",
+  "evt.hospital_visit": "Medical Visit",
+  "evt.chatting": "Chat",
+  "evt.sleep": "Sleep",
+  "evt.nap": "Nap",
 };
 
 const timelineState = {
@@ -1340,6 +1416,7 @@ function minutesToClock(minutes) {
 function normalizeTimelineEventCategory(event) {
   const originalCategoryId = String(event?.categoryId || "").trim();
   const originalSubcategoryId = String(event?.subcategoryId || "").trim();
+  const eventNodeId = String(event?.eventNodeId || "").trim();
 
   const subcategoryId =
     timelineSubcategoryAliasMap[originalSubcategoryId] ||
@@ -1355,13 +1432,35 @@ function normalizeTimelineEventCategory(event) {
     : timelineCategories[aliasedCategoryId]
       ? aliasedCategoryId
       : "life";
+  const normalizedSubcategoryId = subcategoryId || `${categoryId}.other`;
 
   return {
     ...event,
     categoryId,
-    subcategoryId: subcategoryId || `${categoryId}.other`,
+    subcategoryId: normalizedSubcategoryId,
+    eventNodeId,
     originalCategoryId,
     originalSubcategoryId,
+  };
+}
+function getTimelineCategoryMeta(event) {
+  const normalizedEvent = normalizeTimelineEventCategory(event);
+  const category =
+    timelineCategories[normalizedEvent.categoryId] ||
+    timelineCategories.life;
+
+  return {
+    normalizedEvent,
+    category,
+    categoryLabel: category.label,
+    subcategoryLabel:
+      timelineSubcategoryLabels[normalizedEvent.subcategoryId] ||
+      normalizedEvent.subcategoryId ||
+      "",
+    eventNodeLabel:
+      timelineEventNodeLabels[normalizedEvent.eventNodeId] ||
+      normalizedEvent.eventNodeId ||
+      "",
   };
 }
 function getEventDurationMinutes(event) {
@@ -1392,8 +1491,9 @@ function getTimelineEventTopPx(event, range = getTimelineRange()) {
 }
 function getTimelineEventVisualTopPx(event, range = getTimelineRange()) {
   const top = getTimelineEventTopPx(event, range);
-  const height = getTimelineEventHeight(event, range);
-  return toMinutes(event.startAt) === range.startHour * 60 ? -height : top;
+  const startsAtRangeTop = toMinutes(event.startAt) === range.startHour * 60;
+
+  return startsAtRangeTop ? Math.max(0, top - 1) : Math.max(0, top);
 }
 function getTimelineEventVisualRange(event, range = getTimelineRange()) {
   const start = getTimelineEventVisualTopPx(event, range);
@@ -4711,11 +4811,17 @@ function TimelineEventCard({
   elementId,
   onSelectEvent,
 }) {
-  const normalizedEvent = normalizeTimelineEventCategory(event);
-  const category =
-    timelineCategories[normalizedEvent.categoryId] ?? timelineCategories.life;
+  const {
+    normalizedEvent,
+    category,
+    subcategoryLabel,
+    eventNodeLabel,
+  } = getTimelineCategoryMeta(event);
   const start = toMinutes(event.startAt);
   const duration = getEventDurationMinutes(event);
+  const detailLabel = [subcategoryLabel, eventNodeLabel]
+    .filter(Boolean)
+    .join(" · ");
   const topPercent = Math.max(
     0,
     ((start - range.startHour * 60) /
@@ -4773,6 +4879,7 @@ function TimelineEventCard({
       {height >= 32 && (
         <div className="w-full truncate text-left font-mono text-[9px] leading-4 opacity-80">
           {minutesToClock(start)} → {minutesToClock(toMinutes(event.endAt))}
+          {detailLabel ? ` · ${detailLabel}` : ""}
         </div>
       )}
       {height >= 58 && (
@@ -4785,10 +4892,21 @@ function TimelineEventCard({
 }
 
 function TimelineEventDetailModal({ event, page, onClose }) {
-  const normalizedEvent = normalizeTimelineEventCategory(event);
-  const category =
-    timelineCategories[normalizedEvent.categoryId] ?? timelineCategories.life;
+  const {
+    normalizedEvent,
+    category,
+    categoryLabel,
+    subcategoryLabel,
+    eventNodeLabel,
+  } = getTimelineCategoryMeta(event);
   const duration = getEventDurationMinutes(event);
+  const categoryDetailLabel = [
+    categoryLabel,
+    subcategoryLabel,
+    eventNodeLabel,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   return (
     <motion.div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/18 px-5 py-[calc(20px+env(safe-area-inset-top))]"
@@ -4839,6 +4957,11 @@ function TimelineEventDetailModal({ event, page, onClose }) {
               {minutesToClock(toMinutes(event.startAt))} →{" "}
               {minutesToClock(toMinutes(event.endAt))} · {duration}分钟
             </div>
+            {categoryDetailLabel && (
+              <div className="font-mono text-[10px] tracking-[0.1em] text-black/42">
+                {categoryDetailLabel}
+              </div>
+            )}
             <p>{event.note}</p>
             <div className="flex flex-wrap gap-1.5 pt-1">
               {(event.tags ?? []).map((tag) => (
@@ -4939,7 +5062,17 @@ function TimelineDayView({ page, highlightResult }) {
     </div>
   );
 }
+function hexToRgba(hex, alpha = 0.68) {
+  const value = String(hex || "").replace("#", "");
 
+  if (value.length !== 6) return hex;
+
+  const r = parseInt(value.slice(0, 2), 16);
+  const g = parseInt(value.slice(2, 4), 16);
+  const b = parseInt(value.slice(4, 6), 16);
+
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
 function TimelineDonut({ aggregates }) {
   const total = aggregates.reduce((sum, item) => sum + item.minutes, 0);
   let current = 0;
@@ -4949,7 +5082,7 @@ function TimelineDonut({ aggregates }) {
         timelineCategories[item.categoryId] ?? timelineCategories.life;
       const start = current;
       current += total ? (item.minutes / total) * 100 : 0;
-      return `${category.color} ${start}% ${current}%`;
+      return `${hexToRgba(category.color, 0.65)} ${start}% ${current}%`;
     })
     .join(", ");
 
@@ -4997,7 +5130,7 @@ function TimelineStatsView({ page, period, onSelectPeriod }) {
             >
               <span
                 className="h-3.5 w-[3px] shrink-0"
-                style={{ background: category.color }}
+                style={{ background: hexToRgba(category.color, 0.68) }}
               />
               <span className="min-w-0 flex-1 truncate font-semibold text-black/68">
                 {category.label}
@@ -5170,10 +5303,8 @@ function TimelinePeriodList({ page, onSelectEvent }) {
       </div>
       <div className="space-y-3">
         {events.map((event) => {
-          const normalizedEvent = normalizeTimelineEventCategory(event);
-          const category =
-            timelineCategories[normalizedEvent.categoryId] ??
-            timelineCategories.life;
+          const { category, categoryLabel } =
+            getTimelineCategoryMeta(event);
           const start = toMinutes(event.startAt);
           const end = toMinutes(event.endAt);
           const duration = getEventDurationMinutes(event);
@@ -5195,7 +5326,7 @@ function TimelinePeriodList({ page, onSelectEvent }) {
                   </div>
                   <div className="mt-2 truncate font-mono text-[11px] leading-4 text-black/40">
                     {minutesToClock(start)} - {minutesToClock(end)} · #
-                    {category.label} · {event.note}
+                    {categoryLabel} · {event.note}
                   </div>
                 </div>
               </div>
