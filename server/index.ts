@@ -124,6 +124,46 @@ function sortUniqueDates(values: string[]) {
   return Array.from(new Set(values.filter(Boolean))).sort();
 }
 
+async function getConversationThreadIndex(conversationDates: string[]) {
+  const threadDates: Record<string, string[]> = {};
+
+  await Promise.all(
+    conversationDates.map(async (date) => {
+      try {
+        const result = await readJsonLinesFile<ConversationRecord>(
+          resolveDataPath("conversations", `${date}.jsonl`),
+        );
+
+        result.records.forEach((record) => {
+          const threadId =
+            typeof record.threadId === "string" ? record.threadId.trim() : "";
+
+          if (!threadId) {
+            return;
+          }
+
+          if (!threadDates[threadId]) {
+            threadDates[threadId] = [];
+          }
+
+          threadDates[threadId].push(date);
+        });
+      } catch (error) {
+        console.warn(
+          `[cyberboss-api] failed to index conversation file for ${date}`,
+          error,
+        );
+      }
+    }),
+  );
+
+  return Object.fromEntries(
+    Object.entries(threadDates)
+      .map(([threadId, dates]) => [threadId, sortUniqueDates(dates)])
+      .sort(([left], [right]) => left.localeCompare(right)),
+  );
+}
+
 async function getDateIndex(): Promise<DateIndexResponse> {
   const [conversationFiles, diaryFiles, dailySummaryFiles, letterFiles, timeline] =
     await Promise.all([
@@ -140,6 +180,10 @@ async function getDateIndex(): Promise<DateIndexResponse> {
   const conversations = conversationFiles
     .map((fileName) => fileName.match(/^(\d{4}-\d{2}-\d{2})\.jsonl$/)?.[1] || "")
     .filter(Boolean);
+  const sortedConversations = sortUniqueDates(conversations);
+  const conversationThreads = await getConversationThreadIndex(
+    sortedConversations,
+  );
 
   const diary = diaryFiles
     .map((fileName) => fileName.match(/^(\d{4}-\d{2}-\d{2})\.md$/)?.[1] || "")
@@ -169,7 +213,8 @@ async function getDateIndex(): Promise<DateIndexResponse> {
     : [];
 
   return {
-    conversations: sortUniqueDates(conversations),
+    conversations: sortedConversations,
+    conversationThreads,
     diary: sortUniqueDates(diary),
     dailySummary: sortUniqueDates(dailySummary),
     letters: sortUniqueDates(letters),

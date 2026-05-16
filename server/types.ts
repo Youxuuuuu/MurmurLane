@@ -35,6 +35,7 @@ export interface ConversationRecord {
 
 export interface DateIndexResponse {
   conversations: string[];
+  conversationThreads?: Record<string, string[]>;
   diary: string[];
   dailySummary: string[];
   letters: string[];

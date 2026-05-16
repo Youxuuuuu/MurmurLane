@@ -1054,21 +1054,52 @@ function getConversationThreadIdsForDate(
   const mockThreadIds = Object.keys(conversationEntries[dotDate] ?? {});
   return mockThreadIds.length ? mockThreadIds : conversationThreadIds;
 }
-function getAllConversationThreadIds(remoteData = emptyRemoteData) {
-  const threadIds = new Set(conversationThreadIds);
+function getRemoteConversationThreadIndex(remoteData = emptyRemoteData) {
+  return remoteData.dateIndex?.conversationThreads ?? {};
+}
+function getRealConversationThreadIds(remoteData = emptyRemoteData) {
+  const indexedThreadIds = Object.keys(
+    getRemoteConversationThreadIndex(remoteData),
+  ).filter(Boolean);
+
+  if (indexedThreadIds.length) {
+    return indexedThreadIds;
+  }
+
+  const loadedThreadIds = new Set();
   const collectFromDateGroups = (dateGroups) => {
     Object.values(dateGroups ?? {}).forEach((threads) => {
       Object.keys(threads ?? {}).forEach((threadId) => {
-        if (threadId) threadIds.add(threadId);
+        if (threadId) loadedThreadIds.add(threadId);
       });
     });
   };
 
-  collectFromDateGroups(conversationEntries);
   collectFromDateGroups(remoteData.conversationEntries);
   collectFromDateGroups(remoteData.searchCache.conversations);
 
-  return Array.from(threadIds).filter(Boolean);
+  return Array.from(loadedThreadIds).filter(Boolean);
+}
+function getAllConversationThreadIds(remoteData = emptyRemoteData) {
+  const realThreadIds = getRealConversationThreadIds(remoteData);
+
+  if (realThreadIds.length) {
+    return realThreadIds;
+  }
+
+  const fallbackThreadIds = new Set();
+
+  Object.values(conversationEntries ?? {}).forEach((threads) => {
+    Object.keys(threads ?? {}).forEach((threadId) => {
+      if (threadId) fallbackThreadIds.add(threadId);
+    });
+  });
+
+  conversationThreadIds.forEach((threadId) => {
+    if (threadId) fallbackThreadIds.add(threadId);
+  });
+
+  return Array.from(fallbackThreadIds).filter(Boolean);
 }
 function getConversationRecordSortTime(dateText, record) {
   const timestamp = record?.timestamp ?? record?.createdAt;
@@ -1088,12 +1119,36 @@ function getConversationRecordSortTime(dateText, record) {
   return new Date(`${toHyphenDate(dateText)}T23:59:59.999+08:00`).getTime();
 }
 function getLatestConversationThreadId(remoteData = emptyRemoteData) {
+  const threadIndex = getRemoteConversationThreadIndex(remoteData);
+  const indexedThreadIds = Object.keys(threadIndex).filter(Boolean);
+
+  if (indexedThreadIds.length) {
+    const latestDate = indexedThreadIds.reduce((latest, threadId) => {
+      const dates = threadIndex[threadId] ?? [];
+      const threadLatestDate = dates[dates.length - 1] ?? "";
+
+      return threadLatestDate > latest ? threadLatestDate : latest;
+    }, "");
+    const defaultHasLatestDate = threadIndex[defaultConversationThreadId]?.includes(
+      latestDate,
+    );
+
+    if (defaultHasLatestDate) {
+      return defaultConversationThreadId;
+    }
+
+    return (
+      indexedThreadIds.find((threadId) =>
+        threadIndex[threadId]?.includes(latestDate),
+      ) ?? indexedThreadIds[0]
+    );
+  }
+
   const createLatest = () => ({
     threadId: "",
     time: Number.NEGATIVE_INFINITY,
   });
   const realLatest = createLatest();
-  const mockLatest = createLatest();
   const visitRecords = (dateText, threadId, records) => {
     if (!threadId || !records?.length) return;
 
@@ -1106,18 +1161,6 @@ function getLatestConversationThreadId(remoteData = emptyRemoteData) {
       }
     });
   };
-  const visitMockRecords = (dateText, threadId, records) => {
-    if (!threadId || !records?.length) return;
-
-    records.forEach((record) => {
-      const time = getConversationRecordSortTime(dateText, record);
-
-      if (time > mockLatest.time) {
-        mockLatest.threadId = threadId;
-        mockLatest.time = time;
-      }
-    });
-  };
   const collectFromDateGroups = (dateGroups) => {
     Object.entries(dateGroups ?? {}).forEach(([dateText, threads]) => {
       Object.entries(threads ?? {}).forEach(([threadId, records]) => {
@@ -1125,37 +1168,37 @@ function getLatestConversationThreadId(remoteData = emptyRemoteData) {
       });
     });
   };
-  const collectFromMockEntries = () => {
-    Object.entries(conversationEntries ?? {}).forEach(([dateText, threads]) => {
-      Object.keys(threads ?? {}).forEach((threadId) => {
-        visitMockRecords(
-          toDotDate(dateText),
-          threadId,
-          getMockConversationRecordsForDate(dateText, threadId),
-        );
-      });
-    });
-  };
 
   collectFromDateGroups(remoteData.conversationEntries);
   collectFromDateGroups(remoteData.searchCache.conversations);
-  collectFromMockEntries();
 
-  return (
-    realLatest.threadId ||
-    mockLatest.threadId ||
-    defaultConversationThreadId
-  );
+  return realLatest.threadId || defaultConversationThreadId;
 }
 function hasConversationForDate(
   dateText,
   threadId,
   remoteData = emptyRemoteData,
 ) {
-  if (threadId)
+  const hyphenDate = toHyphenDate(dateText);
+  const threadIndex = getRemoteConversationThreadIndex(remoteData);
+
+  if (threadId && threadIndex[threadId]) {
+    return threadIndex[threadId].includes(hyphenDate);
+  }
+
+  if (threadId) {
     return Boolean(
       getConversationRecordsForDate(dateText, threadId, remoteData).length,
     );
+  }
+
+  const indexedThreadIds = Object.keys(threadIndex);
+  if (indexedThreadIds.length) {
+    return indexedThreadIds.some((id) =>
+      threadIndex[id]?.includes(hyphenDate),
+    );
+  }
+
   return getConversationThreadIdsForDate(dateText, remoteData).some((id) =>
     getConversationRecordsForDate(dateText, id, remoteData).length,
   );
@@ -5507,78 +5550,6 @@ export default function InsDiaryPrototype() {
       cancelled = true;
     };
   }, []);
-
-  useEffect(() => {
-    const conversationDates = (remoteDateIndexState?.conversations ?? [])
-      .map(toDotDate)
-      .filter((date) => {
-        return (
-          !remoteConversationsState[date] &&
-          !remoteSearchCacheState.conversations[date] &&
-          !searchPendingRef.current.conversations.has(date)
-        );
-      });
-
-    if (!conversationDates.length) return;
-
-    let cancelled = false;
-
-    const loadConversationDateIndex = async () => {
-      const concurrency = 4;
-      let cursor = 0;
-
-      const runTask = async () => {
-        while (!cancelled && cursor < conversationDates.length) {
-          const date = conversationDates[cursor];
-          cursor += 1;
-          searchPendingRef.current.conversations.add(date);
-
-          try {
-            const result = await fetchConversations(date);
-            if (cancelled) continue;
-
-            if (Array.isArray(result) && result.length) {
-              setRemoteSearchCacheState((current) => ({
-                ...current,
-                conversations: {
-                  ...current.conversations,
-                  [date]: groupConversationRecordsByThread(result),
-                },
-              }));
-            }
-          } catch (error) {
-            if (!cancelled) {
-              setRemoteError((current) => ({
-                ...current,
-                [`conversations:index:${date}`]: String(
-                  error?.message || error,
-                ),
-              }));
-            }
-          } finally {
-            searchPendingRef.current.conversations.delete(date);
-          }
-        }
-      };
-
-      await Promise.all(
-        Array.from(
-          { length: Math.min(concurrency, conversationDates.length) },
-          () => runTask(),
-        ),
-      );
-    };
-
-    loadConversationDateIndex();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    remoteDateIndexState,
-    remoteConversationsState,
-    remoteSearchCacheState.conversations,
-  ]);
 
   useEffect(() => {
     let cancelled = false;
