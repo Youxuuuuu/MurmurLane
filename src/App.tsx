@@ -2492,6 +2492,28 @@ function HighlightText({ text, query, color = "#c28a4a" }) {
     </>
   );
 }
+function scrollHitIntoView(targetId) {
+  const target = document.getElementById(`hit-${targetId}`);
+
+  if (!target) return;
+
+  const scrollBox = target.closest(".diary-scroll");
+
+  if (scrollBox) {
+    const boxRect = scrollBox.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const targetTop =
+      targetRect.top - boxRect.top + scrollBox.scrollTop;
+
+    scrollBox.scrollTop = Math.max(
+      0,
+      targetTop - scrollBox.clientHeight / 2 + targetRect.height / 2,
+    );
+    return;
+  }
+
+  target.scrollIntoView({ block: "center" });
+}
 function buildSearchResultState(
   query,
   remoteData = emptyRemoteData,
@@ -2861,7 +2883,7 @@ if (typeof console !== "undefined")
 
 function AppScrollbarStyle() {
   return (
-   <style>{`.diary-scroll,.search-scroll,.share-scroll{scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;scroll-behavior:smooth}#conversation-message-scroll{scroll-behavior:auto}.diary-scroll::-webkit-scrollbar,.search-scroll::-webkit-scrollbar,.share-scroll::-webkit-scrollbar{width:0;height:0;display:none}`}</style>
+   <style>{`.diary-scroll,.search-scroll,.share-scroll{scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;scroll-behavior:smooth}.year-picker-scroll{scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;scroll-behavior:auto}#conversation-message-scroll{scroll-behavior:auto}.diary-scroll::-webkit-scrollbar,.search-scroll::-webkit-scrollbar,.share-scroll::-webkit-scrollbar,.year-picker-scroll::-webkit-scrollbar{width:0;height:0;display:none}`}</style>
   );
 }
 function PaperTexture({ mode = "grain" }) {
@@ -3371,14 +3393,39 @@ function DatePickerModal({ page, onClose, onSelectDate }) {
     year: Number(parts.year),
     month: Number(parts.month),
   }));
+  const [isYearPickerOpen, setIsYearPickerOpen] = useState(false);
+  const yearPickerRef = useRef(null);
+  const activeYearRef = useRef(null);
   const days = getDaysInMonth(view.year, view.month);
   const blanks = Array.from(
     { length: getFirstWeekday(view.year, view.month) },
     (_, index) => `blank-${index}`,
   );
+  const yearOptions = useMemo(
+    () => Array.from({ length: 41 }, (_, index) => view.year - 20 + index),
+    [view.year],
+  );
+
+  useLayoutEffect(() => {
+    if (!isYearPickerOpen) return;
+
+    const yearPicker = yearPickerRef.current;
+    const activeYear = activeYearRef.current;
+
+    if (!yearPicker || !activeYear) return;
+
+    yearPicker.scrollTop =
+      activeYear.offsetTop -
+      yearPicker.clientHeight / 2 +
+      activeYear.clientHeight / 2;
+  }, [isYearPickerOpen, view.year]);
 
   const moveMonth = (offset) => {
     setView((current) => shiftMonth(current.year, current.month, offset));
+  };
+  const handleClose = () => {
+    setIsYearPickerOpen(false);
+    onClose();
   };
 
   return (
@@ -3392,7 +3439,7 @@ function DatePickerModal({ page, onClose, onSelectDate }) {
         className="absolute inset-0"
         type="button"
         aria-label="关闭日期选择"
-        onClick={onClose}
+        onClick={handleClose}
       />
       <motion.section
         className="relative w-full border bg-[#f3efe6] p-5 text-black/70"
@@ -3406,21 +3453,80 @@ function DatePickerModal({ page, onClose, onSelectDate }) {
           className="relative mb-4 flex items-start justify-between border-b pb-3"
           style={{ borderBottomColor: page.color }}
         >
-          <div>
+          <div className="relative">
             <div className="font-mono text-[9px] uppercase tracking-[0.22em] text-black/38">
               select date
             </div>
             <div
-              className="mt-1 font-serif text-[28px] leading-none tracking-[0.08em]"
+              className="mt-1 flex items-center gap-1 font-serif text-[28px] leading-none tracking-[0.08em]"
               style={{ color: page.color }}
             >
-              {view.year}.{pad2(view.month)}
+              <button
+                className="p-0 font-serif text-[28px] leading-none tracking-[0.08em]"
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: page.color,
+                }}
+                type="button"
+                onClick={() => setIsYearPickerOpen((current) => !current)}
+              >
+                {view.year}
+              </button>
+              <span>.{pad2(view.month)}</span>
             </div>
+            <AnimatePresence>
+              {isYearPickerOpen && (
+                <motion.div
+                  ref={yearPickerRef}
+                  className="year-picker-scroll absolute left-1/2 top-[52px] z-20 max-h-[168px] w-[124px] -translate-x-1/2 overflow-y-auto border p-2 shadow-[0_10px_24px_rgba(120,90,70,.12)]"
+                  style={{
+                    borderColor: `${page.color}38`,
+                    background: "rgba(255,252,246,.96)",
+                    borderRadius: 14,
+                    scrollBehavior: "auto",
+                  }}
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                >
+                  {yearOptions.map((year) => {
+                    const active = year === view.year;
+
+                    return (
+                      <button
+                        key={year}
+                        ref={active ? activeYearRef : null}
+                        className="flex min-h-8 w-full items-center justify-between px-2 text-[12px] leading-none"
+                        style={{
+                          color: active ? page.color : "#76685f",
+                          background: active
+                            ? `${page.color}18`
+                            : "transparent",
+                          borderRadius: 10,
+                        }}
+                        type="button"
+                        onClick={() => {
+                          setView((current) => ({
+                            ...current,
+                            year,
+                          }));
+                          setIsYearPickerOpen(false);
+                        }}
+                      >
+                        <span>{year}</span>
+                        <span>{active ? "✓" : ""}</span>
+                      </button>
+                    );
+                  })}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
           <button
             className="font-mono text-[11px] uppercase tracking-[0.18em] text-black/45"
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
           >
             close
           </button>
@@ -3812,7 +3918,7 @@ function GroupedMemoryContent({ page, highlightResult }) {
   return (
     <div className="space-y-4">
       {page.sections.map((item) => {
-        const targetId = `${page.mode}-static-${item.no}`;
+        const targetId = `${page.mode}-${page.dateBased ? page.date : "static"}-${item.no}`;
         const active = highlightResult?.targetId === targetId;
         return (
           <section
@@ -4277,9 +4383,7 @@ function DiaryPage({
   useEffect(() => {
     if (!highlightResult || highlightResult.mode !== page.mode) return;
     if (page.dateBased && highlightResult.date !== page.date) return;
-    document
-      .getElementById(`hit-${highlightResult.targetId}`)
-      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    scrollHitIntoView(highlightResult.targetId);
   }, [highlightResult, page.mode, page.date, page.dateBased]);
 
   return (
@@ -4357,9 +4461,7 @@ function XiaoyePage({
 }) {
   useEffect(() => {
     if (!highlightResult || highlightResult.mode !== "Xiaoye") return;
-    document
-      .getElementById(`hit-${highlightResult.targetId}`)
-      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    scrollHitIntoView(highlightResult.targetId);
   }, [highlightResult, page.xiaoyeMode]);
 
   return (
@@ -4669,7 +4771,7 @@ function ConversationPage({
 
       scrollBox.scrollTo({
         top: Math.max(0, centeredTop),
-        behavior: "smooth",
+        behavior: "auto",
       });
     });
   }, [highlightResult, page.date, selectedThreadId]);
@@ -5000,9 +5102,7 @@ function TimelineDayView({ page, highlightResult }) {
       highlightResult.date !== page.date
     )
       return;
-    document
-      .getElementById(`hit-timeline-${highlightResult.targetId}`)
-      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    scrollHitIntoView(`timeline-${highlightResult.targetId}`);
   }, [highlightResult, page.date]);
 
   return (
