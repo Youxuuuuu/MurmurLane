@@ -10,6 +10,20 @@ function buildApiUrl(path: string) {
   return API_BASE_URL ? `${API_BASE_URL}${path}` : path;
 }
 
+function buildQuery(params: Record<string, string | number | null | undefined>) {
+  const query = new URLSearchParams();
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (value == null || value === "") {
+      return;
+    }
+
+    query.set(key, String(value));
+  });
+
+  return query.toString();
+}
+
 async function requestJson(path: string) {
   const response = await fetch(buildApiUrl(path));
 
@@ -20,18 +34,34 @@ async function requestJson(path: string) {
   return response.json();
 }
 
-export function fetchConversations(date: string) {
-  return requestJson(
-    `/api/conversations?date=${encodeURIComponent(normalizeDate(date))}`,
-  );
+export function fetchConversations(
+  date: string,
+  options: { threadId?: string; limit?: number } = {},
+) {
+  const query = buildQuery({
+    date: normalizeDate(date),
+    threadId: options.threadId,
+    limit: options.limit,
+  });
+
+  return requestJson(`/api/conversations?${query}`);
 }
 
-export function fetchTimeline() {
-  return requestJson("/api/timeline");
+export function fetchTimeline(options: { date?: string; month?: string } = {}) {
+  const query = buildQuery({
+    date: options.date ? normalizeDate(options.date) : undefined,
+    month: options.month ? normalizeDate(options.month).slice(0, 7) : undefined,
+  });
+
+  return requestJson(query ? `/api/timeline?${query}` : "/api/timeline");
 }
 
 export function fetchDateIndex() {
   return requestJson("/api/index/dates");
+}
+
+export function fetchReminderHistory() {
+  return requestJson("/api/reminders/history");
 }
 
 export function fetchMemoryDiary(date: string) {

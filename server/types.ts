@@ -33,6 +33,17 @@ export interface ConversationRecord {
   [key: string]: unknown;
 }
 
+export interface ReminderHistoryEntry {
+  archivedAt?: string;
+  sourceFile?: string;
+  reminder: {
+    id: string;
+    text: string;
+    dueAtMs?: number;
+    createdAt?: string;
+  };
+}
+
 export interface DateIndexResponse {
   conversations: string[];
   conversationThreads?: Record<string, string[]>;

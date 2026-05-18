@@ -10,6 +10,7 @@ import {
   fetchMemoryDiary,
   fetchMemoryLetters,
   fetchMemoryStatic,
+  fetchReminderHistory,
   fetchTimeline,
   fetchXiaoyeStatic,
 } from "./data/api";
@@ -169,6 +170,7 @@ const emptyRemoteData = {
   letterEntries: {},
   staticModeEntries: {},
   xiaoyeEntries: {},
+  reminderHistoryEntries: [],
   dateIndex: null,
   searchCache: {
     conversations: {},
@@ -1655,12 +1657,25 @@ function getZonedDateText(dateLike, timeZone = TIMELINE_TIMEZONE) {
   return `${parts.year}.${parts.month}.${parts.day}`;
 }
 function getReminderDueAt(reminderEntry) {
-  return reminderEntry.reminder?.dueAtMs
-    ? new Date(reminderEntry.reminder.dueAtMs)
-    : new Date(reminderEntry.reminder?.createdAt ?? reminderEntry.archivedAt);
+  const dueAtMs = Number(reminderEntry?.reminder?.dueAtMs);
+
+  if (Number.isFinite(dueAtMs)) {
+    return new Date(dueAtMs);
+  }
+
+  return new Date(
+    reminderEntry?.reminder?.createdAt ??
+      reminderEntry?.archivedAt ??
+      Date.now(),
+  );
 }
-function getRemindersForDate(dateText) {
-  return reminderHistoryEntries
+function getReminderHistorySource(remoteData = emptyRemoteData) {
+  return remoteData.reminderHistoryEntries?.length
+    ? remoteData.reminderHistoryEntries
+    : reminderHistoryEntries;
+}
+function getRemindersForDate(dateText, remoteData = emptyRemoteData) {
+  return getReminderHistorySource(remoteData)
     .filter((entry) => getZonedDateText(getReminderDueAt(entry)) === dateText)
     .sort(
       (a, b) => getReminderDueAt(a).getTime() - getReminderDueAt(b).getTime(),
@@ -4739,6 +4754,9 @@ function ChatBubble({ message, page }) {
   );
 }
 
+const CONVERSATION_RECENT_RENDER_LIMIT = 200;
+const CONVERSATION_HIT_CONTEXT_LIMIT = 80;
+
 function ConversationPage({
   page,
   selectedThreadId,
@@ -4746,6 +4764,51 @@ function ConversationPage({
   onOpenDatePicker,
   onMonthSelect,
 }) {
+  const visibleMessageWindow = useMemo(() => {
+    const visibleMessages = page.messages.filter(
+      (message) => !shouldHideConversationRecord(message),
+    );
+    const hasConversationHit =
+      highlightResult?.mode === "Conversation" &&
+      highlightResult.date === page.date &&
+      highlightResult.threadId === selectedThreadId;
+
+    if (hasConversationHit) {
+      const hitIndex = visibleMessages.findIndex(
+        (message) => message.id === highlightResult.targetId,
+      );
+
+      if (hitIndex !== -1) {
+        const start = Math.max(0, hitIndex - CONVERSATION_HIT_CONTEXT_LIMIT);
+        const end = Math.min(
+          visibleMessages.length,
+          hitIndex + CONVERSATION_HIT_CONTEXT_LIMIT + 1,
+        );
+
+        return {
+          messages: visibleMessages.slice(start, end),
+          hiddenBefore: start,
+          hiddenAfter: visibleMessages.length - end,
+          hitMode: true,
+          total: visibleMessages.length,
+        };
+      }
+    }
+
+    const start = Math.max(
+      0,
+      visibleMessages.length - CONVERSATION_RECENT_RENDER_LIMIT,
+    );
+
+    return {
+      messages: visibleMessages.slice(start),
+      hiddenBefore: start,
+      hiddenAfter: 0,
+      hitMode: false,
+      total: visibleMessages.length,
+    };
+  }, [page.messages, page.date, selectedThreadId, highlightResult]);
+
   useEffect(() => {
     if (
       highlightResult?.mode !== "Conversation" ||
@@ -4793,7 +4856,12 @@ function ConversationPage({
     top: scrollBox.scrollHeight,
     behavior: "auto",
   });
-}, [page.date, selectedThreadId, page.messages.length, highlightResult]);
+}, [
+  page.date,
+  selectedThreadId,
+  visibleMessageWindow.messages.length,
+  highlightResult,
+]);
 
   return (
     <motion.section
@@ -4817,9 +4885,18 @@ function ConversationPage({
           id="conversation-message-scroll"
           className="diary-scroll relative z-10 min-h-0 flex-1 overflow-y-auto overflow-x-hidden pt-2 pb-5"
         >
-          {page.messages
-            .filter((message) => !shouldHideConversationRecord(message))
-            .map((message) => {
+          {(visibleMessageWindow.hiddenBefore > 0 ||
+            visibleMessageWindow.hiddenAfter > 0) && (
+            <div
+              className="mb-3 border bg-white/28 px-3 py-2 text-center font-mono text-[9px] leading-4 tracking-[0.08em] text-black/35"
+              style={{ borderColor: page.line }}
+            >
+              {visibleMessageWindow.hitMode
+                ? `已显示命中附近消息 · 前后各 ${CONVERSATION_HIT_CONTEXT_LIMIT} 条`
+                : `已显示最近 ${CONVERSATION_RECENT_RENDER_LIMIT} 条`}
+            </div>
+          )}
+          {visibleMessageWindow.messages.map((message) => {
             const active =
               highlightResult?.mode === "Conversation" &&
               highlightResult?.targetId === message.id &&
@@ -5334,7 +5411,7 @@ function TimelineMiniStrip({ page }) {
 }
 
 function ReminderList({ page }) {
-  const reminders = getRemindersForDate(page.date);
+  const reminders = getRemindersForDate(page.date, page.remoteData);
   return (
     <section className="mb-5">
       <div className="mb-2 flex items-end justify-between">
@@ -5597,6 +5674,10 @@ export default function InsDiaryPrototype() {
   const [remoteStaticModeEntriesState, setRemoteStaticModeEntriesState] =
     useState({});
   const [remoteXiaoyeEntriesState, setRemoteXiaoyeEntriesState] = useState({});
+  const [
+    remoteReminderHistoryEntriesState,
+    setRemoteReminderHistoryEntriesState,
+  ] = useState([]);
   const [remoteDateIndexState, setRemoteDateIndexState] = useState(null);
   const [remoteSearchCacheState, setRemoteSearchCacheState] = useState({
     conversations: {},
@@ -5630,6 +5711,7 @@ export default function InsDiaryPrototype() {
       letterEntries: remoteLetterEntriesState,
       staticModeEntries: remoteStaticModeEntriesState,
       xiaoyeEntries: remoteXiaoyeEntriesState,
+      reminderHistoryEntries: remoteReminderHistoryEntriesState,
       dateIndex: remoteDateIndexState,
       searchCache: remoteSearchCacheState,
     }),
@@ -5641,6 +5723,7 @@ export default function InsDiaryPrototype() {
       remoteLetterEntriesState,
       remoteStaticModeEntriesState,
       remoteXiaoyeEntriesState,
+      remoteReminderHistoryEntriesState,
       remoteDateIndexState,
       remoteSearchCacheState,
     ],
@@ -5752,11 +5835,13 @@ export default function InsDiaryPrototype() {
       const [
         timelineResult,
         dateIndexResult,
+        reminderHistoryResult,
         ...staticAndXiaoyeResults
       ] =
         await Promise.allSettled([
           fetchTimeline(),
           fetchDateIndex(),
+          fetchReminderHistory(),
           ...staticRequests.map(([, mode]) => fetchMemoryStatic(mode)),
           ...xiaoyeRequests.map(([, mode]) => fetchXiaoyeStatic(mode)),
         ]);
@@ -5806,6 +5891,19 @@ export default function InsDiaryPrototype() {
           ...current,
           dateIndex: String(
             dateIndexResult.reason?.message || dateIndexResult.reason,
+          ),
+        }));
+      }
+
+      if (reminderHistoryResult.status === "fulfilled") {
+        const entries = reminderHistoryResult.value?.entries;
+        setRemoteReminderHistoryEntriesState(Array.isArray(entries) ? entries : []);
+      } else {
+        setRemoteError((current) => ({
+          ...current,
+          reminders: String(
+            reminderHistoryResult.reason?.message ||
+              reminderHistoryResult.reason,
           ),
         }));
       }
@@ -6154,6 +6252,7 @@ export default function InsDiaryPrototype() {
       remoteTimelineStateValue,
       remoteStaticModeEntriesState,
       remoteXiaoyeEntriesState,
+      remoteReminderHistoryEntriesState,
       remoteSearchCacheState,
     ],
   );
@@ -6200,6 +6299,7 @@ export default function InsDiaryPrototype() {
     remoteLetterEntriesState,
     remoteStaticModeEntriesState,
     remoteXiaoyeEntriesState,
+    remoteReminderHistoryEntriesState,
     remoteDateIndexState,
     remoteSearchCacheState,
   ]);
