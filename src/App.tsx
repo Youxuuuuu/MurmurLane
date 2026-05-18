@@ -4756,6 +4756,7 @@ function ChatBubble({ message, page }) {
 
 const CONVERSATION_RECENT_RENDER_LIMIT = 200;
 const CONVERSATION_HIT_CONTEXT_LIMIT = 80;
+const CONVERSATION_SCROLL_EDGE_THRESHOLD = 80;
 
 function ConversationPage({
   page,
@@ -4764,67 +4765,111 @@ function ConversationPage({
   onOpenDatePicker,
   onMonthSelect,
 }) {
-  const visibleMessageWindow = useMemo(() => {
-    const visibleMessages = page.messages.filter(
-      (message) => !shouldHideConversationRecord(message),
+  const visibleMessages = useMemo(
+    () =>
+      page.messages.filter(
+        (message) => !shouldHideConversationRecord(message),
+      ),
+    [page.messages],
+  );
+  const [visibleRange, setVisibleRange] = useState(() => ({
+    start: Math.max(0, visibleMessages.length - CONVERSATION_RECENT_RENDER_LIMIT),
+    end: visibleMessages.length,
+  }));
+  const visibleRangeRef = useRef(visibleRange);
+  const topScrollAdjustmentRef = useRef(null);
+  const shouldStickToBottomRef = useRef(false);
+  const shouldResetToBottomRef = useRef(false);
+  const pendingHighlightTargetRef = useRef(null);
+  const hasConversationHit =
+    highlightResult?.mode === "Conversation" &&
+    highlightResult.date === page.date &&
+    highlightResult.threadId === selectedThreadId;
+  const hitIndex = useMemo(() => {
+    if (!hasConversationHit) return -1;
+    return visibleMessages.findIndex(
+      (message) => message.id === highlightResult.targetId,
     );
-    const hasConversationHit =
-      highlightResult?.mode === "Conversation" &&
-      highlightResult.date === page.date &&
-      highlightResult.threadId === selectedThreadId;
-
-    if (hasConversationHit) {
-      const hitIndex = visibleMessages.findIndex(
-        (message) => message.id === highlightResult.targetId,
-      );
-
-      if (hitIndex !== -1) {
-        const start = Math.max(0, hitIndex - CONVERSATION_HIT_CONTEXT_LIMIT);
-        const end = Math.min(
-          visibleMessages.length,
-          hitIndex + CONVERSATION_HIT_CONTEXT_LIMIT + 1,
-        );
-
-        return {
-          messages: visibleMessages.slice(start, end),
-          hiddenBefore: start,
-          hiddenAfter: visibleMessages.length - end,
-          hitMode: true,
-          total: visibleMessages.length,
-        };
-      }
-    }
-
-    const start = Math.max(
-      0,
-      visibleMessages.length - CONVERSATION_RECENT_RENDER_LIMIT,
+  }, [hasConversationHit, visibleMessages, highlightResult?.targetId]);
+  const clampedVisibleRange = useMemo(() => {
+    const end = Math.min(
+      visibleMessages.length,
+      Math.max(0, visibleRange.end),
     );
-
-    return {
-      messages: visibleMessages.slice(start),
-      hiddenBefore: start,
-      hiddenAfter: 0,
-      hitMode: false,
-      total: visibleMessages.length,
-    };
-  }, [page.messages, page.date, selectedThreadId, highlightResult]);
+    const start = Math.min(
+      end,
+      Math.max(0, Math.min(visibleRange.start, visibleMessages.length)),
+    );
+    return { start, end };
+  }, [visibleMessages.length, visibleRange]);
+  const renderedMessages = useMemo(
+    () =>
+      visibleMessages.slice(
+        clampedVisibleRange.start,
+        clampedVisibleRange.end,
+      ),
+    [visibleMessages, clampedVisibleRange],
+  );
 
   useEffect(() => {
-    if (
-      highlightResult?.mode !== "Conversation" ||
-      highlightResult.date !== page.date ||
-      highlightResult.threadId !== selectedThreadId
-    )
-      return;
+    visibleRangeRef.current = clampedVisibleRange;
+  }, [clampedVisibleRange]);
 
-    requestAnimationFrame(() => {
-      const scrollBox = document.getElementById("conversation-message-scroll");
+  useLayoutEffect(() => {
+    if (!visibleMessages.length) {
+      setVisibleRange({ start: 0, end: 0 });
+      return;
+    }
+
+    if (hasConversationHit && hitIndex !== -1) {
+      setVisibleRange({
+        start: Math.max(0, hitIndex - CONVERSATION_HIT_CONTEXT_LIMIT),
+        end: Math.min(
+          visibleMessages.length,
+          hitIndex + CONVERSATION_HIT_CONTEXT_LIMIT + 1,
+        ),
+      });
+      pendingHighlightTargetRef.current = highlightResult.targetId;
+      return;
+    }
+
+    setVisibleRange({
+      start: Math.max(
+        0,
+        visibleMessages.length - CONVERSATION_RECENT_RENDER_LIMIT,
+      ),
+      end: visibleMessages.length,
+    });
+    shouldResetToBottomRef.current = true;
+  }, [
+    page.date,
+    selectedThreadId,
+    visibleMessages.length,
+    hasConversationHit,
+    hitIndex,
+    highlightResult?.targetId,
+  ]);
+
+  useLayoutEffect(() => {
+    const scrollBox = document.getElementById("conversation-message-scroll");
+
+    if (!scrollBox) return;
+
+    if (topScrollAdjustmentRef.current) {
+      const { scrollHeight, scrollTop } = topScrollAdjustmentRef.current;
+      scrollBox.scrollTop = scrollBox.scrollHeight - scrollHeight + scrollTop;
+      topScrollAdjustmentRef.current = null;
+      return;
+    }
+
+    if (pendingHighlightTargetRef.current) {
       const target = document.getElementById(
-        `hit-message-${highlightResult.targetId}`,
+        `hit-message-${pendingHighlightTargetRef.current}`,
       );
 
-      if (!scrollBox || !target) return;
+      if (!target) return;
 
+      pendingHighlightTargetRef.current = null;
       const boxRect = scrollBox.getBoundingClientRect();
       const targetRect = target.getBoundingClientRect();
       const targetTop =
@@ -4836,32 +4881,62 @@ function ConversationPage({
         top: Math.max(0, centeredTop),
         behavior: "auto",
       });
-    });
-  }, [highlightResult, page.date, selectedThreadId]);
+      return;
+    }
 
-  useLayoutEffect(() => {
-  if (
-    highlightResult?.mode === "Conversation" &&
-    highlightResult.date === page.date &&
-    highlightResult.threadId === selectedThreadId
-  ) {
-    return;
-  }
+    if (shouldResetToBottomRef.current || shouldStickToBottomRef.current) {
+      scrollBox.scrollTo({
+        top: scrollBox.scrollHeight,
+        behavior: "auto",
+      });
+      shouldResetToBottomRef.current = false;
+      shouldStickToBottomRef.current = false;
+    }
+  }, [
+    clampedVisibleRange.start,
+    clampedVisibleRange.end,
+    renderedMessages.length,
+    page.date,
+    selectedThreadId,
+  ]);
 
-  const scrollBox = document.getElementById("conversation-message-scroll");
+  const handleConversationScroll = (event) => {
+    const scrollBox = event.currentTarget;
+    const currentRange = visibleRangeRef.current;
 
-  if (!scrollBox) return;
+    if (
+      scrollBox.scrollTop <= CONVERSATION_SCROLL_EDGE_THRESHOLD &&
+      currentRange.start > 0
+    ) {
+      topScrollAdjustmentRef.current = {
+        scrollHeight: scrollBox.scrollHeight,
+        scrollTop: scrollBox.scrollTop,
+      };
+      setVisibleRange((current) => ({
+        start: Math.max(0, current.start - CONVERSATION_RECENT_RENDER_LIMIT),
+        end: current.end,
+      }));
+      return;
+    }
 
-  scrollBox.scrollTo({
-    top: scrollBox.scrollHeight,
-    behavior: "auto",
-  });
-}, [
-  page.date,
-  selectedThreadId,
-  visibleMessageWindow.messages.length,
-  highlightResult,
-]);
+    const distanceFromBottom =
+      scrollBox.scrollHeight - scrollBox.scrollTop - scrollBox.clientHeight;
+
+    if (
+      distanceFromBottom <= CONVERSATION_SCROLL_EDGE_THRESHOLD &&
+      currentRange.end < visibleMessages.length
+    ) {
+      shouldStickToBottomRef.current =
+        distanceFromBottom <= CONVERSATION_SCROLL_EDGE_THRESHOLD;
+      setVisibleRange((current) => ({
+        start: current.start,
+        end: Math.min(
+          visibleMessages.length,
+          current.end + CONVERSATION_RECENT_RENDER_LIMIT,
+        ),
+      }));
+    }
+  };
 
   return (
     <motion.section
@@ -4884,19 +4959,9 @@ function ConversationPage({
         <div
           id="conversation-message-scroll"
           className="diary-scroll relative z-10 min-h-0 flex-1 overflow-y-auto overflow-x-hidden pt-2 pb-5"
+          onScroll={handleConversationScroll}
         >
-          {(visibleMessageWindow.hiddenBefore > 0 ||
-            visibleMessageWindow.hiddenAfter > 0) && (
-            <div
-              className="mb-3 border bg-white/28 px-3 py-2 text-center font-mono text-[9px] leading-4 tracking-[0.08em] text-black/35"
-              style={{ borderColor: page.line }}
-            >
-              {visibleMessageWindow.hitMode
-                ? `已显示命中附近消息 · 前后各 ${CONVERSATION_HIT_CONTEXT_LIMIT} 条`
-                : `已显示最近 ${CONVERSATION_RECENT_RENDER_LIMIT} 条`}
-            </div>
-          )}
-          {visibleMessageWindow.messages.map((message) => {
+          {renderedMessages.map((message) => {
             const active =
               highlightResult?.mode === "Conversation" &&
               highlightResult?.targetId === message.id &&
@@ -6308,6 +6373,14 @@ export default function InsDiaryPrototype() {
     setHighlightResult(null);
     setSelectedDate((current) => shiftDate(current, offset));
   };
+  const handleSelectDate = (dateText) => {
+    setHighlightResult(null);
+    setSelectedDate(dateText);
+  };
+  const handleSelectMonth = (month) => {
+    setHighlightResult(null);
+    setSelectedDate((current) => changeDateMonth(current, month));
+  };
 
   return (
     <div
@@ -6420,9 +6493,7 @@ export default function InsDiaryPrototype() {
                     selectedThreadId={selectedThreadId}
                     highlightResult={highlightResult}
                     onOpenDatePicker={() => setDatePickerOpen(true)}
-                    onMonthSelect={(month) =>
-                      setSelectedDate((current) => changeDateMonth(current, month))
-                    }
+                    onMonthSelect={handleSelectMonth}
                   />
                 ) : activeSection === "Timeline" ? (
                   <TimelinePage
@@ -6432,27 +6503,21 @@ export default function InsDiaryPrototype() {
                     highlightResult={highlightResult}
                     onSelectStatsPeriod={setStatsPeriod}
                     onOpenDatePicker={() => setDatePickerOpen(true)}
-                    onMonthSelect={(month) =>
-                      setSelectedDate((current) => changeDateMonth(current, month))
-                    }
+                    onMonthSelect={handleSelectMonth}
                   />
                 ) : activeSection === "Xiaoye" ? (
                   <XiaoyePage
                     page={page}
                     highlightResult={highlightResult}
                     onOpenDatePicker={() => setDatePickerOpen(true)}
-                    onMonthSelect={(month) =>
-                      setSelectedDate((current) => changeDateMonth(current, month))
-                    }
+                    onMonthSelect={handleSelectMonth}
                   />
                 ) : (
                   <DiaryPage
                     page={page}
                     highlightResult={highlightResult}
                     onOpenDatePicker={() => setDatePickerOpen(true)}
-                    onMonthSelect={(month) =>
-                      setSelectedDate((current) => changeDateMonth(current, month))
-                    }
+                    onMonthSelect={handleSelectMonth}
                     onOpenShare={() => setDiaryShareOpen(true)}
                   />
                 )}
@@ -6477,7 +6542,7 @@ export default function InsDiaryPrototype() {
             <DatePickerModal
               page={page}
               onClose={() => setDatePickerOpen(false)}
-              onSelectDate={setSelectedDate}
+              onSelectDate={handleSelectDate}
             />
           )}
         </AnimatePresence>
