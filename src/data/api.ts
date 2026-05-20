@@ -1,6 +1,43 @@
+import type {
+  ApiRequestOptions,
+  ConversationsResponse,
+  DateIndexResponse,
+  FetchConversationsOptions,
+  FetchTimelineOptions,
+  MemoryApiResponse,
+  ReminderHistoryApiResponse,
+  TimelineApiResponse,
+} from "../types/api";
+
 const env = (import.meta as { env?: Record<string, string | undefined> }).env;
 
 const API_BASE_URL = String(env?.VITE_API_BASE_URL || "").replace(/\/+$/, "");
+
+export class ApiError extends Error {
+  status: number;
+  statusText: string;
+  path: string;
+  bodyText: string;
+
+  constructor({
+    status,
+    statusText,
+    path,
+    bodyText,
+  }: {
+    status: number;
+    statusText: string;
+    path: string;
+    bodyText: string;
+  }) {
+    super(`Request failed: ${status} ${statusText}`);
+    this.name = "ApiError";
+    this.status = status;
+    this.statusText = statusText;
+    this.path = path;
+    this.bodyText = bodyText;
+  }
+}
 
 function normalizeDate(date: string) {
   return String(date).replace(/\./g, "-");
@@ -24,70 +61,91 @@ function buildQuery(params: Record<string, string | number | null | undefined>) 
   return query.toString();
 }
 
-async function requestJson(path: string) {
-  const response = await fetch(buildApiUrl(path));
+async function requestJson<T>(
+  path: string,
+  options: ApiRequestOptions = {},
+): Promise<T> {
+  const response = await fetch(buildApiUrl(path), {
+    signal: options.signal,
+  });
 
   if (!response.ok) {
-    throw new Error(`Request failed: ${response.status} ${response.statusText}`);
+    const bodyText = await response.text();
+    throw new ApiError({
+      status: response.status,
+      statusText: response.statusText,
+      path,
+      bodyText,
+    });
   }
 
-  return response.json();
+  return response.json() as Promise<T>;
 }
 
 export function fetchConversations(
   date: string,
-  options: { threadId?: string; limit?: number } = {},
-) {
+  options: FetchConversationsOptions = {},
+): Promise<ConversationsResponse> {
   const query = buildQuery({
     date: normalizeDate(date),
     threadId: options.threadId,
     limit: options.limit,
   });
 
-  return requestJson(`/api/conversations?${query}`);
+  return requestJson<ConversationsResponse>(`/api/conversations?${query}`);
 }
 
-export function fetchTimeline(options: { date?: string; month?: string } = {}) {
+export function fetchTimeline(
+  options: FetchTimelineOptions = {},
+): Promise<TimelineApiResponse> {
   const query = buildQuery({
     date: options.date ? normalizeDate(options.date) : undefined,
     month: options.month ? normalizeDate(options.month).slice(0, 7) : undefined,
   });
 
-  return requestJson(query ? `/api/timeline?${query}` : "/api/timeline");
+  return requestJson<TimelineApiResponse>(
+    query ? `/api/timeline?${query}` : "/api/timeline",
+  );
 }
 
-export function fetchDateIndex() {
-  return requestJson("/api/index/dates");
+export function fetchDateIndex(): Promise<DateIndexResponse> {
+  return requestJson<DateIndexResponse>("/api/index/dates");
 }
 
-export function fetchReminderHistory() {
-  return requestJson("/api/reminders/history");
+export function fetchReminderHistory(): Promise<ReminderHistoryApiResponse> {
+  return requestJson<ReminderHistoryApiResponse>("/api/reminders/history");
 }
 
-export function fetchMemoryDiary(date: string) {
-  return requestJson(
+export function fetchMemoryDiary(date: string): Promise<MemoryApiResponse> {
+  return requestJson<MemoryApiResponse>(
     `/api/memory/diary?date=${encodeURIComponent(normalizeDate(date))}`,
   );
 }
 
-export function fetchMemoryDailySummary(date: string) {
-  return requestJson(
+export function fetchMemoryDailySummary(
+  date: string,
+): Promise<MemoryApiResponse> {
+  return requestJson<MemoryApiResponse>(
     `/api/memory/daily-summary?date=${encodeURIComponent(normalizeDate(date))}`,
   );
 }
 
-export function fetchMemoryLetters(date: string) {
-  return requestJson(
+export function fetchMemoryLetters(date: string): Promise<MemoryApiResponse> {
+  return requestJson<MemoryApiResponse>(
     `/api/memory/letters?date=${encodeURIComponent(normalizeDate(date))}`,
   );
 }
 
-export function fetchMemoryStatic(mode: string) {
-  return requestJson(`/api/memory/static?mode=${encodeURIComponent(mode)}`);
+export function fetchMemoryStatic(mode: string): Promise<MemoryApiResponse> {
+  return requestJson<MemoryApiResponse>(
+    `/api/memory/static?mode=${encodeURIComponent(mode)}`,
+  );
 }
 
-export function fetchXiaoyeStatic(mode: string) {
-  return requestJson(`/api/xiaoye/static?mode=${encodeURIComponent(mode)}`);
+export function fetchXiaoyeStatic(mode: string): Promise<MemoryApiResponse> {
+  return requestJson<MemoryApiResponse>(
+    `/api/xiaoye/static?mode=${encodeURIComponent(mode)}`,
+  );
 }
 
 export function resolveApiFileUrl(filePath: string) {
