@@ -68,6 +68,16 @@ import {
   hasConversationForDate,
 } from "./lib/conversationPageData";
 import {
+  buildMemoryPage,
+  buildXiaoyePage,
+  getDatedEntriesSource,
+  getRemoteDatedEntriesSource,
+  getRemoteEntryByDate,
+  getStaticEntryForMode,
+  hasCalendarMarkForPage,
+  hasDatedEntry,
+} from "./lib/memoryPageData";
+import {
   DAY_TIMELINE_HEIGHT,
   MIN_TIMELINE_EVENT_HEIGHT,
   getEventDurationMinutes,
@@ -309,50 +319,6 @@ function hasRemoteDateIndexMark(
   if (!key || !remoteData.dateIndex) return null;
   return remoteData.dateIndex[key]?.includes(toHyphenDate(dateText)) ?? false;
 }
-function getRemoteEntryByDate(entries, dateText) {
-  const dotDate = toDotDate(dateText);
-  return entries[dotDate] ?? entries[toHyphenDate(dotDate)] ?? null;
-}
-function getRemoteDatedEntriesSource(mode, remoteData = emptyRemoteData) {
-  if (mode === "Diary")
-    return { ...remoteData.searchCache.diary, ...remoteData.diaryEntries };
-  if (mode === "DailySummary")
-    return {
-      ...remoteData.searchCache.dailySummary,
-      ...remoteData.dailySummaryEntries,
-    };
-  if (mode === "Letters")
-    return { ...remoteData.searchCache.letters, ...remoteData.letterEntries };
-  return {};
-}
-function getDatedEntriesSource(mode, remoteData = emptyRemoteData) {
-  if (mode === "Diary")
-    return {
-      ...diaryEntries,
-      ...remoteData.searchCache.diary,
-      ...remoteData.diaryEntries,
-    };
-  if (mode === "DailySummary")
-    return {
-      ...dailySummaryEntries,
-      ...remoteData.searchCache.dailySummary,
-      ...remoteData.dailySummaryEntries,
-    };
-  if (mode === "Letters")
-    return {
-      ...letterEntries,
-      ...remoteData.searchCache.letters,
-      ...remoteData.letterEntries,
-    };
-  return {};
-}
-function getStaticEntryForMode(mode, remoteData = emptyRemoteData) {
-  return (
-    remoteData.staticModeEntries[mode] ??
-    staticModeEntries[mode] ??
-    staticModeEntries.Facts
-  );
-}
 function getTimelineDay(dateText, remoteData = emptyRemoteData) {
   const source = getTimelineStateSource(remoteData);
   return (
@@ -474,161 +440,6 @@ function getRemindersForDate(dateText, remoteData = emptyRemoteData) {
       (a, b) => getReminderDueAt(a).getTime() - getReminderDueAt(b).getTime(),
     );
 }
-function createBlankEntry(mode = "Diary") {
-  return {
-    title: BLANK_TITLE,
-    excerpt: "",
-    blankText:
-      mode === "DailySummary"
-        ? "摘要库存不足，请呼唤家机速速补货......"
-        : mode === "Letters"
-          ? "来信显示无，呼唤家机盖戳寄信......"
-          : "日记库存不足，请呼唤家机速速补货......",
-    sections: [],
-  };
-}
-function createBlankXiaoyeEntry(mode = "Ins") {
-  const modeMeta = xiaoyeModeMeta[mode] ?? xiaoyeModeMeta.Ins;
-
-  return {
-    title: modeMeta.title,
-    excerpt: "",
-    blankText: "小叶档案还没有补货......",
-    sections: [],
-  };
-}
-function getEntryForMode(mode, dateText, remoteData = emptyRemoteData) {
-  const remoteEntry =
-    mode === "Diary"
-      ? getRemoteEntryByDate(
-          getRemoteDatedEntriesSource("Diary", remoteData),
-          dateText,
-        )
-      : mode === "DailySummary"
-        ? getRemoteEntryByDate(
-            getRemoteDatedEntriesSource("DailySummary", remoteData),
-            dateText,
-          )
-        : mode === "Letters"
-          ? getRemoteEntryByDate(
-              getRemoteDatedEntriesSource("Letters", remoteData),
-              dateText,
-            )
-          : null;
-
-  if (remoteEntry) {
-    return {
-      entry: remoteEntry,
-      hasEntry: true,
-    };
-  }
-
-  if (mode === "Diary")
-    return {
-      entry: diaryEntries[dateText] ?? createBlankEntry(mode),
-      hasEntry: Boolean(diaryEntries[dateText]),
-    };
-  if (mode === "DailySummary")
-    return {
-      entry: dailySummaryEntries[dateText] ?? createBlankEntry(mode),
-      hasEntry: Boolean(dailySummaryEntries[dateText]),
-    };
-  if (mode === "Letters")
-    return {
-      entry: letterEntries[dateText] ?? createBlankEntry(mode),
-      hasEntry: Boolean(letterEntries[dateText]),
-    };
-  return {
-    entry: getStaticEntryForMode(mode, remoteData),
-    hasEntry: true,
-  };
-}
-function getXiaoyeEntryForMode(mode, remoteData = emptyRemoteData) {
-  const entry = remoteData.xiaoyeEntries[mode] ?? null;
-
-  return {
-    entry: entry ?? createBlankXiaoyeEntry(mode),
-    hasEntry: Boolean(entry),
-  };
-}
-function hasDatedEntry(dateText, mode = "Diary", remoteData = emptyRemoteData) {
-  if (mode === "Conversation") return hasConversationForDate(dateText, null, remoteData);
-  if (mode === "Timeline")
-    return Boolean(getTimelineDay(dateText, remoteData).events.length);
-  if (mode === "DailySummary")
-    return Boolean(
-      getRemoteEntryByDate(
-        getRemoteDatedEntriesSource("DailySummary", remoteData),
-        dateText,
-      ) ?? dailySummaryEntries[dateText],
-    );
-  if (mode === "Letters")
-    return Boolean(
-      getRemoteEntryByDate(
-        getRemoteDatedEntriesSource("Letters", remoteData),
-        dateText,
-      ) ?? letterEntries[dateText],
-    );
-  return Boolean(
-    getRemoteEntryByDate(
-      getRemoteDatedEntriesSource("Diary", remoteData),
-      dateText,
-    ) ??
-      diaryEntries[dateText],
-  );
-}
-
-function hasCalendarMarkForPage(
-  page,
-  dateText,
-  remoteData = page.remoteData ?? emptyRemoteData,
-) {
-  if (page.mode === "Conversation") {
-    return hasConversationForDate(dateText, page.threadId, remoteData);
-  }
-
-  const indexedMark = hasRemoteDateIndexMark(page.mode, dateText, remoteData);
-  if (indexedMark != null) {
-    return indexedMark;
-  }
-
-  if (page.mode === "Timeline") {
-    return Boolean(getTimelineDay(dateText, remoteData).events.length);
-  }
-
-  if (page.mode === "Diary") {
-    return Boolean(
-      getRemoteEntryByDate(
-        getRemoteDatedEntriesSource("Diary", remoteData),
-        dateText,
-      ) ??
-        diaryEntries[dateText],
-    );
-  }
-
-  if (page.mode === "DailySummary") {
-    return Boolean(
-      getRemoteEntryByDate(
-        getRemoteDatedEntriesSource("DailySummary", remoteData),
-        dateText,
-      ) ??
-        dailySummaryEntries[dateText],
-    );
-  }
-
-  if (page.mode === "Letters") {
-    return Boolean(
-      getRemoteEntryByDate(
-        getRemoteDatedEntriesSource("Letters", remoteData),
-        dateText,
-      ) ??
-        letterEntries[dateText],
-    );
-  }
-
-  return false;
-}
-
 function buildTimelinePage(styleTheme, dateText, remoteData = emptyRemoteData) {
   const { month, day } = getDateParts(dateText);
   return {
@@ -643,58 +454,6 @@ function buildTimelinePage(styleTheme, dateText, remoteData = emptyRemoteData) {
     color: monthColors[month] ?? "#667064",
     pale: monthPales[month] ?? "#e9ebe4",
     hasEntry: getTimelineDay(dateText, remoteData).events.length > 0,
-  };
-}
-function buildDisplayPage(
-  styleTheme,
-  dateText,
-  mode = "Diary",
-  remoteData = emptyRemoteData,
-) {
-  const { month, day } = getDateParts(dateText);
-  const { entry, hasEntry } = getEntryForMode(mode, dateText, remoteData);
-  const modeMeta = pageModeMeta[mode] ?? pageModeMeta.Diary;
-  return {
-    ...styleTheme,
-    ...entry,
-    remoteData,
-    mode,
-    modeTitle: modeMeta.title,
-    dateBased: modeMeta.dateBased,
-    sourcePath: buildContentPath(mode, dateText),
-    date: dateText,
-    month,
-    day,
-    color: monthColors[month] ?? "#667064",
-    pale: monthPales[month] ?? "#e9ebe4",
-    hasEntry,
-  };
-}
-function buildXiaoyePage(
-  styleTheme,
-  dateText,
-  mode = "Ins",
-  remoteData = emptyRemoteData,
-) {
-  const { month, day } = getDateParts(dateText);
-  const modeMeta = xiaoyeModeMeta[mode] ?? xiaoyeModeMeta.Ins;
-  const { entry, hasEntry } = getXiaoyeEntryForMode(mode, remoteData);
-
-  return {
-    ...styleTheme,
-    ...entry,
-    remoteData,
-    mode: "Xiaoye",
-    xiaoyeMode: mode,
-    modeTitle: modeMeta.title,
-    dateBased: false,
-    sourcePath: modeMeta.sourcePath,
-    date: dateText,
-    month,
-    day,
-    color: monthColors[month] ?? "#667064",
-    pale: monthPales[month] ?? "#e9ebe4",
-    hasEntry,
   };
 }
 function HighlightText({ text, query, color = "#c28a4a" }) {
@@ -1087,7 +846,10 @@ function validateTimelineData() {
     getTimelineEventHeight(shortEvent, range) === MIN_TIMELINE_EVENT_HEIGHT &&
     getTimelineEventHeight(longEvent, range) >
       getTimelineEventHeight(shortEvent, range) &&
-    hasDatedEntry("2026.04.28", "Timeline") === true &&
+    hasDatedEntry("2026.04.28", "Timeline", emptyRemoteData, {
+      hasConversationForDate,
+      getTimelineDay,
+    }) === true &&
     buildSearchResultState("有声小说").results.some(
       (result) => result.mode === "Timeline",
     )
@@ -1818,7 +1580,11 @@ function DatePickerModal({ page, onClose, onSelectDate }) {
           {Array.from({ length: days }, (_, index) => index + 1).map((day) => {
             const dateText = formatDiaryDate(view.year, view.month, day);
             const selected = dateText === page.date;
-            const marked = hasCalendarMarkForPage(page, dateText);
+            const marked = hasCalendarMarkForPage(page, dateText, undefined, {
+              hasConversationForDate,
+              hasRemoteDateIndexMark,
+              getTimelineDay,
+            });
             return (
               <button
                 key={dateText}
@@ -4662,7 +4428,7 @@ export default function InsDiaryPrototype() {
         selectedXiaoyeMode,
         remoteData,
       );
-    return buildDisplayPage(styleTheme, selectedDate, selectedMode, remoteData);
+    return buildMemoryPage(styleTheme, selectedDate, selectedMode, remoteData);
   }, [
     styleTheme,
     timelineStyleTheme,
