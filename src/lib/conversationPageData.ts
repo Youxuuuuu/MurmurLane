@@ -43,6 +43,48 @@ const emptyRemoteData: RemoteData = {
   },
 };
 
+function isValidGlobalThreadId(threadId: string): boolean {
+  return Boolean(threadId) && !threadId.startsWith("pending-");
+}
+
+function getIndexedGlobalThreadIds(
+  remoteData: RemoteData = emptyRemoteData,
+): string[] {
+  return Object.entries(getRemoteConversationThreadIndex(remoteData))
+    .filter(([threadId, dates]) => {
+      return (
+        isValidGlobalThreadId(threadId) &&
+        Array.isArray(dates) &&
+        dates.length > 0
+      );
+    })
+    .map(([threadId]) => threadId);
+}
+
+export function collectVisibleGlobalThreadIds(
+  remoteData: RemoteData = emptyRemoteData,
+): string[] {
+  const visibleThreadIds = new Set<string>();
+  const collectFromDateGroups = (dateGroups: ConversationDateEntries) => {
+    Object.values(dateGroups ?? {}).forEach((threads) => {
+      Object.entries(threads ?? {}).forEach(([threadId, records]) => {
+        if (!isValidGlobalThreadId(threadId)) {
+          return;
+        }
+
+        if (Array.isArray(records) && records.length > 0) {
+          visibleThreadIds.add(threadId);
+        }
+      });
+    });
+  };
+
+  collectFromDateGroups(remoteData.conversationEntries);
+  collectFromDateGroups(remoteData.searchCache.conversations);
+
+  return Array.from(visibleThreadIds);
+}
+
 export function getSearchConversationRecordsForDate(
   dateText: string,
   remoteData: RemoteData = emptyRemoteData,
@@ -117,27 +159,23 @@ export function getRemoteConversationThreadIndex(
 export function getRealConversationThreadIds(
   remoteData: RemoteData = emptyRemoteData,
 ): string[] {
-  const indexedThreadIds = Object.keys(
-    getRemoteConversationThreadIndex(remoteData),
-  ).filter(Boolean);
+  const visibleThreadIds = collectVisibleGlobalThreadIds(remoteData);
+  const indexedThreadIds = getIndexedGlobalThreadIds(remoteData);
 
   if (indexedThreadIds.length) {
-    return indexedThreadIds;
+    const orderedThreadIds = [...indexedThreadIds];
+    const existing = new Set(indexedThreadIds);
+
+    visibleThreadIds.forEach((threadId) => {
+      if (!existing.has(threadId)) {
+        orderedThreadIds.push(threadId);
+      }
+    });
+
+    return orderedThreadIds;
   }
 
-  const loadedThreadIds = new Set<string>();
-  const collectFromDateGroups = (dateGroups: ConversationDateEntries) => {
-    Object.values(dateGroups ?? {}).forEach((threads) => {
-      Object.keys(threads ?? {}).forEach((threadId) => {
-        if (threadId) loadedThreadIds.add(threadId);
-      });
-    });
-  };
-
-  collectFromDateGroups(remoteData.conversationEntries);
-  collectFromDateGroups(remoteData.searchCache.conversations);
-
-  return Array.from(loadedThreadIds).filter(Boolean);
+  return visibleThreadIds;
 }
 
 export function getAllConversationThreadIds(
@@ -189,7 +227,7 @@ export function getLatestConversationThreadId(
   remoteData: RemoteData = emptyRemoteData,
 ): string {
   const threadIndex = getRemoteConversationThreadIndex(remoteData);
-  const indexedThreadIds = Object.keys(threadIndex).filter(Boolean);
+  const indexedThreadIds = getIndexedGlobalThreadIds(remoteData);
 
   if (indexedThreadIds.length) {
     const latestDate = indexedThreadIds.reduce((latest, threadId) => {
