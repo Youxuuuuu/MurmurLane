@@ -1,14 +1,14 @@
-// @ts-nocheck
 import type {
   ConversationActionPayload,
   ConversationMediaItem,
   ConversationRecord,
+  ConversationRecordMeta,
   LegacyConversationMessage,
 } from "../types/conversation";
 import { resolveApiFileUrl } from "../data/api";
 import { toHyphenDate } from "./date";
 export function safeParseActionText(
-  text,
+  text: unknown,
 ): ConversationActionPayload | null {
   if (!text || typeof text !== "string") return null;
 
@@ -23,7 +23,7 @@ export function safeParseActionText(
   }
 }
 
-export function isAttachmentInputRecord(record) {
+export function isAttachmentInputRecord(record: ConversationRecord) {
   return (
     record?.type === "user" &&
     String(record.text ?? "").trimStart().startsWith("Saved attachments:")
@@ -31,7 +31,7 @@ export function isAttachmentInputRecord(record) {
 }
 
 export function getConversationMediaItems(
-  record,
+  record: ConversationRecord,
 ): ConversationMediaItem[] {
   const attachments = Array.isArray(record?.meta?.attachments)
     ? record.meta.attachments
@@ -60,7 +60,7 @@ export function getConversationMediaItems(
   ];
 }
 
-export function getConversationMediaPath(item) {
+export function getConversationMediaPath(item: ConversationMediaItem) {
   return (
     item?.url ||
     item?.filePath ||
@@ -72,7 +72,7 @@ export function getConversationMediaPath(item) {
   );
 }
 
-export function isImageLikeMedia(item) {
+export function isImageLikeMedia(item: ConversationMediaItem) {
   const mimeType = String(item?.mimeType || item?.contentType || "").toLowerCase();
   const filePath = String(
     item?.fileName || item?.relativePath || item?.path || item?.url || "",
@@ -87,7 +87,7 @@ export function isImageLikeMedia(item) {
   );
 }
 
-export function isStickerLikeMedia(item) {
+export function isStickerLikeMedia(item: ConversationMediaItem) {
   const filePath = String(
     item?.fileName || item?.relativePath || item?.path || item?.url || "",
   ).toLowerCase();
@@ -100,11 +100,11 @@ export function isStickerLikeMedia(item) {
   );
 }
 
-export function isFileLikeMedia(item) {
+export function isFileLikeMedia(item: ConversationMediaItem) {
   return !isStickerLikeMedia(item) && !isImageLikeMedia(item);
 }
 
-export function getConversationMediaSrc(item) {
+export function getConversationMediaSrc(item: ConversationMediaItem) {
   const mediaPath = String(getConversationMediaPath(item) || "").trim();
 
   if (!mediaPath) {
@@ -119,7 +119,7 @@ export function getConversationMediaSrc(item) {
 }
 
 export function getConversationPrimaryMediaItem(
-  record,
+  record: ConversationRecord,
 ): ConversationMediaItem | null {
   const items = getConversationMediaItems(record);
   return (
@@ -130,11 +130,11 @@ export function getConversationPrimaryMediaItem(
   );
 }
 
-export function hasRecordMedia(record) {
+export function hasRecordMedia(record: ConversationRecord) {
   return getConversationMediaItems(record).length > 0;
 }
 
-export function shouldHideConversationRecord(record) {
+export function shouldHideConversationRecord(record: ConversationRecord) {
   if (record?.meta?.visibleAs === "hidden") return true;
 
   if (hasRecordMedia(record)) return false;
@@ -149,7 +149,7 @@ export function shouldHideConversationRecord(record) {
   return false;
 }
 
-export function getConversationDisplayText(record) {
+export function getConversationDisplayText(record: ConversationRecord) {
   if (
     record?.type === "user" &&
     record?.meta?.visibleAs === "system_compact"
@@ -171,7 +171,7 @@ export function getConversationDisplayText(record) {
   return record?.text || "";
 }
 
-export function getConversationQuoteText(record) {
+export function getConversationQuoteText(record: ConversationRecord) {
   const quote = record?.meta?.quote;
 
   if (!quote) return "";
@@ -182,7 +182,7 @@ export function getConversationQuoteText(record) {
   return "";
 }
 
-export function getConversationVisualKind(record) {
+export function getConversationVisualKind(record: ConversationRecord) {
   if (
     record?.type === "user" &&
     record?.meta?.visibleAs === "system_compact"
@@ -208,7 +208,7 @@ export function getConversationVisualKind(record) {
   return "assistant";
 }
 
-export function getOperationDisplayPaths(record) {
+export function getOperationDisplayPaths(record: ConversationRecord) {
   const candidates = [
     record?.meta?.displayPath,
     record?.meta?.relativePath,
@@ -220,7 +220,7 @@ export function getOperationDisplayPaths(record) {
   const normalized = [];
 
   candidates.forEach((candidate) => {
-    const normalizedCandidate = candidate.replaceAll("\\", "/").toLowerCase();
+    const normalizedCandidate = candidate.replace(/\\/g, "/").toLowerCase();
     const duplicateIndex = normalized.findIndex((item) => {
       if (item.normalized === normalizedCandidate) {
         return true;
@@ -260,9 +260,9 @@ export function getOperationDisplayPaths(record) {
 }
 
 export function legacyConversationMessageToRecord(
-  message,
-  dateText,
-  threadId,
+  message: LegacyConversationMessage,
+  dateText: string,
+  threadId: string,
 ): ConversationRecord {
   const timestamp = `${toHyphenDate(dateText)}T${message.time || "00:00"}:00+08:00`;
   let type = "assistant";
@@ -275,7 +275,7 @@ export function legacyConversationMessageToRecord(
     type = "operation";
   }
 
-  const meta = {
+  const meta: ConversationRecordMeta = {
     legacyType: message.type,
     quote: message.quote,
     displayPath: message.attachmentPaths?.join(" ") || "",

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type {
   TimelineEvent,
   TimelineEventGroup,
@@ -10,7 +9,10 @@ import { pad2 } from "./date";
 export const TIMELINE_TIMEZONE = "Asia/Shanghai";
 export const DAY_TIMELINE_HEIGHT = 960;
 export const MIN_TIMELINE_EVENT_HEIGHT = 8;
-export function getZonedTimeParts(dateLike, timeZone = TIMELINE_TIMEZONE) {
+export function getZonedTimeParts(
+  dateLike: string | number | Date,
+  timeZone = TIMELINE_TIMEZONE,
+) {
   return Object.fromEntries(
     new Intl.DateTimeFormat("en-US", {
       timeZone,
@@ -22,15 +24,15 @@ export function getZonedTimeParts(dateLike, timeZone = TIMELINE_TIMEZONE) {
       .map((part) => [part.type, part.value]),
   );
 }
-export function toMinutes(dateLike) {
+export function toMinutes(dateLike: string | number | Date) {
   const parts = getZonedTimeParts(dateLike);
   return Number(parts.hour) * 60 + Number(parts.minute);
 }
-export function minutesToClock(minutes) {
+export function minutesToClock(minutes: number) {
   const safeMinutes = Math.max(0, Math.min(24 * 60, minutes));
   return `${pad2(Math.floor(safeMinutes / 60))}:${pad2(safeMinutes % 60)}`;
 }
-export function getEventDurationMinutes(event) {
+export function getEventDurationMinutes(event: TimelineEvent) {
   return Math.max(
     1,
     Math.round(
@@ -42,7 +44,10 @@ export function getEventDurationMinutes(event) {
 export function getTimelineRange(): TimelineRange {
   return { startHour: 0, endHour: 24 };
 }
-export function getTimelineEventHeight(event, range = getTimelineRange()) {
+export function getTimelineEventHeight(
+  event: TimelineEvent,
+  range = getTimelineRange(),
+) {
   const totalMinutes = (range.endHour - range.startHour) * 60;
   return Math.max(
     MIN_TIMELINE_EVENT_HEIGHT,
@@ -51,24 +56,33 @@ export function getTimelineEventHeight(event, range = getTimelineRange()) {
     ),
   );
 }
-export function getTimelineEventTopPx(event, range = getTimelineRange()) {
+export function getTimelineEventTopPx(
+  event: TimelineEvent,
+  range = getTimelineRange(),
+) {
   const start = toMinutes(event.startAt);
   const totalMinutes = (range.endHour - range.startHour) * 60;
   return ((start - range.startHour * 60) / totalMinutes) * DAY_TIMELINE_HEIGHT;
 }
-export function getTimelineEventVisualTopPx(event, range = getTimelineRange()) {
+export function getTimelineEventVisualTopPx(
+  event: TimelineEvent,
+  range = getTimelineRange(),
+) {
   const top = getTimelineEventTopPx(event, range);
   const startsAtRangeTop = toMinutes(event.startAt) === range.startHour * 60;
 
   return startsAtRangeTop ? Math.max(0, top - 1) : Math.max(0, top);
 }
-export function getTimelineEventVisualRange(event, range = getTimelineRange()) {
+export function getTimelineEventVisualRange(
+  event: TimelineEvent,
+  range = getTimelineRange(),
+) {
   const start = getTimelineEventVisualTopPx(event, range);
   return { start, end: start + getTimelineEventHeight(event, range) };
 }
 export function doTimelineEventBoxesOverlap(
-  first,
-  second,
+  first: TimelineEvent,
+  second: TimelineEvent,
   range = getTimelineRange(),
 ) {
   const a = getTimelineEventVisualRange(first, range);
@@ -76,7 +90,7 @@ export function doTimelineEventBoxesOverlap(
   return a.start < b.end && b.start < a.end;
 }
 export function groupOverlappingTimelineEvents(
-  events,
+  events: TimelineEvent[],
   range = getTimelineRange(),
 ): TimelineEventGroup[] {
   const sorted = [...events].sort(
@@ -98,16 +112,20 @@ export function groupOverlappingTimelineEvents(
   });
   return groups;
 }
-export function findTimelineEventConflicts(event, events, range = getTimelineRange()) {
+export function findTimelineEventConflicts(
+  event: TimelineEvent,
+  events: TimelineEvent[],
+  range = getTimelineRange(),
+) {
   return events.filter(
     (item) =>
       item.id !== event.id && doTimelineEventBoxesOverlap(event, item, range),
   );
 }
 export function canTimelineEventExpandToColumn(
-  event,
-  targetColumn,
-  arranged,
+  event: TimelineEvent,
+  targetColumn: number,
+  arranged: Array<{ event: TimelineEvent; column: number }>,
   range = getTimelineRange(),
 ) {
   return arranged.every(
@@ -117,7 +135,7 @@ export function canTimelineEventExpandToColumn(
   );
 }
 export function packTimelineColumns(
-  events,
+  events: TimelineEvent[],
   range = getTimelineRange(),
 ): TimelineEventLayoutItem[] {
   const sorted = [...events].sort(
@@ -163,7 +181,7 @@ export function packTimelineColumns(
   });
 }
 export function layoutTimelineEvents(
-  events,
+  events: TimelineEvent[],
   range = getTimelineRange(),
 ): TimelineEventLayoutItem[] {
   return groupOverlappingTimelineEvents(events, range).flatMap((group) =>
@@ -183,7 +201,10 @@ export function layoutTimelineEvents(
       : packTimelineColumns(group.events, range),
   );
 }
-export function getZonedDateText(dateLike, timeZone = TIMELINE_TIMEZONE) {
+export function getZonedDateText(
+  dateLike: string | number | Date,
+  timeZone = TIMELINE_TIMEZONE,
+) {
   const parts = Object.fromEntries(
     new Intl.DateTimeFormat("en-US", {
       timeZone,

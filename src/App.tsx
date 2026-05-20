@@ -53,6 +53,21 @@ import {
   shouldHideConversationRecord,
 } from "./lib/conversation";
 import {
+  buildConversationPage,
+  conversationThreadIds,
+  defaultConversationThreadId,
+  formatConversationTime,
+  getAllConversationThreadIds,
+  getConversationRecordsForDate,
+  getConversationThreadIdsForDate,
+  getLatestConversationThreadId,
+  getRemoteConversationThreadIndex,
+  getRealConversationThreadIds,
+  getSearchConversationRecordsForDate,
+  groupConversationRecordsByThread,
+  hasConversationForDate,
+} from "./lib/conversationPageData";
+import {
   DAY_TIMELINE_HEIGHT,
   MIN_TIMELINE_EVENT_HEIGHT,
   getEventDurationMinutes,
@@ -73,13 +88,6 @@ import {
   sortSearchResults,
 } from "./lib/search";
 const BLANK_TITLE = `${String.fromCharCode(0x0295)}  ${String.fromCharCode(0x2022)}${String.fromCharCode(0x058a)} ${String.fromCharCode(0x2022)}${String.fromCharCode(0x0294)}…… ${String.fromCharCode(0xa9de)}`;
-
-const defaultConversationThreadId = "266618a6-b29f-4a8d-abd4-12ff874eb859";
-const conversationThreadIds = [
-  defaultConversationThreadId,
-  "019dbec2-994e-75a3-b36f-2b83dba0fc49",
-  "226dbec2-994e-75a3-b36f-2b45dba0fc56",
-];
 
 const emptyRemoteData = {
   conversationEntries: {},
@@ -300,210 +308,6 @@ function hasRemoteDateIndexMark(
   const key = getRemoteDateIndexKey(pageMode);
   if (!key || !remoteData.dateIndex) return null;
   return remoteData.dateIndex[key]?.includes(toHyphenDate(dateText)) ?? false;
-}
-function getSearchConversationRecordsForDate(
-  dateText,
-  remoteData = emptyRemoteData,
-) {
-  const dotDate = toDotDate(dateText);
-  return remoteData.searchCache.conversations[dotDate] ?? {};
-}
-function getMockConversationRecordsForDate(dateText, threadId) {
-  const dotDate = toDotDate(dateText);
-  return (conversationEntries[dotDate]?.[threadId] ?? []).map((message) =>
-    legacyConversationMessageToRecord(message, dotDate, threadId),
-  );
-}
-function groupConversationRecordsByThread(records) {
-  return (records ?? []).reduce((groups, record) => {
-    const threadId = record.threadId || conversationThreadIds[0];
-    if (!groups[threadId]) groups[threadId] = [];
-    groups[threadId].push(record);
-    return groups;
-  }, {});
-}
-function getConversationRecordsForDate(
-  dateText,
-  threadId,
-  remoteData = emptyRemoteData,
-) {
-  const dotDate = toDotDate(dateText);
-  const remoteRecords =
-    remoteData.conversationEntries[dotDate]?.[threadId] ??
-    getSearchConversationRecordsForDate(dotDate, remoteData)?.[threadId];
-  if (remoteRecords?.length) return remoteRecords;
-  return getMockConversationRecordsForDate(dotDate, threadId);
-}
-function getConversationThreadIdsForDate(
-  dateText,
-  remoteData = emptyRemoteData,
-) {
-  const dotDate = toDotDate(dateText);
-  const remoteThreadIds = Object.keys(
-    remoteData.conversationEntries[dotDate] ?? {},
-  );
-  const searchThreadIds = Object.keys(
-    getSearchConversationRecordsForDate(dotDate, remoteData) ?? {},
-  );
-  const realThreadIds = Array.from(
-    new Set([...remoteThreadIds, ...searchThreadIds]),
-  );
-
-  if (realThreadIds.length) {
-    return realThreadIds;
-  }
-
-  const mockThreadIds = Object.keys(conversationEntries[dotDate] ?? {});
-  return mockThreadIds.length ? mockThreadIds : conversationThreadIds;
-}
-function getRemoteConversationThreadIndex(remoteData = emptyRemoteData) {
-  return remoteData.dateIndex?.conversationThreads ?? {};
-}
-function getRealConversationThreadIds(remoteData = emptyRemoteData) {
-  const indexedThreadIds = Object.keys(
-    getRemoteConversationThreadIndex(remoteData),
-  ).filter(Boolean);
-
-  if (indexedThreadIds.length) {
-    return indexedThreadIds;
-  }
-
-  const loadedThreadIds = new Set();
-  const collectFromDateGroups = (dateGroups) => {
-    Object.values(dateGroups ?? {}).forEach((threads) => {
-      Object.keys(threads ?? {}).forEach((threadId) => {
-        if (threadId) loadedThreadIds.add(threadId);
-      });
-    });
-  };
-
-  collectFromDateGroups(remoteData.conversationEntries);
-  collectFromDateGroups(remoteData.searchCache.conversations);
-
-  return Array.from(loadedThreadIds).filter(Boolean);
-}
-function getAllConversationThreadIds(remoteData = emptyRemoteData) {
-  const realThreadIds = getRealConversationThreadIds(remoteData);
-
-  if (realThreadIds.length) {
-    return realThreadIds;
-  }
-
-  const fallbackThreadIds = new Set();
-
-  Object.values(conversationEntries ?? {}).forEach((threads) => {
-    Object.keys(threads ?? {}).forEach((threadId) => {
-      if (threadId) fallbackThreadIds.add(threadId);
-    });
-  });
-
-  conversationThreadIds.forEach((threadId) => {
-    if (threadId) fallbackThreadIds.add(threadId);
-  });
-
-  return Array.from(fallbackThreadIds).filter(Boolean);
-}
-function getConversationRecordSortTime(dateText, record) {
-  const timestamp = record?.timestamp ?? record?.createdAt;
-  const timestampTime = timestamp ? new Date(timestamp).getTime() : NaN;
-
-  if (!Number.isNaN(timestampTime)) return timestampTime;
-
-  const clock = String(record?.time ?? "").match(/^(\d{1,2}):(\d{2})/)?.[0];
-  if (clock) {
-    const clockTime = new Date(
-      `${toHyphenDate(dateText)}T${clock}:00+08:00`,
-    ).getTime();
-
-    if (!Number.isNaN(clockTime)) return clockTime;
-  }
-
-  return new Date(`${toHyphenDate(dateText)}T23:59:59.999+08:00`).getTime();
-}
-function getLatestConversationThreadId(remoteData = emptyRemoteData) {
-  const threadIndex = getRemoteConversationThreadIndex(remoteData);
-  const indexedThreadIds = Object.keys(threadIndex).filter(Boolean);
-
-  if (indexedThreadIds.length) {
-    const latestDate = indexedThreadIds.reduce((latest, threadId) => {
-      const dates = threadIndex[threadId] ?? [];
-      const threadLatestDate = dates[dates.length - 1] ?? "";
-
-      return threadLatestDate > latest ? threadLatestDate : latest;
-    }, "");
-    const defaultHasLatestDate = threadIndex[defaultConversationThreadId]?.includes(
-      latestDate,
-    );
-
-    if (defaultHasLatestDate) {
-      return defaultConversationThreadId;
-    }
-
-    return (
-      indexedThreadIds.find((threadId) =>
-        threadIndex[threadId]?.includes(latestDate),
-      ) ?? indexedThreadIds[0]
-    );
-  }
-
-  const createLatest = () => ({
-    threadId: "",
-    time: Number.NEGATIVE_INFINITY,
-  });
-  const realLatest = createLatest();
-  const visitRecords = (dateText, threadId, records) => {
-    if (!threadId || !records?.length) return;
-
-    records.forEach((record) => {
-      const time = getConversationRecordSortTime(dateText, record);
-
-      if (time > realLatest.time) {
-        realLatest.threadId = threadId;
-        realLatest.time = time;
-      }
-    });
-  };
-  const collectFromDateGroups = (dateGroups) => {
-    Object.entries(dateGroups ?? {}).forEach(([dateText, threads]) => {
-      Object.entries(threads ?? {}).forEach(([threadId, records]) => {
-        visitRecords(toDotDate(dateText), threadId, records);
-      });
-    });
-  };
-
-  collectFromDateGroups(remoteData.conversationEntries);
-  collectFromDateGroups(remoteData.searchCache.conversations);
-
-  return realLatest.threadId || defaultConversationThreadId;
-}
-function hasConversationForDate(
-  dateText,
-  threadId,
-  remoteData = emptyRemoteData,
-) {
-  const hyphenDate = toHyphenDate(dateText);
-  const threadIndex = getRemoteConversationThreadIndex(remoteData);
-
-  if (threadId && threadIndex[threadId]) {
-    return threadIndex[threadId].includes(hyphenDate);
-  }
-
-  if (threadId) {
-    return Boolean(
-      getConversationRecordsForDate(dateText, threadId, remoteData).length,
-    );
-  }
-
-  const indexedThreadIds = Object.keys(threadIndex);
-  if (indexedThreadIds.length) {
-    return indexedThreadIds.some((id) =>
-      threadIndex[id]?.includes(hyphenDate),
-    );
-  }
-
-  return getConversationThreadIdsForDate(dateText, remoteData).some((id) =>
-    getConversationRecordsForDate(dateText, id, remoteData).length,
-  );
 }
 function getRemoteEntryByDate(entries, dateText) {
   const dotDate = toDotDate(dateText);
@@ -825,39 +629,6 @@ function hasCalendarMarkForPage(
   return false;
 }
 
-function formatConversationTime(timestamp) {
-  if (!timestamp) return "";
-
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) return "";
-
-  return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
-}
-
-function buildConversationPage(
-  styleTheme,
-  dateText,
-  threadId,
-  remoteData = emptyRemoteData,
-) {
-  const { month, day } = getDateParts(dateText);
-  const messages = getConversationRecordsForDate(dateText, threadId, remoteData);
-  return {
-    ...styleTheme,
-    remoteData,
-    mode: "Conversation",
-    modeTitle: "对话",
-    date: dateText,
-    month,
-    day,
-    threadId,
-    messages,
-    sourcePath: buildContentPath("Conversation", dateText),
-    color: monthColors[month] ?? "#667064",
-    pale: monthPales[month] ?? "#e9ebe4",
-    hasEntry: messages.length > 0,
-  };
-}
 function buildTimelinePage(styleTheme, dateText, remoteData = emptyRemoteData) {
   const { month, day } = getDateParts(dateText);
   return {

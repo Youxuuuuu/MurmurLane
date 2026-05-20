@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type {
   SearchField,
   SearchFilters,
@@ -6,12 +5,14 @@ import type {
   SearchSnippetMatch,
 } from "../types/search";
 import { getDateParts, getTodayDateText, toDotDate, toHyphenDate } from "./date";
-export function normalizeSearchText(value) {
+export function normalizeSearchText(value: unknown) {
   return Array.from(String(value).toLowerCase())
     .filter((char) => char.trim())
     .join("");
 }
-export function buildSearchFields(fields): SearchField[] {
+export function buildSearchFields(
+  fields: Array<SearchField | (SearchField & { value?: unknown })>,
+): SearchField[] {
   return fields.map((field) => {
     const value = String(field.value ?? "");
 
@@ -22,7 +23,10 @@ export function buildSearchFields(fields): SearchField[] {
     };
   });
 }
-export function countNormalizedSearchOccurrences(normalizedValue, normalizedQuery) {
+export function countNormalizedSearchOccurrences(
+  normalizedValue: string,
+  normalizedQuery: string,
+) {
   if (!normalizedQuery) return 0;
 
   let count = 0;
@@ -39,13 +43,13 @@ export function countNormalizedSearchOccurrences(normalizedValue, normalizedQuer
 
   return count;
 }
-export function countSearchOccurrences(value, query) {
+export function countSearchOccurrences(value: unknown, query: unknown) {
   return countNormalizedSearchOccurrences(
     normalizeSearchText(value),
     normalizeSearchText(query),
   );
 }
-export function getWeekRange(dateText) {
+export function getWeekRange(dateText: string) {
   const { year, month, day } = getDateParts(dateText);
   const date = new Date(Number(year), Number(month) - 1, Number(day));
   const dayOfWeek = date.getDay();
@@ -62,13 +66,13 @@ export function getWeekRange(dateText) {
   return { start, end };
 }
 
-export function getDateOnlyTime(dateText) {
+export function getDateOnlyTime(dateText: string) {
   const { year, month, day } = getDateParts(dateText);
   return new Date(Number(year), Number(month) - 1, Number(day)).getTime();
 }
 export function matchesSearchFilters(
-  result,
-  filters = {},
+  result: SearchResult,
+  filters: SearchFilters = {},
   selectedDate = getTodayDateText(),
 ) {
   const { modeFilter = "All", timeFilter = "All" } = filters;
@@ -105,7 +109,7 @@ export function matchesSearchFilters(
 
   return true;
 }
-export function getSearchResultSortTime(result) {
+export function getSearchResultSortTime(result: SearchResult) {
   if (result.timestamp) {
     const timestamp = new Date(result.timestamp).getTime();
 
@@ -121,7 +125,7 @@ export function getSearchResultSortTime(result) {
 
   return Number.isNaN(dateTime) ? null : dateTime;
 }
-export function sortSearchResults(results): SearchResult[] {
+export function sortSearchResults(results: SearchResult[]): SearchResult[] {
   return [...results].sort((left, right) => {
     const leftTime = getSearchResultSortTime(left);
     const rightTime = getSearchResultSortTime(right);
@@ -142,9 +146,9 @@ export function sortSearchResults(results): SearchResult[] {
   });
 }
 export function findMatchedSnippet(
-  query,
-  fields,
-  normalizedQueryOverride,
+  query: unknown,
+  fields: SearchField[],
+  normalizedQueryOverride?: string,
 ): SearchSnippetMatch {
   const cleanQuery = String(query).trim();
   const normalizedQuery =
