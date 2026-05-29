@@ -87,6 +87,7 @@ import { CalendarStrip } from "./components/calendar/CalendarStrip";
 import { DatePickerModal } from "./components/calendar/DatePickerModal";
 import { DirectoryPage } from "./components/archive/DirectoryPage";
 import { ChatBubble } from "./components/conversation/ChatBubble";
+import { ConversationEmptyState } from "./components/conversation/ConversationEmptyState";
 import { XiaoyePage } from "./components/xiaoye/XiaoyePage";
 import { AppScrollbarStyle } from "./components/layout/AppScrollbarStyle";
 import { BottomNav } from "./components/layout/BottomNav";
@@ -516,9 +517,7 @@ function ConversationPage({
           })}
         </div>
       ) : (
-        <div className="relative z-10 min-h-0 flex-1 pt-6 font-serif text-[12px] text-black/45">
-          暂无对话，速速与家机联络......
-        </div>
+        <ConversationEmptyState />
       )}
     </motion.section>
   );
