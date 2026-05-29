@@ -1,26 +1,9 @@
+import { emptyRemoteData } from "../data/emptyRemoteData";
 import { timelineState } from "../data/mockTimeline";
+import { monthColors, monthPales } from "../config/theme";
 import type { RemoteData } from "../types/api";
 import type { TimelineDay, TimelineEvent, TimelineState } from "../types/timeline";
-import { getDateParts, toDotDate, toHyphenDate } from "./date";
-
-const emptyRemoteData: RemoteData = {
-  conversationEntries: {},
-  timelineState: {},
-  diaryEntries: {},
-  dailySummaryEntries: {},
-  letterEntries: {},
-  staticModeEntries: {},
-  xiaoyeEntries: {},
-  reminderHistoryEntries: [],
-  dateIndex: null,
-  searchCache: {
-    conversations: {},
-    diary: {},
-    dailySummary: {},
-    letters: {},
-    timeline: {},
-  },
-};
+import { buildContentPath, getDateParts, toDotDate, toHyphenDate } from "./date";
 
 export const timelineCategories = {
   life: {
@@ -666,4 +649,25 @@ export function getTimelineEventsForPeriod(
         : toDotDate(key).startsWith(`${year}.`),
     )
     .flatMap(([, day]) => day.events);
+}
+
+export function buildTimelinePage(
+  styleTheme: Record<string, unknown>,
+  dateText: string,
+  remoteData: RemoteData = emptyRemoteData,
+) {
+  const { month, day } = getDateParts(dateText);
+  return {
+    ...styleTheme,
+    remoteData,
+    mode: "Timeline",
+    modeTitle: "时间轴",
+    date: dateText,
+    month,
+    day,
+    sourcePath: buildContentPath("Timeline", dateText),
+    color: monthColors[month] ?? "#667064",
+    pale: monthPales[month] ?? "#e9ebe4",
+    hasEntry: getTimelineDay(dateText, remoteData).events.length > 0,
+  };
 }

@@ -1,5 +1,6 @@
 import { pageModeMeta, xiaoyeModeMeta } from "../config/pageModes";
 import { monthColors, monthPales } from "../config/theme";
+import { emptyRemoteData } from "../data/emptyRemoteData";
 import {
   dailySummaryEntries,
   diaryEntries,
@@ -16,25 +17,6 @@ import type {
 import { buildContentPath, getDateParts, toDotDate, toHyphenDate } from "./date";
 
 const BLANK_TITLE = `${String.fromCharCode(0x0295)}  ${String.fromCharCode(0x2022)}${String.fromCharCode(0x058a)} ${String.fromCharCode(0x2022)}${String.fromCharCode(0x0294)}…… ${String.fromCharCode(0xa9de)}`;
-
-const emptyRemoteData: RemoteData = {
-  conversationEntries: {},
-  timelineState: {},
-  diaryEntries: {},
-  dailySummaryEntries: {},
-  letterEntries: {},
-  staticModeEntries: {},
-  xiaoyeEntries: {},
-  reminderHistoryEntries: [],
-  dateIndex: null,
-  searchCache: {
-    conversations: {},
-    diary: {},
-    dailySummary: {},
-    letters: {},
-    timeline: {},
-  },
-};
 
 export function getRemoteEntryByDate(
   entries: DatedMemoryEntries,

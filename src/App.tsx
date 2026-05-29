@@ -26,6 +26,7 @@ import {
   staticModeEntries,
 } from "./data/mockEntries";
 import { timelineState } from "./data/mockTimeline";
+import { emptyRemoteData } from "./data/emptyRemoteData";
 import {
   buildContentPath,
   changeDateMonth,
@@ -78,6 +79,12 @@ import {
   hasDatedEntry,
 } from "./lib/memoryPageData";
 import {
+  getReminderDueAt,
+  getReminderHistorySource,
+  getRemindersForDate,
+} from "./lib/reminderPageData";
+import {
+  buildTimelinePage,
   getRemoteDateIndexKey,
   getTimelineCategoryMeta,
   getTimelineDay,
@@ -109,25 +116,6 @@ import {
 } from "./lib/search";
 const BLANK_TITLE = `${String.fromCharCode(0x0295)}  ${String.fromCharCode(0x2022)}${String.fromCharCode(0x058a)} ${String.fromCharCode(0x2022)}${String.fromCharCode(0x0294)}…… ${String.fromCharCode(0xa9de)}`;
 
-const emptyRemoteData = {
-  conversationEntries: {},
-  timelineState: {},
-  diaryEntries: {},
-  dailySummaryEntries: {},
-  letterEntries: {},
-  staticModeEntries: {},
-  xiaoyeEntries: {},
-  reminderHistoryEntries: [],
-  dateIndex: null,
-  searchCache: {
-    conversations: {},
-    diary: {},
-    dailySummary: {},
-    letters: {},
-    timeline: {},
-  },
-};
-
 function aggregateTimelineEvents(events, remoteData = emptyRemoteData) {
   const normalizedEvents = events.map((event) =>
     normalizeTimelineEventCategory(event, remoteData),
@@ -148,47 +136,6 @@ function aggregateTimelineEvents(events, remoteData = emptyRemoteData) {
       minutes,
       percent: total ? Math.round((minutes / total) * 100) : 0,
     }));
-}
-function getReminderDueAt(reminderEntry) {
-  const dueAtMs = Number(reminderEntry?.reminder?.dueAtMs);
-
-  if (Number.isFinite(dueAtMs)) {
-    return new Date(dueAtMs);
-  }
-
-  return new Date(
-    reminderEntry?.reminder?.createdAt ??
-      reminderEntry?.archivedAt ??
-      Date.now(),
-  );
-}
-function getReminderHistorySource(remoteData = emptyRemoteData) {
-  return remoteData.reminderHistoryEntries?.length
-    ? remoteData.reminderHistoryEntries
-    : reminderHistoryEntries;
-}
-function getRemindersForDate(dateText, remoteData = emptyRemoteData) {
-  return getReminderHistorySource(remoteData)
-    .filter((entry) => getZonedDateText(getReminderDueAt(entry)) === dateText)
-    .sort(
-      (a, b) => getReminderDueAt(a).getTime() - getReminderDueAt(b).getTime(),
-    );
-}
-function buildTimelinePage(styleTheme, dateText, remoteData = emptyRemoteData) {
-  const { month, day } = getDateParts(dateText);
-  return {
-    ...styleTheme,
-    remoteData,
-    mode: "Timeline",
-    modeTitle: "时间轴",
-    date: dateText,
-    month,
-    day,
-    sourcePath: buildContentPath("Timeline", dateText),
-    color: monthColors[month] ?? "#667064",
-    pale: monthPales[month] ?? "#e9ebe4",
-    hasEntry: getTimelineDay(dateText, remoteData).events.length > 0,
-  };
 }
 function HighlightText({ text, query, color = "#c28a4a" }) {
   const value = String(text ?? "");

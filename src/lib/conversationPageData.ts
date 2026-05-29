@@ -1,4 +1,5 @@
 import { monthColors, monthPales } from "../config/theme";
+import { emptyRemoteData } from "../data/emptyRemoteData";
 import { conversationEntries } from "../data/mockEntries";
 import type { RemoteData } from "../types/api";
 import type {
@@ -23,25 +24,6 @@ export const conversationThreadIds = [
   "019dbec2-994e-75a3-b36f-2b83dba0fc49",
   "226dbec2-994e-75a3-b36f-2b45dba0fc56",
 ];
-
-const emptyRemoteData: RemoteData = {
-  conversationEntries: {},
-  timelineState: {},
-  diaryEntries: {},
-  dailySummaryEntries: {},
-  letterEntries: {},
-  staticModeEntries: {},
-  xiaoyeEntries: {},
-  reminderHistoryEntries: [],
-  dateIndex: null,
-  searchCache: {
-    conversations: {},
-    diary: {},
-    dailySummary: {},
-    letters: {},
-    timeline: {},
-  },
-};
 
 function isValidGlobalThreadId(threadId: string): boolean {
   return Boolean(threadId) && !threadId.startsWith("pending-");
