@@ -1781,7 +1781,7 @@ export default function InsDiaryPrototype() {
                       if (result.threadId) handleSelectThread(result.threadId);
                     } else if (result.mode === "Timeline") {
                       setActiveSection("Timeline");
-                      setTimelineView("line");
+                      setTimelineView(result.timelineView || "line");
                     } else if (result.mode === "Xiaoye") {
                       setActiveSection("Xiaoye");
                       if (result.xiaoyeMode) {

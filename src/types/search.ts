@@ -19,6 +19,7 @@ export interface SearchResult {
   timestamp: string | null;
   threadId: string | null;
   xiaoyeMode: string | null;
+  timelineView?: string | null;
   targetId: string;
   title: string;
   query: string;

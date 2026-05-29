@@ -19,6 +19,10 @@ import {
   getStaticEntryForMode,
 } from "./memoryPageData";
 import {
+  getReminderDueAt,
+  getReminderHistorySource,
+} from "./reminderPageData";
+import {
   getTimelineCategoryMeta,
   getTimelineStateSource,
 } from "./timelinePageData";
@@ -62,6 +66,7 @@ export function buildSearchResultState(
     timestamp = null,
     threadId = null,
     xiaoyeMode = null,
+    timelineView = null,
     targetId,
     title,
     label,
@@ -81,6 +86,7 @@ export function buildSearchResultState(
       timestamp,
       threadId,
       xiaoyeMode,
+      timelineView,
       targetId,
       title,
       query: cleanQuery,
@@ -214,6 +220,43 @@ export function buildSearchResultState(
       });
     }),
   );
+  getReminderHistorySource(remoteData).forEach((entry) => {
+    const dueAt = getReminderDueAt(entry);
+    const dateText = toDotDate(dueAt);
+    const dueAtText = Number.isNaN(dueAt.getTime()) ? "" : dueAt.toISOString();
+    const createdAtText = entry?.reminder?.createdAt ?? "";
+    const archivedAtText = entry?.archivedAt ?? "";
+    const reminderStatus = String(
+      (entry as { status?: string } | null | undefined)?.status ?? "",
+    ).trim();
+    const fields = buildSearchFields([
+      { label: "提醒", value: entry?.reminder?.text },
+      { label: "状态", value: reminderStatus },
+      { label: "到期时间", value: dueAtText },
+      { label: "创建时间", value: createdAtText },
+      { label: "归档时间", value: archivedAtText },
+      { label: "来源", value: entry?.sourceFile },
+    ]);
+    appendSearchResult({
+      mode: "Timeline",
+      date: dateText,
+      filterDate: dateText,
+      timestamp: dueAtText || archivedAtText || createdAtText || null,
+      timelineView: "reminders",
+      targetId: entry?.reminder?.id || `reminder-${dateText}`,
+      title: entry?.reminder?.text || "提醒",
+      label: `提醒 · ${dateText}`,
+      fields,
+      haystackParts: [
+        dateText,
+        dueAtText,
+        createdAtText,
+        archivedAtText,
+        reminderStatus,
+        ...fields.map((field) => field.normalizedValue),
+      ],
+    });
+  });
   (
     [
     ["Diary", getDatedEntriesSource("Diary", remoteData)],
