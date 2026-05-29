@@ -30,7 +30,6 @@ import {
   changeDateMonth,
   getDateParts,
   getTodayDateText,
-  pad2,
   shiftDate,
   toDotDate,
 } from "./lib/date";
@@ -54,20 +53,16 @@ import {
 } from "./lib/memoryPageData";
 import {
   buildTimelinePage,
-  getTimelineCategoryMeta,
   getTimelineDay,
   getTimelineStateSource,
   normalizeTimelineEventCategory,
   timelineCategories,
 } from "./lib/timelinePageData";
 import {
-  DAY_TIMELINE_HEIGHT,
   MIN_TIMELINE_EVENT_HEIGHT,
   getEventDurationMinutes,
   getTimelineEventHeight,
-  getTimelineEventVisualTopPx,
   getTimelineRange,
-  layoutTimelineEvents,
   minutesToClock,
   toMinutes,
 } from "./lib/timeline";
@@ -75,7 +70,6 @@ import {
   normalizeSearchText,
 } from "./lib/search";
 import { buildSearchResultState } from "./lib/searchPageData";
-import { HighlightText } from "./components/common/HighlightText";
 import { PaperTexture } from "./components/common/PaperTexture";
 import { TinyIcon } from "./components/common/TinyIcon";
 import { CalendarStrip } from "./components/calendar/CalendarStrip";
@@ -83,10 +77,8 @@ import { DatePickerModal } from "./components/calendar/DatePickerModal";
 import { DirectoryPage } from "./components/archive/DirectoryPage";
 import { ChatBubble } from "./components/conversation/ChatBubble";
 import { ConversationEmptyState } from "./components/conversation/ConversationEmptyState";
-import { TimelineDetailModal } from "./components/timeline/TimelineDetailModal";
-import { TimelineMiniStrip } from "./components/timeline/TimelineMiniStrip";
-import { ReminderList } from "./components/timeline/ReminderList";
-import { TimelinePeriodList } from "./components/timeline/TimelinePeriodList";
+import { TimelineDayView } from "./components/timeline/TimelineDayView";
+import { TimelineReminderView } from "./components/timeline/TimelineReminderView";
 import { TimelineStatsView } from "./components/timeline/TimelineStatsView";
 import { XiaoyePage } from "./components/xiaoye/XiaoyePage";
 import { AppScrollbarStyle } from "./components/layout/AppScrollbarStyle";
@@ -523,196 +515,6 @@ function ConversationPage({
   );
 }
 
-function TimelineEventCard({
-  event,
-  range,
-  page,
-  layout,
-  highlighted,
-  highlightQuery,
-  elementId,
-  onSelectEvent,
-}) {
-  const {
-    normalizedEvent,
-    category,
-    subcategoryLabel,
-    eventNodeLabel,
-  } = getTimelineCategoryMeta(event, page.remoteData);
-  const start = toMinutes(event.startAt);
-  const duration = getEventDurationMinutes(event);
-  const detailLabel = [subcategoryLabel, eventNodeLabel]
-    .filter(Boolean)
-    .join(" · ");
-  const topPercent = Math.max(
-    0,
-    ((start - range.startHour * 60) /
-      ((range.endHour - range.startHour) * 60)) *
-      100,
-  );
-  const height = getTimelineEventHeight(event, range);
-  const topStyle =
-    start === range.startHour * 60
-      ? `${getTimelineEventVisualTopPx(event, range)}px`
-      : `${topPercent}%`;
-  const columnStart = layout?.leftPercent ?? 0;
-  const columnWidth = layout?.widthPercent ?? 1;
-  const horizontalGap = (layout?.conflictCount ?? 0) > 0 ? 3 : 0;
-  const isTinyEvent = height <= 10;
-  const isCrampedEvent = height < 16;
-  const isCompactEvent = height < 24;
-
-  return (
-    <button
-      id={elementId}
-      type="button"
-      className="absolute flex flex-col items-start justify-start overflow-hidden rounded-sm border-l-4 text-left align-top backdrop-blur-[1px] transition hover:z-20 hover:opacity-100"
-      style={{
-        top: topStyle,
-        left: `calc(54px + (100% - 54px) * ${columnStart})`,
-        width: `calc((100% - 54px) * ${columnWidth} - ${horizontalGap}px)`,
-        height: `${height}px`,
-        zIndex: layout?.zIndex ?? 10,
-        padding: isTinyEvent
-          ? "0 6px"
-          : isCrampedEvent
-            ? "2px 7px"
-            : isCompactEvent
-              ? "3px 8px"
-              : "4px 10px",
-        borderLeftColor: category.color,
-        background: highlighted ? `${category.color}28` : category.pale,
-        color: category.color,
-        opacity: highlighted ? 1 : 0.82,
-        outline: highlighted ? `1px solid ${category.color}` : "none",
-      }}
-      onClick={() => onSelectEvent(event)}
-    >
-      <div
-        className={`w-full truncate text-left font-semibold ${isTinyEvent ? "text-[7px] leading-[8px]" : isCrampedEvent ? "text-[8px] leading-[9px]" : isCompactEvent ? "text-[9px] leading-[10px]" : "text-[10px] leading-4"}`}
-      >
-        <HighlightText
-          text={event.title}
-          query={highlighted ? highlightQuery : ""}
-          color={category.color}
-        />{" "}
-        · {duration}分钟
-      </div>
-      {height >= 32 && (
-        <div className="w-full truncate text-left font-mono text-[9px] leading-4 opacity-80">
-          {minutesToClock(start)} → {minutesToClock(toMinutes(event.endAt))}
-          {detailLabel ? ` · ${detailLabel}` : ""}
-        </div>
-      )}
-      {height >= 58 && (
-        <div className="mt-1 w-full line-clamp-2 text-left text-[9px] leading-4 opacity-80">
-          {event.note}
-        </div>
-      )}
-    </button>
-  );
-}
-
-function TimelineDayView({ page, highlightResult }) {
-  const [selectedEvent, setSelectedEvent] = useState(null);
-  const events = getTimelineDay(page.date, page.remoteData).events;
-  const range = getTimelineRange(events);
-  const laidOutEvents = useMemo(
-    () => layoutTimelineEvents(events, range),
-    [events, range],
-  );
-  const hours = Array.from(
-    { length: range.endHour - range.startHour + 1 },
-    (_, index) => range.startHour + index,
-  );
-
-  useEffect(() => {
-    if (
-      highlightResult?.mode !== "Timeline" ||
-      highlightResult.date !== page.date
-    )
-      return;
-    scrollHitIntoView(`timeline-${highlightResult.targetId}`);
-  }, [highlightResult, page.date]);
-
-  return (
-    <div
-      className="relative pt-2"
-      style={{ height: `${DAY_TIMELINE_HEIGHT}px` }}
-    >
-      {hours.map((hour) => {
-        const top =
-          ((hour - range.startHour) / (range.endHour - range.startHour)) * 100;
-        return (
-          <div
-            key={hour}
-            className="absolute left-0 right-0 border-t"
-            style={{ top: `${top}%`, borderColor: page.line }}
-          >
-            <span className="absolute -top-2 left-0 bg-transparent font-mono text-[11px] text-black/38">
-              {pad2(hour)}:00
-            </span>
-          </div>
-        );
-      })}
-      {laidOutEvents.length > 0 ? (
-        laidOutEvents.map((item) => (
-          <TimelineEventCard
-            key={item.event.id}
-            elementId={`hit-timeline-${item.event.id}`}
-            event={item.event}
-            layout={item}
-            range={range}
-            page={page}
-            highlighted={
-              highlightResult?.mode === "Timeline" &&
-              highlightResult?.targetId === item.event.id
-            }
-            highlightQuery={highlightResult?.query}
-            onSelectEvent={setSelectedEvent}
-          />
-        ))
-      ) : (
-        <div
-          className="absolute left-[54px] right-0 top-8 border border-dashed bg-white/25 px-3 py-3 font-serif text-[12px] text-black/45"
-          style={{ borderColor: page.line }}
-        >
-          暂无时间轴，速速召唤家机记录......
-        </div>
-      )}
-      <AnimatePresence>
-        {selectedEvent && (
-          <TimelineDetailModal
-            event={selectedEvent}
-            page={page}
-            onClose={() => setSelectedEvent(null)}
-          />
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-function TimelineReminderView({ page }) {
-  const [selectedEvent, setSelectedEvent] = useState(null);
-
-  return (
-    <div className="pt-1">
-      <TimelineMiniStrip page={page} />
-      <ReminderList page={page} />
-      <TimelinePeriodList page={page} onSelectEvent={setSelectedEvent} />
-      <AnimatePresence>
-        {selectedEvent && (
-          <TimelineDetailModal
-            event={selectedEvent}
-            page={page}
-            onClose={() => setSelectedEvent(null)}
-          />
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
 function TimelinePage({
   page,
   timelineView,
@@ -739,7 +541,11 @@ function TimelinePage({
           onMonthSelect={onMonthSelect}
         />
         {timelineView === "line" ? (
-          <TimelineDayView page={page} highlightResult={highlightResult} />
+          <TimelineDayView
+            page={page}
+            highlightResult={highlightResult}
+            scrollHitIntoView={scrollHitIntoView}
+          />
         ) : timelineView === "stats" ? (
           <TimelineStatsView
             page={page}
