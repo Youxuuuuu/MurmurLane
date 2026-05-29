@@ -1,5 +1,5 @@
 // @ts-nocheck
-import React, { useEffect,useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect,useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   fetchConversations,
@@ -13,9 +13,8 @@ import {
   fetchXiaoyeStatic,
 } from "./data/api";
 import { staticModeApiMap } from "./config/contentSources";
-import { pageModeMeta, pageModes, xiaoyeModeMeta, xiaoyeModes } from "./config/pageModes";
-import { searchModeOptions, searchTimeOptions } from "./config/searchOptions";
-import { monthColors, monthPales, styleThemes } from "./config/theme";
+import { pageModes, xiaoyeModeMeta, xiaoyeModes } from "./config/pageModes";
+import { styleThemes } from "./config/theme";
 import {
   conversationEntries,
   dailySummaryEntries,
@@ -29,15 +28,10 @@ import { emptyRemoteData } from "./data/emptyRemoteData";
 import {
   buildContentPath,
   changeDateMonth,
-  formatDiaryDate,
-  getDateLookupKeys,
   getDateParts,
-  getDaysInMonth,
-  getFirstWeekday,
   getTodayDateText,
   pad2,
   shiftDate,
-  shiftMonth,
   toDotDate,
 } from "./lib/date";
 import {
@@ -47,48 +41,34 @@ import {
   getConversationQuoteText,
   getConversationVisualKind,
   getOperationDisplayPaths,
-  hasRecordMedia,
-  legacyConversationMessageToRecord,
   shouldHideConversationRecord,
 } from "./lib/conversation";
 import {
   buildConversationPage,
-  conversationThreadIds,
   defaultConversationThreadId,
   formatConversationTime,
   getAllConversationThreadIds,
-  getConversationRecordsForDate,
-  getConversationThreadIdsForDate,
   getLatestConversationThreadId,
-  getRemoteConversationThreadIndex,
-  getRealConversationThreadIds,
-  getSearchConversationRecordsForDate,
   groupConversationRecordsByThread,
   hasConversationForDate,
 } from "./lib/conversationPageData";
 import {
   buildMemoryPage,
   buildXiaoyePage,
-  getDatedEntriesSource,
   getRemoteDatedEntriesSource,
   getRemoteEntryByDate,
-  getStaticEntryForMode,
-  hasCalendarMarkForPage,
   hasDatedEntry,
 } from "./lib/memoryPageData";
 import {
   getReminderDueAt,
-  getReminderHistorySource,
   getRemindersForDate,
 } from "./lib/reminderPageData";
 import {
   buildTimelinePage,
-  getRemoteDateIndexKey,
   getTimelineCategoryMeta,
   getTimelineDay,
   getTimelineEventsForPeriod,
   getTimelineStateSource,
-  hasRemoteDateIndexMark,
   normalizeTimelineEventCategory,
   timelineCategories,
 } from "./lib/timelinePageData";
@@ -99,34 +79,21 @@ import {
   getTimelineEventHeight,
   getTimelineEventVisualTopPx,
   getTimelineRange,
-  getZonedDateText,
   layoutTimelineEvents,
   minutesToClock,
   toMinutes,
 } from "./lib/timeline";
 import {
-  buildSearchFields,
-  countNormalizedSearchOccurrences,
-  findMatchedSnippet,
-  matchesSearchFilters,
   normalizeSearchText,
-  sortSearchResults,
 } from "./lib/search";
-import {
-  buildSearchResultState,
-  getAllSearchResults,
-} from "./lib/searchPageData";
+import { buildSearchResultState } from "./lib/searchPageData";
 import { HighlightText } from "./components/common/HighlightText";
 import { PaperTexture } from "./components/common/PaperTexture";
 import { TinyIcon } from "./components/common/TinyIcon";
 import { CalendarStrip } from "./components/calendar/CalendarStrip";
 import { DatePickerModal } from "./components/calendar/DatePickerModal";
 import { DirectoryPage } from "./components/archive/DirectoryPage";
-import { DiaryShareModal } from "./components/archive/DiaryShareModal";
-import {
-  ContinuousStaticMemoryContent,
-  MemoryContent,
-} from "./components/archive/MemoryContent";
+import { XiaoyePage } from "./components/xiaoye/XiaoyePage";
 import { AppScrollbarStyle } from "./components/layout/AppScrollbarStyle";
 import { BottomNav } from "./components/layout/BottomNav";
 import { PageBottomMark } from "./components/layout/PageBottomMark";
@@ -255,79 +222,6 @@ if (import.meta.env.DEV && typeof console !== "undefined")
     validateAppData(),
     "Prototype data and timeline layout should be valid.",
   );
-
-function XiaoyePage({
-  page,
-  highlightResult,
-  onOpenDatePicker,
-  onMonthSelect,
-}) {
-  useEffect(() => {
-    if (!highlightResult || highlightResult.mode !== "Xiaoye") return;
-    scrollHitIntoView(highlightResult.targetId);
-  }, [highlightResult, page.xiaoyeMode]);
-
-  return (
-    <motion.section
-      key={`${page.id}-${page.mode}-${page.xiaoyeMode}`}
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -8 }}
-      className="relative min-h-[980px] border bg-[#f7f5ee] p-5 pb-10"
-      style={{ background: page.paper, borderColor: page.line }}
-    >
-      <PaperTexture mode={page.texture} />
-      <div className="relative min-h-[920px]">
-        <div
-          className="absolute right-0 top-0 z-10 font-mono text-[18px] tracking-[0.12em]"
-          style={{ color: page.color }}
-        >
-          小叶
-        </div>
-        <aside
-          id="hit-Xiaoye-static-title"
-          className="absolute left-0 top-0 z-10 space-y-4"
-        >
-          <div>
-            <div className="mb-1 text-[10px] tracking-[0.22em] text-black/35">
-              XIAOYE · {page.mark}
-            </div>
-            <h2 className="max-w-[270px] font-serif text-3xl leading-[1.15] tracking-[0.08em] text-black/75">
-              {page.title}
-            </h2>
-          </div>
-        </aside>
-        <article className="relative min-h-[900px] pt-20">
-          <CalendarStrip
-            page={page}
-            onOpenDatePicker={onOpenDatePicker}
-            onMonthSelect={onMonthSelect}
-          />
-          {page.hasEntry ? (
-            <div className="relative min-h-[780px] pb-16 pt-2">
-              <ContinuousStaticMemoryContent
-                page={page}
-                highlightResult={highlightResult}
-              />
-              <div className="absolute bottom-12 right-1 scale-75 opacity-70">
-                <TinyIcon color={page.color} />
-              </div>
-            </div>
-          ) : (
-            <div className="relative min-h-[780px] pb-16 pt-3">
-              <p className="whitespace-nowrap font-serif text-[11px] leading-none text-black/48">
-                {page.blankText}
-              </p>
-              <div className="absolute bottom-12 right-1 scale-75 opacity-70">
-                <TinyIcon color={page.color} />
-              </div>
-            </div>
-          )}
-        </article>
-      </div>
-    </motion.section>
-  );
-}
 
 function BubbleRow({
   message,
@@ -2273,6 +2167,7 @@ export default function InsDiaryPrototype() {
                     highlightResult={highlightResult}
                     onOpenDatePicker={() => setDatePickerOpen(true)}
                     onMonthSelect={handleSelectMonth}
+                    scrollHitIntoView={scrollHitIntoView}
                   />
                 ) : (
                   <DirectoryPage
