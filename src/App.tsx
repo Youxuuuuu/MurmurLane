@@ -53,14 +53,9 @@ import {
   hasDatedEntry,
 } from "./lib/memoryPageData";
 import {
-  getReminderDueAt,
-  getRemindersForDate,
-} from "./lib/reminderPageData";
-import {
   buildTimelinePage,
   getTimelineCategoryMeta,
   getTimelineDay,
-  getTimelineEventsForPeriod,
   getTimelineStateSource,
   normalizeTimelineEventCategory,
   timelineCategories,
@@ -89,6 +84,10 @@ import { DirectoryPage } from "./components/archive/DirectoryPage";
 import { ChatBubble } from "./components/conversation/ChatBubble";
 import { ConversationEmptyState } from "./components/conversation/ConversationEmptyState";
 import { TimelineDetailModal } from "./components/timeline/TimelineDetailModal";
+import { TimelineMiniStrip } from "./components/timeline/TimelineMiniStrip";
+import { ReminderList } from "./components/timeline/ReminderList";
+import { TimelinePeriodList } from "./components/timeline/TimelinePeriodList";
+import { TimelineStatsView } from "./components/timeline/TimelineStatsView";
 import { XiaoyePage } from "./components/xiaoye/XiaoyePage";
 import { AppScrollbarStyle } from "./components/layout/AppScrollbarStyle";
 import { BottomNav } from "./components/layout/BottomNav";
@@ -524,33 +523,6 @@ function ConversationPage({
   );
 }
 
-function TimelineStatsPeriodSwitch({ page, period, onSelectPeriod }) {
-  const items = [
-    { id: "day", label: "日" },
-    { id: "month", label: "月" },
-    { id: "year", label: "年" },
-  ];
-  return (
-    <div className="mb-4 grid grid-cols-3 gap-2 font-mono text-[9px] uppercase tracking-[0.1em]">
-      {items.map((item) => (
-        <button
-          key={item.id}
-          type="button"
-          className="border px-3 py-2"
-          style={{
-            color: period === item.id ? page.color : "rgba(0,0,0,.45)",
-            borderColor: period === item.id ? page.color : page.line,
-            background: period === item.id ? page.pale : "transparent",
-          }}
-          onClick={() => onSelectPeriod(item.id)}
-        >
-          {item.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function TimelineEventCard({
   event,
   range,
@@ -720,285 +692,6 @@ function TimelineDayView({ page, highlightResult }) {
     </div>
   );
 }
-function hexToRgba(hex, alpha = 0.68) {
-  const value = String(hex || "").replace("#", "");
-
-  if (value.length !== 6) return hex;
-
-  const r = parseInt(value.slice(0, 2), 16);
-  const g = parseInt(value.slice(2, 4), 16);
-  const b = parseInt(value.slice(4, 6), 16);
-
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-function TimelineDonut({ aggregates }) {
-  const total = aggregates.reduce((sum, item) => sum + item.minutes, 0);
-  let current = 0;
-  const gradient = aggregates
-    .map((item) => {
-      const category =
-        timelineCategories[item.categoryId] ?? timelineCategories.life;
-      const start = current;
-      current += total ? (item.minutes / total) * 100 : 0;
-      return `${hexToRgba(category.color, 0.65)} ${start}% ${current}%`;
-    })
-    .join(", ");
-
-  return (
-    <div
-      className="mx-auto flex h-[210px] w-[210px] items-center justify-center rounded-full"
-      style={{ background: `conic-gradient(${gradient || "#ddd 0% 100%"})` }}
-    >
-      <div className="flex h-[112px] w-[112px] flex-col items-center justify-center rounded-full bg-[#f7f5ee] text-center">
-        <div className="text-[13px] font-semibold">合计</div>
-        <div className="mt-2 font-mono text-[16px]">
-          {Math.floor(total / 60)}:{pad2(total % 60)}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function TimelineStatsView({ page, period, onSelectPeriod }) {
-  const events = getTimelineEventsForPeriod(page.date, period, page.remoteData);
-  const aggregates = aggregateTimelineEvents(events, page.remoteData);
-  return (
-    <div className="pt-2">
-      <TimelineStatsPeriodSwitch
-        page={page}
-        period={period}
-        onSelectPeriod={onSelectPeriod}
-      />
-      <div className="mb-3 font-mono text-[11px] tracking-[0.1em] text-black/45">
-        {period === "day"
-          ? page.date
-          : period === "month"
-            ? `${getDateParts(page.date).year}.${getDateParts(page.date).month}`
-            : getDateParts(page.date).year}
-      </div>
-      <TimelineDonut aggregates={aggregates} />
-      <div className="mt-5 grid grid-cols-2 gap-x-5 gap-y-1.5">
-        {aggregates.map((item) => {
-          const category =
-            timelineCategories[item.categoryId] ?? timelineCategories.life;
-          return (
-            <div
-              key={item.categoryId}
-              className="flex items-center gap-1.5 text-[11px] leading-4"
-            >
-              <span
-                className="h-3.5 w-[3px] shrink-0"
-                style={{ background: hexToRgba(category.color, 0.68) }}
-              />
-              <span className="min-w-0 flex-1 truncate font-semibold text-black/68">
-                {category.label}
-              </span>
-              <span className="shrink-0 text-right font-mono text-[10px] text-black/45">
-                {Math.floor(item.minutes / 60)}:{pad2(item.minutes % 60)}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function TimelineMiniStrip({ page }) {
-  const events = getTimelineDay(page.date, page.remoteData).events;
-  const ticks = Array.from({ length: 13 }, (_, index) => index * 2);
-  const boundaries = Array.from(
-    new Set([
-      0,
-      1440,
-      ...events.flatMap((event) => [
-        toMinutes(event.startAt),
-        toMinutes(event.endAt),
-      ]),
-    ]),
-  ).sort((a, b) => a - b);
-  const segments = boundaries
-    .slice(0, -1)
-    .map((start, index) => {
-      const end = boundaries[index + 1];
-      const categoryMinutes = {};
-      events.forEach((event) => {
-        const normalizedEvent = normalizeTimelineEventCategory(
-          event,
-          page.remoteData,
-        );
-        const eventStart = toMinutes(event.startAt);
-        const eventEnd = toMinutes(event.endAt);
-        const overlap = Math.max(
-          0,
-          Math.min(end, eventEnd) - Math.max(start, eventStart),
-        );
-        if (overlap > 0)
-          categoryMinutes[normalizedEvent.categoryId] =
-            (categoryMinutes[normalizedEvent.categoryId] ?? 0) + overlap;
-      });
-      const dominant = Object.entries(categoryMinutes).sort(
-        (a, b) => b[1] - a[1],
-      )[0]?.[0];
-      return dominant ? { start, end, categoryId: dominant } : null;
-    })
-    .filter(Boolean);
-  const merged = segments.reduce((list, item) => {
-    const last = list[list.length - 1];
-    if (last && last.categoryId === item.categoryId && last.end === item.start)
-      last.end = item.end;
-    else list.push({ ...item });
-    return list;
-  }, []);
-
-  return (
-    <div className="mb-5 border-b pb-4" style={{ borderColor: page.line }}>
-      <div className="relative h-12 rounded-full bg-white/24">
-        <div
-          className="absolute left-0 right-0 top-[24px] border-t border-dashed"
-          style={{ borderColor: page.line }}
-        />
-        {merged.map((segment) => {
-          const category =
-            timelineCategories[segment.categoryId] ?? timelineCategories.life;
-          const left = Math.max(0, Math.min(100, (segment.start / 1440) * 100));
-          const width = Math.max(
-            2.2,
-            Math.min(100 - left, ((segment.end - segment.start) / 1440) * 100),
-          );
-          return (
-            <span
-              key={`${segment.start}-${segment.end}-${segment.categoryId}`}
-              className="absolute top-[13px] flex h-5 items-center justify-center rounded-full shadow-[0_3px_10px_rgba(0,0,0,.06)]"
-              style={{
-                left: `${left}%`,
-                width: `${width}%`,
-                background: category.color,
-                opacity: 0.9,
-              }}
-            />
-          );
-        })}
-      </div>
-      <div
-        className="mt-1 grid font-mono text-[9px] text-black/42"
-        style={{ gridTemplateColumns: "repeat(13, minmax(0, 1fr))" }}
-      >
-        {ticks.map((hour) => (
-          <div key={hour} className="text-center">
-            {hour}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ReminderList({ page }) {
-  const reminders = getRemindersForDate(page.date, page.remoteData);
-  return (
-    <section className="mb-5">
-      <div className="mb-2 flex items-end justify-between">
-        <h3
-          className="font-serif text-[16px] tracking-[0.08em]"
-          style={{ color: page.color }}
-        >
-          今天的提醒
-        </h3>
-        <span className="font-mono text-[8px] uppercase tracking-[0.1em] text-black/32">
-          reminder-archive
-        </span>
-      </div>
-      {reminders.length ? (
-        <div className="space-y-2">
-          {reminders.map((entry) => {
-            const dueAt = getReminderDueAt(entry);
-            return (
-              <div
-                key={entry.reminder.id}
-                className="rounded-[18px] bg-white/48 px-3 py-3 shadow-[0_10px_24px_rgba(0,0,0,.035)]"
-              >
-                <div className="flex items-start gap-3">
-                  <span
-                    className="mt-1 h-2 w-2 shrink-0 rounded-full"
-                    style={{ background: page.color }}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="font-mono text-[10px] tracking-[0.08em] text-black/42">
-                      {minutesToClock(toMinutes(dueAt))}
-                    </div>
-                    <div className="mt-1 text-[12px] leading-[1.55] text-black/68">
-                      {entry.reminder.text}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="rounded-[18px] bg-white/35 px-3 py-4 text-[12px] text-black/42">
-          今天暂无提醒，提醒库存小憩中。
-        </div>
-      )}
-    </section>
-  );
-}
-
-function TimelinePeriodList({ page, onSelectEvent }) {
-  const events = [...getTimelineDay(page.date, page.remoteData).events].sort(
-    (a, b) => toMinutes(a.startAt) - toMinutes(b.startAt),
-  );
-  return (
-    <section>
-      <div className="mb-2 flex items-end justify-between">
-        <h3
-          className="font-serif text-[16px] tracking-[0.08em]"
-          style={{ color: page.color }}
-        >
-          时间段列表
-        </h3>
-        <span className="font-mono text-[8px] uppercase tracking-[0.1em] text-black/32">
-          timeline-state
-        </span>
-      </div>
-      <div className="space-y-3">
-        {events.map((event) => {
-          const { category, categoryLabel } =
-            getTimelineCategoryMeta(event, page.remoteData);
-          const start = toMinutes(event.startAt);
-          const end = toMinutes(event.endAt);
-          const duration = getEventDurationMinutes(event);
-          return (
-            <button
-              key={event.id}
-              type="button"
-              className="w-full rounded-[20px] bg-white/50 px-4 py-4 text-left shadow-[0_10px_26px_rgba(0,0,0,.035)] transition active:scale-[0.99]"
-              onClick={() => onSelectEvent(event)}
-            >
-              <div className="flex gap-3">
-                <span
-                  className="w-1 shrink-0 rounded-full"
-                  style={{ background: category.color }}
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate font-serif text-[13px] leading-4 text-black/58">
-                    {event.title} · {duration}分钟
-                  </div>
-                  <div className="mt-2 truncate font-mono text-[11px] leading-4 text-black/40">
-                    {minutesToClock(start)} - {minutesToClock(end)} · #
-                    {categoryLabel} · {event.note}
-                  </div>
-                </div>
-              </div>
-            </button>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
 function TimelineReminderView({ page }) {
   const [selectedEvent, setSelectedEvent] = useState(null);
 
@@ -1052,6 +745,7 @@ function TimelinePage({
             page={page}
             period={statsPeriod}
             onSelectPeriod={onSelectStatsPeriod}
+            aggregateTimelineEvents={aggregateTimelineEvents}
           />
         ) : (
           <TimelineReminderView page={page} />
