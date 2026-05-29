@@ -632,7 +632,7 @@ function validateAppData() {
     validateConversationData()
   );
 }
-if (typeof console !== "undefined")
+if (import.meta.env.DEV && typeof console !== "undefined")
   console.assert(
     validateAppData(),
     "Prototype data and timeline layout should be valid.",
@@ -3669,26 +3669,28 @@ export default function InsDiaryPrototype() {
         ? "mock"
         : "blank";
 
-    console.debug("[MurmurLane Debug] remoteDateIndex", remoteDateIndexState);
-    console.debug("[MurmurLane Debug] selectedDate", selectedDate);
-    console.debug(
-      "[MurmurLane Debug] remote conversations count for selectedDate",
-      remoteConversationCount,
-    );
-    console.debug(
-      "[MurmurLane Debug] threadIds for selectedDate",
-      availableThreadIds,
-    );
-    console.debug("[MurmurLane Debug] selectedThreadId", selectedThreadId);
-    console.debug(
-      "[MurmurLane Debug] diary source for selectedDate",
-      diarySource,
-    );
-    console.debug(
-      "[MurmurLane Debug] letters source for selectedDate",
-      lettersSource,
-    );
-    console.debug("[MurmurLane Debug] remoteError", remoteError);
+    if (import.meta.env.DEV) {
+      console.debug("[MurmurLane Debug] remoteDateIndex", remoteDateIndexState);
+      console.debug("[MurmurLane Debug] selectedDate", selectedDate);
+      console.debug(
+        "[MurmurLane Debug] remote conversations count for selectedDate",
+        remoteConversationCount,
+      );
+      console.debug(
+        "[MurmurLane Debug] threadIds for selectedDate",
+        availableThreadIds,
+      );
+      console.debug("[MurmurLane Debug] selectedThreadId", selectedThreadId);
+      console.debug(
+        "[MurmurLane Debug] diary source for selectedDate",
+        diarySource,
+      );
+      console.debug(
+        "[MurmurLane Debug] letters source for selectedDate",
+        lettersSource,
+      );
+      console.debug("[MurmurLane Debug] remoteError", remoteError);
+    }
   }, [
     selectedDate,
     selectedThreadId,
