@@ -123,7 +123,10 @@ import { PaperTexture } from "./components/common/PaperTexture";
 import { TinyIcon } from "./components/common/TinyIcon";
 import { CalendarStrip } from "./components/calendar/CalendarStrip";
 import { DatePickerModal } from "./components/calendar/DatePickerModal";
+import { AppScrollbarStyle } from "./components/layout/AppScrollbarStyle";
 import { BottomNav } from "./components/layout/BottomNav";
+import { PageBottomMark } from "./components/layout/PageBottomMark";
+import { SwipeDateArea } from "./components/layout/SwipeDateArea";
 import { ChapterTabs } from "./components/controls/ChapterTabs";
 import { ThreadSwitch } from "./components/controls/ThreadSwitch";
 import { TimelineModeSwitch } from "./components/controls/TimelineModeSwitch";
@@ -261,11 +264,6 @@ if (import.meta.env.DEV && typeof console !== "undefined")
     "Prototype data and timeline layout should be valid.",
   );
 
-function AppScrollbarStyle() {
-  return (
-   <style>{`.diary-scroll,.search-scroll,.share-scroll{scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;scroll-behavior:smooth}.year-picker-scroll{scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;scroll-behavior:auto}#conversation-message-scroll{scroll-behavior:auto}.diary-scroll::-webkit-scrollbar,.search-scroll::-webkit-scrollbar,.share-scroll::-webkit-scrollbar,.year-picker-scroll::-webkit-scrollbar{width:0;height:0;display:none}`}</style>
-  );
-}
 function DiarySearchBox({
   page,
   selectedDate,
@@ -496,19 +494,6 @@ function DiarySearchBox({
     </div>
   );
 }
-function PageBottomMark({ page }) {
-  return (
-    <>
-      <div className="absolute bottom-5 left-1 font-mono text-[10px] tracking-[0.1em] text-black/40">
-        {page.date}
-      </div>
-      <div className="absolute bottom-12 right-1 scale-75 opacity-70">
-        <TinyIcon color={page.color} />
-      </div>
-    </>
-  );
-}
-
 function getMemoryContentKind(mode) {
   if (mode === "Diary" || mode === "Letters") return "prose";
   if (mode === "Openloops") return "checklist";
@@ -2567,47 +2552,6 @@ function TimelinePage({
         )}
       </div>
     </motion.section>
-  );
-}
-
-function SwipeDateArea({ children, onSwipeDate }) {
-  const gestureRef = useRef(null);
-
-  return (
-    <div
-      style={{ touchAction: "pan-y" }}
-      onPointerDown={(event) => {
-        gestureRef.current = {
-          pointerId: event.pointerId,
-          startX: event.clientX,
-          startY: event.clientY,
-        };
-      }}
-      onPointerUp={(event) => {
-        if (
-          !gestureRef.current ||
-          gestureRef.current.pointerId !== event.pointerId
-        ) {
-          return;
-        }
-
-        const offsetX = event.clientX - gestureRef.current.startX;
-        const offsetY = event.clientY - gestureRef.current.startY;
-        gestureRef.current = null;
-
-        if (
-          Math.abs(offsetX) > 88 &&
-          Math.abs(offsetX) > Math.abs(offsetY)
-        ) {
-          onSwipeDate(offsetX > 0 ? -1 : 1);
-        }
-      }}
-      onPointerCancel={() => {
-        gestureRef.current = null;
-      }}
-    >
-      {children}
-    </div>
   );
 }
 
