@@ -118,6 +118,10 @@ import {
   buildSearchResultState,
   getAllSearchResults,
 } from "./lib/searchPageData";
+import { HighlightText } from "./components/common/HighlightText";
+import { PaperTexture } from "./components/common/PaperTexture";
+import { TinyIcon } from "./components/common/TinyIcon";
+import { BottomNav } from "./components/layout/BottomNav";
 const BLANK_TITLE = `${String.fromCharCode(0x0295)}  ${String.fromCharCode(0x2022)}${String.fromCharCode(0x058a)} ${String.fromCharCode(0x2022)}${String.fromCharCode(0x0294)}…… ${String.fromCharCode(0xa9de)}`;
 
 function aggregateTimelineEvents(events, remoteData = emptyRemoteData) {
@@ -140,46 +144,6 @@ function aggregateTimelineEvents(events, remoteData = emptyRemoteData) {
       minutes,
       percent: total ? Math.round((minutes / total) * 100) : 0,
     }));
-}
-function HighlightText({ text, query, color = "#c28a4a" }) {
-  const value = String(text ?? "");
-  const cleanQuery = String(query ?? "").trim();
-  if (!cleanQuery) return <>{value}</>;
-  const lowerValue = value.toLowerCase();
-  const lowerQuery = cleanQuery.toLowerCase();
-  const parts = [];
-  let cursor = 0;
-  let index = lowerValue.indexOf(lowerQuery);
-  while (index >= 0) {
-    if (index > cursor)
-      parts.push({ text: value.slice(cursor, index), hit: false });
-    parts.push({
-      text: value.slice(index, index + cleanQuery.length),
-      hit: true,
-    });
-    cursor = index + cleanQuery.length;
-    index = lowerValue.indexOf(lowerQuery, cursor);
-  }
-  if (cursor < value.length)
-    parts.push({ text: value.slice(cursor), hit: false });
-  if (!parts.some((part) => part.hit)) return <>{value}</>;
-  return (
-    <>
-      {parts.map((part, index) =>
-        part.hit ? (
-          <mark
-            key={index}
-            className="px-0.5"
-            style={{ background: `${color}26`, color }}
-          >
-            {part.text}
-          </mark>
-      ) : (
-          <span key={index}>{part.text}</span>
-        ),
-      )}
-    </>
-  );
 }
 function useDebouncedValue(value, delay = 300) {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -293,45 +257,6 @@ if (import.meta.env.DEV && typeof console !== "undefined")
 function AppScrollbarStyle() {
   return (
    <style>{`.diary-scroll,.search-scroll,.share-scroll{scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;scroll-behavior:smooth}.year-picker-scroll{scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;scroll-behavior:auto}#conversation-message-scroll{scroll-behavior:auto}.diary-scroll::-webkit-scrollbar,.search-scroll::-webkit-scrollbar,.share-scroll::-webkit-scrollbar,.year-picker-scroll::-webkit-scrollbar{width:0;height:0;display:none}`}</style>
-  );
-}
-function PaperTexture({ mode = "grain" }) {
-  const opacity =
-    mode === "light"
-      ? "opacity-[0.18]"
-      : mode === "blank"
-        ? "opacity-[0.12]"
-        : mode === "grain"
-          ? "opacity-[0.24]"
-          : "opacity-[0.32]";
-  return (
-    <div
-      className={`pointer-events-none absolute inset-0 ${opacity} mix-blend-multiply`}
-    >
-      <div className="absolute inset-0 [background-image:radial-gradient(#8d8576_0.45px,transparent_0.45px)] [background-size:7px_7px]" />
-      <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,.32),rgba(0,0,0,.025),rgba(255,255,255,.28))]" />
-    </div>
-  );
-}
-function TinyIcon({ color = "currentColor" }) {
-  return (
-    <svg
-      viewBox="0 0 64 64"
-      className="h-12 w-12"
-      fill="none"
-      style={{ color }}
-    >
-      <path
-        d="M17 48c22-6 31-21 31-36C31 13 17 25 17 48Z"
-        stroke="currentColor"
-        strokeWidth="1.4"
-      />
-      <path
-        d="M18 48c7-10 16-19 30-36"
-        stroke="currentColor"
-        strokeWidth="1.2"
-      />
-    </svg>
   );
 }
 function DiarySearchBox({
@@ -3152,39 +3077,6 @@ function SwipeDateArea({ children, onSwipeDate }) {
     >
       {children}
     </div>
-  );
-}
-
-function BottomNav({ activeSection, onSelectSection, page }) {
-  const items = [
-    { id: "Conversation", label: "对话" },
-    { id: "Timeline", label: "时间轴" },
-    { id: "Archive", label: "回忆" },
-    { id: "Xiaoye", label: "小叶" },
-  ];
-  return (
-    <nav
-      className="z-30 shrink-0 border-t bg-[#eeeae1]/95 px-3 py-3 pb-[calc(12px+env(safe-area-inset-bottom))] backdrop-blur"
-      style={{ borderColor: page.line }}
-    >
-      <div className="grid grid-cols-4 gap-2 font-mono text-[10px] uppercase tracking-[0.12em]">
-        {items.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            className="border px-2 py-2"
-            style={{
-              color: activeSection === item.id ? page.color : "rgba(0,0,0,.45)",
-              borderColor: activeSection === item.id ? page.color : page.line,
-              background: activeSection === item.id ? page.pale : "transparent",
-            }}
-            onClick={() => onSelectSection(item.id)}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
-    </nav>
   );
 }
 
