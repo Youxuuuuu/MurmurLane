@@ -22,6 +22,7 @@ import {
   getReminderDueAt,
   getReminderHistorySource,
 } from "./reminderPageData";
+import { getZonedDateText } from "./timeline";
 import {
   getTimelineCategoryMeta,
   getTimelineStateSource,
@@ -222,8 +223,11 @@ export function buildSearchResultState(
   );
   getReminderHistorySource(remoteData).forEach((entry) => {
     const dueAt = getReminderDueAt(entry);
-    const dateText = toDotDate(dueAt);
-    const dueAtText = Number.isNaN(dueAt.getTime()) ? "" : dueAt.toISOString();
+
+    if (Number.isNaN(dueAt.getTime())) return;
+
+    const dateText = getZonedDateText(dueAt);
+    const dueAtText = dueAt.toISOString();
     const createdAtText = entry?.reminder?.createdAt ?? "";
     const archivedAtText = entry?.archivedAt ?? "";
     const reminderStatus = String(
@@ -232,9 +236,6 @@ export function buildSearchResultState(
     const fields = buildSearchFields([
       { label: "提醒", value: entry?.reminder?.text },
       { label: "状态", value: reminderStatus },
-      { label: "到期时间", value: dueAtText },
-      { label: "创建时间", value: createdAtText },
-      { label: "归档时间", value: archivedAtText },
       { label: "来源", value: entry?.sourceFile },
     ]);
     appendSearchResult({
@@ -253,6 +254,8 @@ export function buildSearchResultState(
         createdAtText,
         archivedAtText,
         reminderStatus,
+        entry?.reminder?.text,
+        entry?.sourceFile,
         ...fields.map((field) => field.normalizedValue),
       ],
     });

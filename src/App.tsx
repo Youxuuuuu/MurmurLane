@@ -1728,6 +1728,8 @@ export default function InsDiaryPrototype() {
     setHighlightResult(null);
     setSelectedDate((current) => changeDateMonth(current, month));
   };
+  const isValidDotDate = (value) =>
+    /^\d{4}\.\d{2}\.\d{2}$/.test(String(value ?? ""));
 
   return (
     <div
@@ -1791,7 +1793,7 @@ export default function InsDiaryPrototype() {
                       setActiveSection("Archive");
                       setSelectedMode(result.mode);
                     }
-                    if (result.date) setSelectedDate(result.date);
+                    if (isValidDotDate(result.date)) setSelectedDate(result.date);
                     setHighlightResult(result);
                   }}
                 />
