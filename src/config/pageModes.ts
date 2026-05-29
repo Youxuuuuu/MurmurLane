@@ -1,3 +1,5 @@
+import { cyberbossDisplayRoot } from "./contentSources";
+
 export const pageModeMeta = {
   Diary: { title: "日记页面", dateBased: true },
   DailySummary: { title: "摘要页面", dateBased: true },
@@ -13,12 +15,12 @@ export const pageModes = Object.keys(pageModeMeta);
 export const xiaoyeModeMeta = {
   Ins: {
     title: "ins",
-    sourcePath: "~/.cyberboss/weixin-instructions.md",
+    sourcePath: `${cyberbossDisplayRoot}/weixin-instructions.md`,
     apiMode: "weixin_instructions",
   },
   PersonalityAnchor: {
     title: "人格锚点",
-    sourcePath: "~/.cyberboss/personality-anchor.md",
+    sourcePath: `${cyberbossDisplayRoot}/personality-anchor.md`,
     apiMode: "personality_anchor",
   },
 };

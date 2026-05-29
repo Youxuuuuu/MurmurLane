@@ -128,8 +128,10 @@ const emptyRemoteData = {
   },
 };
 
-function aggregateTimelineEvents(events) {
-  const normalizedEvents = events.map(normalizeTimelineEventCategory);
+function aggregateTimelineEvents(events, remoteData = emptyRemoteData) {
+  const normalizedEvents = events.map((event) =>
+    normalizeTimelineEventCategory(event, remoteData),
+  );
   const total = normalizedEvents.reduce(
     (sum, event) => sum + getEventDurationMinutes(event),
     0,
@@ -419,14 +421,17 @@ function buildSearchResultState(
   );
   Object.entries(getTimelineStateSource(remoteData)).forEach(([date, day]) =>
     day.events.forEach((event) => {
+      const { categoryLabel, subcategoryLabel, eventNodeLabel } =
+        getTimelineCategoryMeta(event, remoteData);
       const fields = buildSearchFields([
         { label: "事件标题", value: event.title },
         { label: "事件备注", value: event.note },
         {
           label: "分类",
-          value: timelineCategories[
-            normalizeTimelineEventCategory(event).categoryId
-          ]?.label ?? event.categoryId,
+          value:
+            [categoryLabel, subcategoryLabel, eventNodeLabel]
+              .filter(Boolean)
+              .join(" · ") || event.categoryId,
         },
         { label: "标签", value: (event.tags ?? []).join(" ") },
       ]);
@@ -617,11 +622,11 @@ function validateAppData() {
     styleThemes.length === 4 &&
     pageModes.length === 8 &&
     buildContentPath("Letters", "2026.05.14") ===
-      "~/.cyberboss/memory/letters/2026-05-14.md" &&
+      "D:/study/.cyberboss/memory/letters/2026-05-14.md" &&
     buildContentPath("Timeline", "2026.04.28") ===
-      "~/.cyberboss/timeline/timeline-state.json" &&
+      "D:/study/.cyberboss/timeline/timeline-state.json" &&
     buildContentPath("Reminders", "2026.04.28") ===
-      "~/.cyberboss/reminder-archive/reminders-history.jsonl" &&
+      "D:/study/.cyberboss/reminder-archive/reminders-history.jsonl" &&
     normalizeSearchText("a b") === "ab" &&
     validateTimelineData() &&
     validateConversationData()
@@ -2872,7 +2877,7 @@ function TimelineEventCard({
     category,
     subcategoryLabel,
     eventNodeLabel,
-  } = getTimelineCategoryMeta(event);
+  } = getTimelineCategoryMeta(event, page.remoteData);
   const start = toMinutes(event.startAt);
   const duration = getEventDurationMinutes(event);
   const detailLabel = [subcategoryLabel, eventNodeLabel]
@@ -2954,7 +2959,7 @@ function TimelineEventDetailModal({ event, page, onClose }) {
     categoryLabel,
     subcategoryLabel,
     eventNodeLabel,
-  } = getTimelineCategoryMeta(event);
+  } = getTimelineCategoryMeta(event, page.remoteData);
   const duration = getEventDurationMinutes(event);
   const categoryDetailLabel = [
     categoryLabel,
@@ -3157,7 +3162,7 @@ function TimelineDonut({ aggregates }) {
 
 function TimelineStatsView({ page, period, onSelectPeriod }) {
   const events = getTimelineEventsForPeriod(page.date, period, page.remoteData);
-  const aggregates = aggregateTimelineEvents(events);
+  const aggregates = aggregateTimelineEvents(events, page.remoteData);
   return (
     <div className="pt-2">
       <TimelineStatsPeriodSwitch
@@ -3219,7 +3224,10 @@ function TimelineMiniStrip({ page }) {
       const end = boundaries[index + 1];
       const categoryMinutes = {};
       events.forEach((event) => {
-        const normalizedEvent = normalizeTimelineEventCategory(event);
+        const normalizedEvent = normalizeTimelineEventCategory(
+          event,
+          page.remoteData,
+        );
         const eventStart = toMinutes(event.startAt);
         const eventEnd = toMinutes(event.endAt);
         const overlap = Math.max(
@@ -3358,7 +3366,7 @@ function TimelinePeriodList({ page, onSelectEvent }) {
       <div className="space-y-3">
         {events.map((event) => {
           const { category, categoryLabel } =
-            getTimelineCategoryMeta(event);
+            getTimelineCategoryMeta(event, page.remoteData);
           const start = toMinutes(event.startAt);
           const end = toMinutes(event.endAt);
           const duration = getEventDurationMinutes(event);

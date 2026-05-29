@@ -1,15 +1,23 @@
+export const cyberbossDisplayRoot = "D:/study/.cyberboss";
+
+function buildCyberbossPath(relativePath: string) {
+  return `${cyberbossDisplayRoot}/${relativePath}`;
+}
+
 export const contentSourcePaths = {
-  Diary: "~/.cyberboss/diary/{date}.md",
-  DailySummary: "~/.cyberboss/memory/daily-summary/daily-summary-{date}.md",
-  Letters: "~/.cyberboss/memory/letters/{date}.md",
-  Project: "~/.cyberboss/memory/projects.md",
-  Preference: "~/.cyberboss/memory/preferences.md",
-  Openloops: "~/.cyberboss/memory/open_loops.md",
-  Facts: "~/.cyberboss/memory/facts.md",
-  Patterns: "~/.cyberboss/memory/patterns.md",
-  Conversation: "~/.cyberboss/conversations/{date}.jsonl",
-  Timeline: "~/.cyberboss/timeline/timeline-state.json",
-  Reminders: "~/.cyberboss/reminder-archive/reminders-history.jsonl",
+  Diary: buildCyberbossPath("diary/{date}.md"),
+  DailySummary: buildCyberbossPath(
+    "memory/daily-summary/daily-summary-{date}.md",
+  ),
+  Letters: buildCyberbossPath("memory/letters/{date}.md"),
+  Project: buildCyberbossPath("memory/projects.md"),
+  Preference: buildCyberbossPath("memory/preferences.md"),
+  Openloops: buildCyberbossPath("memory/open_loops.md"),
+  Facts: buildCyberbossPath("memory/facts.md"),
+  Patterns: buildCyberbossPath("memory/patterns.md"),
+  Conversation: buildCyberbossPath("conversations/{date}.jsonl"),
+  Timeline: buildCyberbossPath("timeline/timeline-state.json"),
+  Reminders: buildCyberbossPath("reminder-archive/reminders-history.jsonl"),
 };
 
 export const staticModeApiMap = {
