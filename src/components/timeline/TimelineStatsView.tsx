@@ -1,5 +1,6 @@
 import { getDateParts, pad2 } from "../../lib/date";
 import {
+  aggregateTimelineEvents,
   getTimelineEventsForPeriod,
   timelineCategories,
 } from "../../lib/timelinePageData";
@@ -71,12 +72,7 @@ function TimelineDonut({ aggregates }) {
   );
 }
 
-export function TimelineStatsView({
-  page,
-  period,
-  onSelectPeriod,
-  aggregateTimelineEvents,
-}) {
+export function TimelineStatsView({ page, period, onSelectPeriod }) {
   const events = getTimelineEventsForPeriod(page.date, period, page.remoteData);
   const aggregates = aggregateTimelineEvents(events, page.remoteData);
   return (

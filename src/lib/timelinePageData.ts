@@ -4,6 +4,7 @@ import { monthColors, monthPales } from "../config/theme";
 import type { RemoteData } from "../types/api";
 import type { TimelineDay, TimelineEvent, TimelineState } from "../types/timeline";
 import { buildContentPath, getDateParts, toDotDate, toHyphenDate } from "./date";
+import { getEventDurationMinutes } from "./timeline";
 
 export const timelineCategories = {
   life: {
@@ -649,6 +650,31 @@ export function getTimelineEventsForPeriod(
         : toDotDate(key).startsWith(`${year}.`),
     )
     .flatMap(([, day]) => day.events);
+}
+
+export function aggregateTimelineEvents(
+  events: TimelineEvent[],
+  remoteData: RemoteData = emptyRemoteData,
+) {
+  const normalizedEvents = events.map((event) =>
+    normalizeTimelineEventCategory(event, remoteData),
+  );
+  const total = normalizedEvents.reduce(
+    (sum, event) => sum + getEventDurationMinutes(event),
+    0,
+  );
+  const map: Record<string, number> = {};
+  normalizedEvents.forEach((event) => {
+    const key = event.categoryId || "life";
+    map[key] = (map[key] ?? 0) + getEventDurationMinutes(event);
+  });
+  return Object.entries(map)
+    .sort((a, b) => b[1] - a[1])
+    .map(([categoryId, minutes]) => ({
+      categoryId,
+      minutes,
+      percent: total ? Math.round((minutes / total) * 100) : 0,
+    }));
 }
 
 export function buildTimelinePage(

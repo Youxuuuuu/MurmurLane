@@ -55,7 +55,6 @@ import {
   buildTimelinePage,
   getTimelineDay,
   getTimelineStateSource,
-  normalizeTimelineEventCategory,
   timelineCategories,
 } from "./lib/timelinePageData";
 import {
@@ -77,9 +76,7 @@ import { DatePickerModal } from "./components/calendar/DatePickerModal";
 import { DirectoryPage } from "./components/archive/DirectoryPage";
 import { ChatBubble } from "./components/conversation/ChatBubble";
 import { ConversationEmptyState } from "./components/conversation/ConversationEmptyState";
-import { TimelineDayView } from "./components/timeline/TimelineDayView";
-import { TimelineReminderView } from "./components/timeline/TimelineReminderView";
-import { TimelineStatsView } from "./components/timeline/TimelineStatsView";
+import { TimelinePage } from "./components/timeline/TimelinePage";
 import { XiaoyePage } from "./components/xiaoye/XiaoyePage";
 import { AppScrollbarStyle } from "./components/layout/AppScrollbarStyle";
 import { BottomNav } from "./components/layout/BottomNav";
@@ -93,27 +90,6 @@ import { TopModeSwitch } from "./components/controls/TopModeSwitch";
 import { XiaoyeModeSwitch } from "./components/controls/XiaoyeModeSwitch";
 const BLANK_TITLE = `${String.fromCharCode(0x0295)}  ${String.fromCharCode(0x2022)}${String.fromCharCode(0x058a)} ${String.fromCharCode(0x2022)}${String.fromCharCode(0x0294)}…… ${String.fromCharCode(0xa9de)}`;
 
-function aggregateTimelineEvents(events, remoteData = emptyRemoteData) {
-  const normalizedEvents = events.map((event) =>
-    normalizeTimelineEventCategory(event, remoteData),
-  );
-  const total = normalizedEvents.reduce(
-    (sum, event) => sum + getEventDurationMinutes(event),
-    0,
-  );
-  const map = {};
-  normalizedEvents.forEach((event) => {
-    const key = event.categoryId || "life";
-    map[key] = (map[key] ?? 0) + getEventDurationMinutes(event);
-  });
-  return Object.entries(map)
-    .sort((a, b) => b[1] - a[1])
-    .map(([categoryId, minutes]) => ({
-      categoryId,
-      minutes,
-      percent: total ? Math.round((minutes / total) * 100) : 0,
-    }));
-}
 function scrollHitIntoView(targetId) {
   const target = document.getElementById(`hit-${targetId}`);
 
@@ -511,52 +487,6 @@ function ConversationPage({
       ) : (
         <ConversationEmptyState />
       )}
-    </motion.section>
-  );
-}
-
-function TimelinePage({
-  page,
-  timelineView,
-  statsPeriod,
-  highlightResult,
-  onSelectStatsPeriod,
-  onOpenDatePicker,
-  onMonthSelect,
-}) {
-  return (
-    <motion.section
-      key={`${page.id}-timeline-${page.date}-${timelineView}-${statsPeriod}`}
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -8 }}
-      className="relative min-h-[980px] border bg-[#f7f5ee] p-5 pb-10"
-      style={{ background: page.paper, borderColor: page.line }}
-    >
-      <PaperTexture mode={page.texture} />
-      <div className="relative min-h-[920px]">
-        <CalendarStrip
-          page={page}
-          onOpenDatePicker={onOpenDatePicker}
-          onMonthSelect={onMonthSelect}
-        />
-        {timelineView === "line" ? (
-          <TimelineDayView
-            page={page}
-            highlightResult={highlightResult}
-            scrollHitIntoView={scrollHitIntoView}
-          />
-        ) : timelineView === "stats" ? (
-          <TimelineStatsView
-            page={page}
-            period={statsPeriod}
-            onSelectPeriod={onSelectStatsPeriod}
-            aggregateTimelineEvents={aggregateTimelineEvents}
-          />
-        ) : (
-          <TimelineReminderView page={page} />
-        )}
-      </div>
     </motion.section>
   );
 }
