@@ -695,12 +695,14 @@ export default function InsDiaryPrototype() {
             if (cancelled) continue;
 
             if (task.type === "conversations") {
-              if (Array.isArray(result) && result.length) {
+              if (Array.isArray(result)) {
                 setRemoteSearchCacheState((current) => ({
                   ...current,
                   conversations: {
                     ...current.conversations,
-                    [task.date]: groupConversationRecordsByThread(result),
+                    [task.date]: result.length
+                      ? groupConversationRecordsByThread(result)
+                      : {},
                   },
                 }));
               }
