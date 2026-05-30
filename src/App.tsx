@@ -683,6 +683,12 @@ export default function InsDiaryPrototype() {
       setRemoteSearchLoading(true);
       const concurrency = 4;
       let cursor = 0;
+      const pendingSearchCache = {
+        conversations: {},
+        diary: {},
+        dailySummary: {},
+        letters: {},
+      };
 
       const runTask = async () => {
         while (!cancelled && cursor < tasks.length) {
@@ -696,24 +702,12 @@ export default function InsDiaryPrototype() {
 
             if (task.type === "conversations") {
               if (Array.isArray(result)) {
-                setRemoteSearchCacheState((current) => ({
-                  ...current,
-                  conversations: {
-                    ...current.conversations,
-                    [task.date]: result.length
-                      ? groupConversationRecordsByThread(result)
-                      : {},
-                  },
-                }));
+                pendingSearchCache.conversations[task.date] = result.length
+                  ? groupConversationRecordsByThread(result)
+                  : {};
               }
             } else if (result?.found === true && result?.entry) {
-              setRemoteSearchCacheState((current) => ({
-                ...current,
-                [task.type]: {
-                  ...current[task.type],
-                  [task.date]: result.entry,
-                },
-              }));
+              pendingSearchCache[task.type][task.date] = result.entry;
             }
           } catch (error) {
             if (!cancelled) {
@@ -737,6 +731,33 @@ export default function InsDiaryPrototype() {
       );
 
       if (!cancelled) {
+        const hasPendingSearchCache =
+          Object.keys(pendingSearchCache.conversations).length > 0 ||
+          Object.keys(pendingSearchCache.diary).length > 0 ||
+          Object.keys(pendingSearchCache.dailySummary).length > 0 ||
+          Object.keys(pendingSearchCache.letters).length > 0;
+
+        if (hasPendingSearchCache) {
+          setRemoteSearchCacheState((current) => ({
+            ...current,
+            conversations: {
+              ...current.conversations,
+              ...pendingSearchCache.conversations,
+            },
+            diary: {
+              ...current.diary,
+              ...pendingSearchCache.diary,
+            },
+            dailySummary: {
+              ...current.dailySummary,
+              ...pendingSearchCache.dailySummary,
+            },
+            letters: {
+              ...current.letters,
+              ...pendingSearchCache.letters,
+            },
+          }));
+        }
         setRemoteSearchLoading(false);
       }
     };
