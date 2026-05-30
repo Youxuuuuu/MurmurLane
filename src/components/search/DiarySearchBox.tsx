@@ -6,6 +6,9 @@ import { buildSearchResultState } from "../../lib/searchPageData";
 import { HighlightText } from "../common/HighlightText";
 import { PaperTexture } from "../common/PaperTexture";
 
+const env = (import.meta as { env?: Record<string, unknown> }).env;
+const ENABLE_SEARCH_PERF_LOG = false;
+
 function useDebouncedValue(value, delay = 300) {
   const [debouncedValue, setDebouncedValue] = useState(value);
 
@@ -29,11 +32,13 @@ export function DiarySearchBox({
   searchDataVersion,
 }) {
   const [inputQuery, setInputQuery] = useState("");
+  const [isComposing, setIsComposing] = useState(false);
   const [focused, setFocused] = useState(false);
   const [searchFilterOpen, setSearchFilterOpen] = useState(false);
   const [searchModeFilter, setSearchModeFilter] = useState("All");
   const [searchTimeFilter, setSearchTimeFilter] = useState("All");
   const debouncedQuery = useDebouncedValue(inputQuery, 300);
+  const searchQuery = isComposing ? "" : debouncedQuery;
   const searchBoxRef = useRef(null);
   useEffect(() => {
   const handlePointerDown = (event) => {
@@ -52,15 +57,36 @@ export function DiarySearchBox({
   };
   }, []);
   const searchState = useMemo(
-    () =>
-      buildSearchResultState(debouncedQuery, searchRemoteData, {
+    () => {
+      const shouldLog =
+        Boolean(env?.DEV) &&
+        ENABLE_SEARCH_PERF_LOG &&
+        searchQuery.trim().length > 0;
+      const startTime = shouldLog ? performance.now() : 0;
+      const nextSearchState = buildSearchResultState(searchQuery, searchRemoteData, {
         modeFilter: searchModeFilter,
         timeFilter: searchTimeFilter,
         selectedDate,
         limit: 50,
-      }),
+      });
+
+      if (shouldLog) {
+        console.debug("[MurmurLane Search Perf] buildSearchResultState", {
+          query: searchQuery,
+          modeFilter: searchModeFilter,
+          timeFilter: searchTimeFilter,
+          selectedDate,
+          searchDataVersion,
+          resultsLength: nextSearchState.results.length,
+          totalOccurrences: nextSearchState.totalOccurrences,
+          durationMs: Number((performance.now() - startTime).toFixed(2)),
+        });
+      }
+
+      return nextSearchState;
+    },
     [
-      debouncedQuery,
+      searchQuery,
       searchModeFilter,
       searchTimeFilter,
       selectedDate,
@@ -72,11 +98,12 @@ export function DiarySearchBox({
   const showPanel = searchFilterOpen || showResultPanel;
   const pendingSearch =
     inputQuery.trim().length > 0 &&
-    normalizeSearchText(inputQuery) !== normalizeSearchText(debouncedQuery);
+    normalizeSearchText(inputQuery) !== normalizeSearchText(searchQuery);
 
   useEffect(() => {
-    onSearchQueryChange(debouncedQuery);
-  }, [debouncedQuery, onSearchQueryChange]);
+    if (isComposing) return;
+    onSearchQueryChange(searchQuery);
+  }, [isComposing, searchQuery, onSearchQueryChange]);
 
   return (
       <div ref={searchBoxRef} className="relative z-50 w-[174px] font-mono">
@@ -100,6 +127,14 @@ export function DiarySearchBox({
           placeholder="SEARCH"
           onChange={(event) => {
             setInputQuery(event.target.value);
+            setFocused(true);
+          }}
+          onCompositionStart={() => {
+            setIsComposing(true);
+          }}
+          onCompositionEnd={(event) => {
+            setIsComposing(false);
+            setInputQuery(event.currentTarget.value);
             setFocused(true);
           }}
           onFocus={() => setFocused(true)}
@@ -195,7 +230,7 @@ export function DiarySearchBox({
                   <div>
                     <div className="mb-2 px-1 text-[9px] text-black/48">
                       <span className="font-mono uppercase tracking-[0.08em]">
-                        “{debouncedQuery.trim()}”
+                        “{searchQuery.trim()}”
                       </span>{" "}
                       出现 {searchState.totalOccurrences} 次
                     </div>
