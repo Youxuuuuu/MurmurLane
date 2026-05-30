@@ -8,6 +8,10 @@ import { PaperTexture } from "../common/PaperTexture";
 
 const env = (import.meta as { env?: Record<string, unknown> }).env;
 const ENABLE_SEARCH_PERF_LOG = false;
+const conversationThreadScopeOptions = [
+  { value: "all", label: "全部线程" },
+  { value: "current", label: "当前线程" },
+] as const;
 
 function useDebouncedValue(value, delay = 300) {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -26,6 +30,7 @@ function useDebouncedValue(value, delay = 300) {
 export function DiarySearchBox({
   page,
   selectedDate,
+  selectedThreadId,
   onSelectResult,
   onSearchQueryChange,
   searchRemoteData,
@@ -37,6 +42,9 @@ export function DiarySearchBox({
   const [searchFilterOpen, setSearchFilterOpen] = useState(false);
   const [searchModeFilter, setSearchModeFilter] = useState("All");
   const [searchTimeFilter, setSearchTimeFilter] = useState("All");
+  const [conversationThreadScope, setConversationThreadScope] = useState<
+    "all" | "current"
+  >("all");
   const debouncedQuery = useDebouncedValue(inputQuery, 300);
   const searchQuery = isComposing ? "" : debouncedQuery;
   const searchBoxRef = useRef(null);
@@ -66,6 +74,8 @@ export function DiarySearchBox({
       const nextSearchState = buildSearchResultState(searchQuery, searchRemoteData, {
         modeFilter: searchModeFilter,
         timeFilter: searchTimeFilter,
+        conversationThreadScope,
+        conversationThreadId: selectedThreadId,
         selectedDate,
         limit: 50,
       });
@@ -75,6 +85,8 @@ export function DiarySearchBox({
           query: searchQuery,
           modeFilter: searchModeFilter,
           timeFilter: searchTimeFilter,
+          conversationThreadScope,
+          conversationThreadId: selectedThreadId,
           selectedDate,
           searchDataVersion,
           resultsLength: nextSearchState.results.length,
@@ -89,6 +101,8 @@ export function DiarySearchBox({
       searchQuery,
       searchModeFilter,
       searchTimeFilter,
+      conversationThreadScope,
+      selectedThreadId,
       selectedDate,
       searchDataVersion,
     ],
@@ -206,6 +220,36 @@ export function DiarySearchBox({
                             type="button"
                             onMouseDown={(event) => event.preventDefault()}
                             onClick={() => setSearchTimeFilter(option.value)}
+                          >
+                            {option.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div>
+                    <div
+                      className="text-[8px] uppercase tracking-[0.12em]"
+                      style={{ color: page.color }}
+                    >
+                      对话范围
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {conversationThreadScopeOptions.map((option) => {
+                        const active = option.value === conversationThreadScope;
+
+                        return (
+                          <button
+                            key={option.value}
+                            className="border px-2 py-1 text-[8px] leading-none tracking-[0.08em] transition"
+                            style={{
+                              borderColor: active ? page.color : page.line,
+                              color: active ? page.color : "rgba(0,0,0,0.5)",
+                              background: active ? `${page.color}10` : "transparent",
+                            }}
+                            type="button"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => setConversationThreadScope(option.value)}
                           >
                             {option.label}
                           </button>

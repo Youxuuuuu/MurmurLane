@@ -10,6 +10,8 @@ export interface SearchField {
 export interface SearchFilters {
   modeFilter?: string;
   timeFilter?: string;
+  conversationThreadScope?: "all" | "current";
+  conversationThreadId?: string | null;
 }
 
 export interface SearchResult {

@@ -243,6 +243,8 @@ export function buildSearchResultState(
   {
     modeFilter = "All",
     timeFilter = "All",
+    conversationThreadScope = "all",
+    conversationThreadId = null,
     selectedDate = getTodayDateText(),
     limit = 50,
   }: SearchFilters & { selectedDate?: string; limit?: number } = {},
@@ -370,6 +372,14 @@ export function buildSearchResultState(
       : 0;
 
     conversationDocsResult.documents.forEach((doc) => {
+      if (
+        conversationThreadScope === "current" &&
+        conversationThreadId &&
+        doc.threadId !== conversationThreadId
+      ) {
+        return;
+      }
+
       if (!doc.normalizedHaystack.includes(normalizedQuery)) return;
 
       conversationPerf.precheckHitCount += 1;

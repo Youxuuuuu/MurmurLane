@@ -817,6 +817,7 @@ export default function InsDiaryPrototype() {
                 <DiarySearchBox
                   page={page}
                   selectedDate={selectedDate}
+                  selectedThreadId={selectedThreadId}
                   onSearchQueryChange={setSearchQuery}
                   searchRemoteData={remoteData}
                   searchDataVersion={searchDataVersion}
