@@ -54,15 +54,11 @@ import {
 import {
   buildTimelinePage,
   getTimelineDay,
-  getTimelineStateSource,
-  timelineCategories,
 } from "./lib/timelinePageData";
 import {
   MIN_TIMELINE_EVENT_HEIGHT,
-  getEventDurationMinutes,
   getTimelineEventHeight,
   getTimelineRange,
-  minutesToClock,
   toMinutes,
 } from "./lib/timeline";
 import {
@@ -70,7 +66,6 @@ import {
 } from "./lib/search";
 import { buildSearchResultState } from "./lib/searchPageData";
 import { PaperTexture } from "./components/common/PaperTexture";
-import { TinyIcon } from "./components/common/TinyIcon";
 import { CalendarStrip } from "./components/calendar/CalendarStrip";
 import { DatePickerModal } from "./components/calendar/DatePickerModal";
 import { DirectoryPage } from "./components/archive/DirectoryPage";
@@ -1283,6 +1278,7 @@ export default function InsDiaryPrototype() {
                     onSelectStatsPeriod={setStatsPeriod}
                     onOpenDatePicker={() => setDatePickerOpen(true)}
                     onMonthSelect={handleSelectMonth}
+                    scrollHitIntoView={scrollHitIntoView}
                   />
                 ) : activeSection === "Xiaoye" ? (
                   <XiaoyePage
