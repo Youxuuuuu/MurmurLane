@@ -48,7 +48,6 @@ import { TimelinePage } from "./components/timeline/TimelinePage";
 import { XiaoyePage } from "./components/xiaoye/XiaoyePage";
 import { AppScrollbarStyle } from "./components/layout/AppScrollbarStyle";
 import { BottomNav } from "./components/layout/BottomNav";
-import { PageBottomMark } from "./components/layout/PageBottomMark";
 import { SwipeDateArea } from "./components/layout/SwipeDateArea";
 import { DiarySearchBox } from "./components/search/DiarySearchBox";
 import { ChapterTabs } from "./components/controls/ChapterTabs";
@@ -103,13 +102,7 @@ export default function InsDiaryPrototype() {
     dailySummary: {},
     letters: {},
   });
-  const [remoteSearchLoading, setRemoteSearchLoading] = useState(false);
-  const [remoteSearchError, setRemoteSearchError] = useState({});
   const [searchQuery, setSearchQuery] = useState("");
-  const [remoteLoading, setRemoteLoading] = useState({
-    bootstrap: false,
-    dated: false,
-  });
   const [remoteError, setRemoteError] = useState({});
   const threadSelectionTouchedRef = useRef(false);
   const searchPendingRef = useRef({
@@ -237,8 +230,6 @@ export default function InsDiaryPrototype() {
     let cancelled = false;
 
     const loadBootstrapData = async () => {
-      setRemoteLoading((current) => ({ ...current, bootstrap: true }));
-
       const staticRequests = [
         ["Project", staticModeApiMap.Project],
         ["Preference", staticModeApiMap.Preference],
@@ -380,8 +371,6 @@ export default function InsDiaryPrototype() {
           ...nextXiaoyeEntries,
         }));
       }
-
-      setRemoteLoading((current) => ({ ...current, bootstrap: false }));
     };
 
     loadBootstrapData();
@@ -396,8 +385,6 @@ export default function InsDiaryPrototype() {
     const dotDate = toDotDate(selectedDate);
 
     const loadDatedData = async () => {
-      setRemoteLoading((current) => ({ ...current, dated: true }));
-
       const [
         conversationsResult,
         diaryResult,
@@ -486,8 +473,6 @@ export default function InsDiaryPrototype() {
           }));
         }
       });
-
-      setRemoteLoading((current) => ({ ...current, dated: false }));
     };
 
     loadDatedData();
@@ -501,7 +486,6 @@ export default function InsDiaryPrototype() {
     const normalizedQuery = String(searchQuery ?? "").trim();
 
     if (!normalizedQuery || !remoteDateIndexState) {
-      setRemoteSearchLoading(false);
       return;
     }
 
@@ -571,12 +555,10 @@ export default function InsDiaryPrototype() {
     ];
 
     if (!tasks.length) {
-      setRemoteSearchLoading(false);
       return;
     }
 
     const loadSearchData = async () => {
-      setRemoteSearchLoading(true);
       const concurrency = 4;
       let cursor = 0;
       const pendingSearchCache = {
@@ -613,13 +595,13 @@ export default function InsDiaryPrototype() {
               pendingMissingCache[task.type][task.date] = true;
             }
           } catch (error) {
-            if (!cancelled) {
-              setRemoteSearchError((current) => ({
-                ...current,
-                [`${task.type}:${task.date}`]: String(
-                  error?.message || error,
-                ),
-              }));
+            if (import.meta.env.DEV && !cancelled) {
+              console.debug(
+                "[MurmurLane Debug] remote search task failed",
+                task.type,
+                task.date,
+                error,
+              );
             }
           } finally {
             searchPendingRef.current[task.type].delete(task.date);
@@ -682,7 +664,6 @@ export default function InsDiaryPrototype() {
             },
           }));
         }
-        setRemoteSearchLoading(false);
       }
     };
 
