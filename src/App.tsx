@@ -13,55 +13,34 @@ import {
   fetchXiaoyeStatic,
 } from "./data/api";
 import { staticModeApiMap } from "./config/contentSources";
-import { pageModes, xiaoyeModeMeta, xiaoyeModes } from "./config/pageModes";
+import { xiaoyeModeMeta, xiaoyeModes } from "./config/pageModes";
 import { styleThemes } from "./config/theme";
 import {
-  conversationEntries,
   dailySummaryEntries,
   diaryEntries,
   letterEntries,
-  reminderHistoryEntries,
-  staticModeEntries,
 } from "./data/mockEntries";
-import { timelineState } from "./data/mockTimeline";
-import { emptyRemoteData } from "./data/emptyRemoteData";
 import {
-  buildContentPath,
   changeDateMonth,
-  getDateParts,
   getTodayDateText,
   shiftDate,
   toDotDate,
 } from "./lib/date";
+import { scrollHitIntoView } from "./lib/dom";
 import {
   buildConversationPage,
   defaultConversationThreadId,
   getAllConversationThreadIds,
   getLatestConversationThreadId,
   groupConversationRecordsByThread,
-  hasConversationForDate,
 } from "./lib/conversationPageData";
 import {
   buildMemoryPage,
   buildXiaoyePage,
   getRemoteDatedEntriesSource,
   getRemoteEntryByDate,
-  hasDatedEntry,
 } from "./lib/memoryPageData";
-import {
-  buildTimelinePage,
-  getTimelineDay,
-} from "./lib/timelinePageData";
-import {
-  MIN_TIMELINE_EVENT_HEIGHT,
-  getTimelineEventHeight,
-  getTimelineRange,
-  toMinutes,
-} from "./lib/timeline";
-import {
-  normalizeSearchText,
-} from "./lib/search";
-import { buildSearchResultState } from "./lib/searchPageData";
+import { buildTimelinePage } from "./lib/timelinePageData";
 import { DatePickerModal } from "./components/calendar/DatePickerModal";
 import { DirectoryPage } from "./components/archive/DirectoryPage";
 import { ConversationPage } from "./components/conversation/ConversationPage";
@@ -77,98 +56,7 @@ import { ThreadSwitch } from "./components/controls/ThreadSwitch";
 import { TimelineModeSwitch } from "./components/controls/TimelineModeSwitch";
 import { TopModeSwitch } from "./components/controls/TopModeSwitch";
 import { XiaoyeModeSwitch } from "./components/controls/XiaoyeModeSwitch";
-const BLANK_TITLE = `${String.fromCharCode(0x0295)}  ${String.fromCharCode(0x2022)}${String.fromCharCode(0x058a)} ${String.fromCharCode(0x2022)}${String.fromCharCode(0x0294)}…… ${String.fromCharCode(0xa9de)}`;
-
-function scrollHitIntoView(targetId) {
-  const target = document.getElementById(`hit-${targetId}`);
-
-  if (!target) return;
-
-  const scrollBox = target.closest(".diary-scroll");
-
-  if (scrollBox) {
-    const boxRect = scrollBox.getBoundingClientRect();
-    const targetRect = target.getBoundingClientRect();
-    const targetTop =
-      targetRect.top - boxRect.top + scrollBox.scrollTop;
-
-    scrollBox.scrollTop = Math.max(
-      0,
-      targetTop - scrollBox.clientHeight / 2 + targetRect.height / 2,
-    );
-    return;
-  }
-
-  target.scrollIntoView({ block: "center" });
-}
-function validateTimelineData() {
-  const events = getTimelineDay("2026.04.25").events;
-  const range = getTimelineRange(events);
-  const shortEvent = events.find(
-    (event) => event.id === "sky_daily_20260425_0000",
-  );
-  const longEvent = events.find(
-    (event) => event.id === "ear_care_20260425_1725",
-  );
-  return (
-    events.length >= 5 &&
-    range.startHour === 0 &&
-    range.endHour === 24 &&
-    toMinutes("2026-04-24T16:00:00.000Z") === 0 &&
-    shortEvent &&
-    longEvent &&
-    getTimelineEventHeight(shortEvent, range) === MIN_TIMELINE_EVENT_HEIGHT &&
-    getTimelineEventHeight(longEvent, range) >
-      getTimelineEventHeight(shortEvent, range) &&
-    hasDatedEntry("2026.04.28", "Timeline", emptyRemoteData, {
-      hasConversationForDate,
-      getTimelineDay,
-    }) === true &&
-    buildSearchResultState("有声小说").results.some(
-      (result) => result.mode === "Timeline",
-    )
-  );
-}
-function validateConversationData() {
-  const allMessages = Object.values(conversationEntries).flatMap((threads) =>
-    Object.values(threads).flat(),
-  );
-  return (
-    allMessages.every(
-      (message) => message.type !== "voice" && message.type !== "payment",
-    ) &&
-    allMessages.some(
-      (message) =>
-        message.type === "file" && String(message.fileName).endsWith(".md"),
-    ) &&
-    allMessages.some(
-      (message) =>
-        message.type === "file" && String(message.fileName).endsWith(".txt"),
-    ) &&
-    allMessages.some((message) => message.type === "sticker") &&
-    allMessages
-      .filter((message) => message.type === "quote")
-      .every((message) => message.role === "user") &&
-    buildSearchResultState("日记草稿").results.some(
-      (result) => result.fieldLabel === "文件名",
-    )
-  );
-}
-function validateAppData() {
-  return (
-    styleThemes.length === 4 &&
-    pageModes.length === 8 &&
-    buildContentPath("Letters", "2026.05.14") ===
-      "D:/study/.cyberboss/memory/letters/2026-05-14.md" &&
-    buildContentPath("Timeline", "2026.04.28") ===
-      "D:/study/.cyberboss/timeline/timeline-state.json" &&
-    buildContentPath("Reminders", "2026.04.28") ===
-      "D:/study/.cyberboss/reminder-archive/reminders-history.jsonl" &&
-    normalizeSearchText("a b") === "ab" &&
-    validateTimelineData() &&
-    validateConversationData()
-  );
-}
+import { validateAppData } from "./dev/validateAppData";
 if (import.meta.env.DEV && typeof console !== "undefined")
   console.assert(
     validateAppData(),
@@ -209,6 +97,11 @@ export default function InsDiaryPrototype() {
     dailySummary: {},
     letters: {},
     timeline: {},
+  });
+  const [remoteSearchMissingState, setRemoteSearchMissingState] = useState({
+    diary: {},
+    dailySummary: {},
+    letters: {},
   });
   const [remoteSearchLoading, setRemoteSearchLoading] = useState(false);
   const [remoteSearchError, setRemoteSearchError] = useState({});
@@ -624,18 +517,21 @@ export default function InsDiaryPrototype() {
       Boolean(
         remoteDiaryEntriesState[date] ||
           remoteSearchCacheState.diary[date] ||
+          remoteSearchMissingState.diary[date] ||
           searchPendingRef.current.diary.has(date),
       );
     const isDailySummaryDateCached = (date) =>
       Boolean(
         remoteDailySummaryEntriesState[date] ||
           remoteSearchCacheState.dailySummary[date] ||
+          remoteSearchMissingState.dailySummary[date] ||
           searchPendingRef.current.dailySummary.has(date),
       );
     const isLettersDateCached = (date) =>
       Boolean(
         remoteLetterEntriesState[date] ||
           remoteSearchCacheState.letters[date] ||
+          remoteSearchMissingState.letters[date] ||
           searchPendingRef.current.letters.has(date),
       );
 
@@ -689,6 +585,11 @@ export default function InsDiaryPrototype() {
         dailySummary: {},
         letters: {},
       };
+      const pendingMissingCache = {
+        diary: {},
+        dailySummary: {},
+        letters: {},
+      };
 
       const runTask = async () => {
         while (!cancelled && cursor < tasks.length) {
@@ -708,6 +609,8 @@ export default function InsDiaryPrototype() {
               }
             } else if (result?.found === true && result?.entry) {
               pendingSearchCache[task.type][task.date] = result.entry;
+            } else if (result?.found === false) {
+              pendingMissingCache[task.type][task.date] = true;
             }
           } catch (error) {
             if (!cancelled) {
@@ -736,6 +639,10 @@ export default function InsDiaryPrototype() {
           Object.keys(pendingSearchCache.diary).length > 0 ||
           Object.keys(pendingSearchCache.dailySummary).length > 0 ||
           Object.keys(pendingSearchCache.letters).length > 0;
+        const hasPendingMissingCache =
+          Object.keys(pendingMissingCache.diary).length > 0 ||
+          Object.keys(pendingMissingCache.dailySummary).length > 0 ||
+          Object.keys(pendingMissingCache.letters).length > 0;
 
         if (hasPendingSearchCache) {
           setRemoteSearchCacheState((current) => ({
@@ -758,6 +665,23 @@ export default function InsDiaryPrototype() {
             },
           }));
         }
+        if (hasPendingMissingCache) {
+          setRemoteSearchMissingState((current) => ({
+            ...current,
+            diary: {
+              ...current.diary,
+              ...pendingMissingCache.diary,
+            },
+            dailySummary: {
+              ...current.dailySummary,
+              ...pendingMissingCache.dailySummary,
+            },
+            letters: {
+              ...current.letters,
+              ...pendingMissingCache.letters,
+            },
+          }));
+        }
         setRemoteSearchLoading(false);
       }
     };
@@ -775,6 +699,7 @@ export default function InsDiaryPrototype() {
     remoteDailySummaryEntriesState,
     remoteLetterEntriesState,
     remoteSearchCacheState,
+    remoteSearchMissingState,
   ]);
 
   const searchDataVersion = useMemo(
