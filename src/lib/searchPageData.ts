@@ -60,6 +60,11 @@ type ConversationSearchDocumentCacheEntry = {
   visibleRecordsCount: number;
 };
 
+type ConversationSearchDocumentCacheBucket = {
+  all?: ConversationSearchDocumentCacheEntry;
+  byThread: Map<string, ConversationSearchDocumentCacheEntry>;
+};
+
 type ConversationSearchDocumentResult = ConversationSearchDocumentCacheEntry & {
   cacheHit: boolean;
   getThreadIdsMs: number;
@@ -73,30 +78,37 @@ type ConversationSearchDocumentResult = ConversationSearchDocumentCacheEntry & {
 
 const conversationSearchDocumentCache = new WeakMap<
   object,
-  ConversationSearchDocumentCacheEntry
+  ConversationSearchDocumentCacheBucket
 >();
 
-function getConversationSearchDocuments(
+function getConversationCacheBucket(
   remoteData: RemoteData = emptyRemoteData,
-  perfEnabled = false,
-): ConversationSearchDocumentResult {
+): ConversationSearchDocumentCacheBucket {
   const cacheKey = remoteData as object;
   const cached = conversationSearchDocumentCache.get(cacheKey);
 
-  if (cached) {
-    return {
-      ...cached,
-      cacheHit: true,
-      getThreadIdsMs: 0,
-      getRecordsMs: 0,
-      shouldHideMs: 0,
-      displayTextMs: 0,
-      quoteTextMs: 0,
-      mediaTextMs: 0,
-      precheckNormalizeMs: 0,
-    };
-  }
+  if (cached) return cached;
 
+  const nextBucket: ConversationSearchDocumentCacheBucket = {
+    all: undefined,
+    byThread: new Map(),
+  };
+  conversationSearchDocumentCache.set(cacheKey, nextBucket);
+  return nextBucket;
+}
+
+function buildConversationSearchDocumentEntry(
+  remoteData: RemoteData = emptyRemoteData,
+  {
+    conversationThreadScope = "all",
+    conversationThreadId = null,
+    perfEnabled = false,
+  }: {
+    conversationThreadScope?: "all" | "current";
+    conversationThreadId?: string | null;
+    perfEnabled?: boolean;
+  } = {},
+): ConversationSearchDocumentResult {
   const allConversationDates = Array.from(
     new Set([
       ...Object.keys(conversationEntries),
@@ -115,13 +127,20 @@ function getConversationSearchDocuments(
   let quoteTextMs = 0;
   let mediaTextMs = 0;
   let precheckNormalizeMs = 0;
+  const useCurrentThreadOnly =
+    conversationThreadScope === "current" && Boolean(conversationThreadId);
 
   allConversationDates.forEach((date) => {
-    const getThreadIdsStart = perfEnabled ? performance.now() : 0;
-    const threadIds = getConversationThreadIdsForDate(date, remoteData);
-    if (perfEnabled) {
-      getThreadIdsMs += performance.now() - getThreadIdsStart;
-    }
+    const threadIds = useCurrentThreadOnly
+      ? [conversationThreadId as string]
+      : (() => {
+          const getThreadIdsStart = perfEnabled ? performance.now() : 0;
+          const nextThreadIds = getConversationThreadIdsForDate(date, remoteData);
+          if (perfEnabled) {
+            getThreadIdsMs += performance.now() - getThreadIdsStart;
+          }
+          return nextThreadIds;
+        })();
     threadIdsCount += threadIds.length;
 
     threadIds.forEach((threadId) => {
@@ -222,7 +241,6 @@ function getConversationSearchDocuments(
     recordsCount,
     visibleRecordsCount,
   };
-  conversationSearchDocumentCache.set(cacheKey, cacheEntry);
 
   return {
     ...cacheEntry,
@@ -235,6 +253,82 @@ function getConversationSearchDocuments(
     mediaTextMs,
     precheckNormalizeMs,
   };
+}
+
+function getConversationSearchDocuments(
+  remoteData: RemoteData = emptyRemoteData,
+  {
+    conversationThreadScope = "all",
+    conversationThreadId = null,
+    perfEnabled = false,
+  }: {
+    conversationThreadScope?: "all" | "current";
+    conversationThreadId?: string | null;
+    perfEnabled?: boolean;
+  } = {},
+): ConversationSearchDocumentResult {
+  const bucket = getConversationCacheBucket(remoteData);
+  const useCurrentThreadOnly =
+    conversationThreadScope === "current" && Boolean(conversationThreadId);
+
+  if (useCurrentThreadOnly) {
+    const cached = bucket.byThread.get(conversationThreadId as string);
+    if (cached) {
+      return {
+        ...cached,
+        cacheHit: true,
+        getThreadIdsMs: 0,
+        getRecordsMs: 0,
+        shouldHideMs: 0,
+        displayTextMs: 0,
+        quoteTextMs: 0,
+        mediaTextMs: 0,
+        precheckNormalizeMs: 0,
+      };
+    }
+
+    const nextEntry = buildConversationSearchDocumentEntry(remoteData, {
+      conversationThreadScope,
+      conversationThreadId,
+      perfEnabled,
+    });
+    bucket.byThread.set(conversationThreadId as string, {
+      documents: nextEntry.documents,
+      datesCount: nextEntry.datesCount,
+      threadIdsCount: nextEntry.threadIdsCount,
+      recordsCount: nextEntry.recordsCount,
+      visibleRecordsCount: nextEntry.visibleRecordsCount,
+    });
+    return nextEntry;
+  }
+
+  if (bucket.all) {
+    return {
+      ...bucket.all,
+      cacheHit: true,
+      getThreadIdsMs: 0,
+      getRecordsMs: 0,
+      shouldHideMs: 0,
+      displayTextMs: 0,
+      quoteTextMs: 0,
+      mediaTextMs: 0,
+      precheckNormalizeMs: 0,
+    };
+  }
+
+  const nextEntry = buildConversationSearchDocumentEntry(remoteData, {
+    conversationThreadScope: "all",
+    conversationThreadId: null,
+    perfEnabled,
+  });
+  bucket.all = {
+    documents: nextEntry.documents,
+    datesCount: nextEntry.datesCount,
+    threadIdsCount: nextEntry.threadIdsCount,
+    recordsCount: nextEntry.recordsCount,
+    visibleRecordsCount: nextEntry.visibleRecordsCount,
+  };
+  return nextEntry;
 }
 
 export function buildSearchResultState(
@@ -346,7 +440,11 @@ export function buildSearchResultState(
   measureSearchBlock("Conversation", () => {
     const conversationDocsResult = getConversationSearchDocuments(
       remoteData,
-      perfEnabled,
+      {
+        conversationThreadScope,
+        conversationThreadId,
+        perfEnabled,
+      },
     );
     const conversationPerf = {
       datesCount: conversationDocsResult.datesCount,
