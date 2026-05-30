@@ -16,7 +16,6 @@ import { staticModeApiMap } from "./config/contentSources";
 import { xiaoyeModeMeta, xiaoyeModes } from "./config/pageModes";
 import { styleThemes } from "./config/theme";
 import {
-  dailySummaryEntries,
   diaryEntries,
   letterEntries,
 } from "./data/mockEntries";
@@ -56,6 +55,9 @@ import { TimelineModeSwitch } from "./components/controls/TimelineModeSwitch";
 import { TopModeSwitch } from "./components/controls/TopModeSwitch";
 import { XiaoyeModeSwitch } from "./components/controls/XiaoyeModeSwitch";
 import { validateAppData } from "./dev/validateAppData";
+
+const ENABLE_APP_DEBUG_LOG = false;
+
 if (import.meta.env.DEV && typeof console !== "undefined")
   console.assert(
     validateAppData(),
@@ -194,7 +196,7 @@ export default function InsDiaryPrototype() {
         ? "mock"
         : "blank";
 
-    if (import.meta.env.DEV) {
+    if (import.meta.env.DEV && ENABLE_APP_DEBUG_LOG) {
       console.debug("[MurmurLane Debug] remoteDateIndex", remoteDateIndexState);
       console.debug("[MurmurLane Debug] selectedDate", selectedDate);
       console.debug(
