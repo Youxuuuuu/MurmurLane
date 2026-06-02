@@ -72,7 +72,7 @@ const themeIconByStyleId = {
   },
   tree: {
     viewBox: "0 0 1025 1024",
-    path: "M784.16441 645.6c-3.8 3.7-5.5 9-4.6 14.2L835.36441 985c1.8 10.3-6.4 18.7-15.8 18.7-2.5 0-5-0.6-7.5-1.9L520.16441 848.3c-2.3-1.2-4.9-1.8-7.5-1.8s-5.1 0.6-7.5 1.8l-292.1 153.5c-2.5 1.3-5 1.9-7.5 1.9-9.3 0-17.5-8.4-15.8-18.7L245.66441 659.8c0.9-5.2-0.8-10.5-4.6-14.2L4.86441 415.3C-4.63559 406 0.56441 389.9 13.66441 388l326.5-47.5c5.2-0.8 9.7-4 12-8.8l146-295.9c2.9-5.9 8.6-8.9 14.3-8.9s11.4 3 14.3 8.9l146 295.9c2.3 4.7 6.8 8 12 8.8L1011.66441 388c13.1 1.9 18.4 18 8.9 27.3L784.16441 645.6z",
+    path: "M512.001023 857.386308l-3.543709-3.913123c-6.236028-1.168616-10.215666-5.347798-11.968589-9.298783-0.473791-1.065262-0.939395-2.433422-1.191128-4.03899-33.998325-27.125801-188.201359-119.909997-284.491403-176.12123C116.743888 609.785094 65.058738 504.854253 79.201853 396.72865c15.290241-116.765377 107.24556-210.577996 223.63436-228.116441 65.332984-9.846252 135.858224 16.939811 209.16481 79.631642 73.321936-62.698994 143.840012-89.514733 209.16481-79.631642 116.439966 17.553795 208.40347 111.395066 223.641523 228.212632 14.121626 108.221794-37.674041 213.174124-131.937938 267.381723-96.127338 56.116065-250.190179 148.818397-284.165991 175.921685-0.251733 1.612731-0.717338 2.980891-1.191128 4.03899-1.74576 3.949962-5.725398 8.129144-11.961426 9.305947L512.001023 857.386308z",
   },
   cafe: {
     viewBox: "0 0 1024 1024",
@@ -865,7 +865,14 @@ export default function InsDiaryPrototype() {
             className="mb-3 border-b pb-2"
             style={{ borderBottomColor: page.line }}
           >
-            <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2">
+            <div
+              className={`grid items-center gap-1.5 ${
+                activeSection === "Timeline"
+                  ? "grid-cols-[minmax(0,1fr)_auto]"
+                  : "grid-cols-[auto_minmax(0,1fr)_auto]"
+              }`}
+            >
+              {activeSection !== "Timeline" &&(
               <div className="flex min-w-0 items-center gap-0.5 sm:gap-1">
                 {styleThemes.map((item, index) => {
                   const icon = themeIconByStyleId[item.id];
@@ -883,7 +890,8 @@ export default function InsDiaryPrototype() {
                   );
                 })}
               </div>
-              <div className="flex min-w-0 items-center justify-center">
+              )}
+              <div className="flex min-w-0 items-center justify-center overflow-visible">
                 {topToolbarControl}
               </div>
               <div className="flex min-w-0 items-center justify-end">

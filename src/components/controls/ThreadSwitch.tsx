@@ -29,13 +29,13 @@ export function ThreadSwitch({
   const selectedIndex = threadIds.indexOf(selectedThreadId);
   const threadLabel =
     selectedIndex >= 0
-      ? `Thread ${String(selectedIndex + 1).padStart(2, "0")} · ${shortId}`
+      ? `Thread ${String(selectedIndex + 1).padStart(2, "0")} · ${selectedThreadId.slice(32, 36)}`
       : shortId;
 
   return (
-    <div className="relative z-40 w-full max-w-[140px] font-mono sm:max-w-[176px]">
+    <div className="relative z-40 w-full max-w-[126px] font-mono sm:max-w-[148px]">
       <button
-        className="flex w-full min-w-0 items-center justify-between gap-2 border px-2.5 py-1.5 text-[8px] uppercase leading-none tracking-[0.08em]"
+        className="flex w-full min-w-0 items-center justify-between gap-1.5 border px-2 py-1.5 text-[8px] uppercase leading-none tracking-[0.06em]"
         style={{
           color: page.color,
           borderColor: page.color,
@@ -52,13 +52,14 @@ export function ThreadSwitch({
       </button>
       <AnimatePresence>
         {open && (
-          <motion.div
-            className="absolute right-0 top-[calc(100%+6px)] w-[220px] max-w-[calc(100vw-48px)] border bg-[#f4f0e8] p-1"
-            style={{ borderColor: page.line }}
-            initial={{ opacity: 0, y: -4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4 }}
-          >
+          <div className="absolute left-1/2 top-[calc(100%+6px)] z-[999] w-[210px] max-w-[calc(100vw-48px)] -translate-x-1/2">
+            <motion.div
+              className="border bg-[#f4f0e8] p-1"
+              style={{ borderColor: page.line }}
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+            >
             {threadIds.map((threadId) => (
               <button
                 key={threadId}
@@ -83,6 +84,7 @@ export function ThreadSwitch({
               </button>
             ))}
           </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>

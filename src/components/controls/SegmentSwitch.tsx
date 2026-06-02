@@ -7,24 +7,30 @@ export function SegmentSwitch({
 }) {
   return (
     <div
-      className={`inline-flex min-w-0 items-center gap-0.5 font-mono text-[9px] uppercase tracking-[0.08em] sm:gap-1 ${className}`}
+      className={`grid min-w-0 overflow-hidden border font-mono text-[9px] uppercase tracking-[0.08em] ${className}`}
+      style={{
+        gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))`,
+        borderColor: page.line,
+        background: "rgba(255,255,255,.18)",
+      }}
     >
-      {items.map((item) => {
+      {items.map((item, index) => {
         const active = item.id === selectedId;
+        const isLast = index === items.length - 1;
 
         return (
           <button
             key={item.id}
             type="button"
-            className="min-w-0 whitespace-nowrap border px-2 py-1.5 transition-colors sm:px-3"
+            className="min-w-0 px-3 py-1.5 text-center transition-colors"
             style={{
-              color: active ? page.color : "rgba(0,0,0,.5)",
-              borderColor: active ? page.color : page.line,
-              background: active ? `${page.color}14` : "rgba(255,255,255,.18)",
+              color: active ? page.color : "rgba(0,0,0,.55)",
+              background: active ? `${page.color}14` : "transparent",
+              borderRight: isLast ? "none" : `1px solid ${page.line}`,
             }}
             onClick={() => onSelect(item.id)}
           >
-            {item.label}
+            <span className="block truncate">{item.label}</span>
           </button>
         );
       })}

@@ -124,11 +124,11 @@ export function DiarySearchBox({
   return (
     <div
       ref={searchBoxRef}
-      className="relative z-50 w-[146px] font-mono sm:w-[170px]"
+      className="relative z-50 w-[116px] font-mono sm:w-[136px]"
     >
       <div className="flex items-stretch gap-1">
         <button
-          className="shrink-0 border bg-white/30 px-2.5 text-[8px] uppercase tracking-[0.12em] text-black/55 transition hover:bg-white/45"
+          className="shrink-0 border bg-white/30 px-2 text-[8px] uppercase tracking-[0.12em] text-black/55 transition hover:bg-white/45"
           style={{
             borderColor: searchFilterOpen ? page.color : page.line,
             color: searchFilterOpen ? page.color : "rgba(0,0,0,.55)",
