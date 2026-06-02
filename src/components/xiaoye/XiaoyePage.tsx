@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { motion } from "framer-motion";
 import { CalendarStrip } from "../calendar/CalendarStrip";
 import { PaperTexture } from "../common/PaperTexture";
-import { TinyIcon } from "../common/TinyIcon";
+import { PageBottomMark } from "../layout/PageBottomMark";
 import { ContinuousStaticMemoryContent } from "../archive/MemoryContent";
 import { XiaoyeModeSwitch } from "../controls/XiaoyeModeSwitch";
 
@@ -60,26 +60,20 @@ export function XiaoyePage({
             />
           </div>
           {page.hasEntry ? (
-            <div className="diary-scroll relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-8 pt-2">
-              <ContinuousStaticMemoryContent
-                page={page}
-                highlightResult={highlightResult}
-              />
-              <div className="mt-10 flex justify-end pb-2 pr-1 opacity-70">
-                <div className="scale-75">
-                  <TinyIcon color={page.color} />
-                </div>
+            <div className="diary-scroll relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-4 pt-1">
+              <div className="flex min-h-full flex-col">
+                <ContinuousStaticMemoryContent page={page} highlightResult={highlightResult} />
+                <PageBottomMark page={page} />
               </div>
             </div>
           ) : (
-            <div className="diary-scroll relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-8 pt-3">
-              <p className="whitespace-nowrap font-serif text-[11px] leading-none text-black/48">
-                {page.blankText}
-              </p>
-              <div className="mt-10 flex justify-end pb-2 pr-1 opacity-70">
-                <div className="scale-75">
-                  <TinyIcon color={page.color} />
-                </div>
+            <div className="diary-scroll relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-4 pt-1">
+              <div className="flex min-h-full flex-col">
+                <p className="text-[11px] leading-7 tracking-[0.08em] text-[#8f877b]">
+                  {page.blankText}
+                </p>
+
+                <PageBottomMark page={page} />
               </div>
             </div>
           )}

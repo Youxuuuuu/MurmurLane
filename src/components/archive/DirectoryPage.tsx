@@ -79,15 +79,19 @@ export function DirectoryPage({
             </div>
             {page.hasEntry ? (
               <div className="diary-scroll relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-8 pt-2">
-                <MemoryContent page={page} highlightResult={highlightResult} />
-                <PageBottomMark page={page} />
+                <div className="flex min-h-full flex-col">
+                  <MemoryContent page={page} highlightResult={highlightResult} />
+                  <PageBottomMark page={page} />
+                </div>
               </div>
             ) : (
               <div className="diary-scroll relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-8 pt-3">
-                <p className="whitespace-nowrap font-serif text-[11px] leading-none text-black/48">
-                  {page.blankText}
-                </p>
-                <PageBottomMark page={page} />
+                <div className="flex min-h-full flex-col">
+                  <p className="whitespace-nowrap font-serif text-[11px] leading-none text-black/48">
+                    {page.blankText}
+                  </p>
+                  <PageBottomMark page={page} />
+                </div>
               </div>
             )}
           </article>

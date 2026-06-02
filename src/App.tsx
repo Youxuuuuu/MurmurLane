@@ -923,7 +923,7 @@ export default function InsDiaryPrototype() {
             </div>
           </header>
           
-          <div className="mt-3 flex min-h-0 flex-1 flex-col pb-8">
+          <div className="mt-1 flex min-h-0 flex-1 flex-col pb-0.6">
             <SwipeDateArea onSwipeDate={handleSwipeDate}>
               <AnimatePresence mode="wait">
                 {activeSection === "Conversation" ? (
