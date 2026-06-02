@@ -3,14 +3,13 @@ export function BottomNav({ activeSection, onSelectSection, page }) {
     { id: "Conversation", label: "对话" },
     { id: "Timeline", label: "时间轴" },
     { id: "Archive", label: "回忆" },
-    { id: "Xiaoye", label: "小叶" },
   ];
   return (
     <nav
       className="z-30 shrink-0 border-t bg-[#eeeae1]/95 px-3 py-3 pb-[calc(12px+env(safe-area-inset-bottom))] backdrop-blur"
       style={{ borderColor: page.line }}
     >
-      <div className="grid grid-cols-4 gap-2 font-mono text-[10px] uppercase tracking-[0.12em]">
+      <div className="grid grid-cols-3 gap-2 font-mono text-[10px] uppercase tracking-[0.12em]">
         {items.map((item) => (
           <button
             key={item.id}

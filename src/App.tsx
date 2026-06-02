@@ -49,8 +49,9 @@ import { AppScrollbarStyle } from "./components/layout/AppScrollbarStyle";
 import { BottomNav } from "./components/layout/BottomNav";
 import { SwipeDateArea } from "./components/layout/SwipeDateArea";
 import { DiarySearchBox } from "./components/search/DiarySearchBox";
-import { ChapterTabs } from "./components/controls/ChapterTabs";
+import { SegmentSwitch } from "./components/controls/SegmentSwitch";
 import { ThreadSwitch } from "./components/controls/ThreadSwitch";
+import { ThemeIconButton } from "./components/controls/ThemeIconButton";
 import { TimelineModeSwitch } from "./components/controls/TimelineModeSwitch";
 import { TopModeSwitch } from "./components/controls/TopModeSwitch";
 import { XiaoyeModeSwitch } from "./components/controls/XiaoyeModeSwitch";
@@ -63,6 +64,30 @@ if (import.meta.env.DEV && typeof console !== "undefined")
     validateAppData(),
     "Prototype data and timeline layout should be valid.",
   );
+
+const themeIconByStyleId = {
+  plant: {
+    viewBox: "0 0 1024 1024",
+    path: "M962 416.5l-309-53.8-130.8-285-146.7 277.2L64 391.3l218.4 225.1-61.7 307.5 281.6-138 273.4 153.7-44.3-310.5z",
+  },
+  tree: {
+    viewBox: "0 0 1025 1024",
+    path: "M784.16441 645.6c-3.8 3.7-5.5 9-4.6 14.2L835.36441 985c1.8 10.3-6.4 18.7-15.8 18.7-2.5 0-5-0.6-7.5-1.9L520.16441 848.3c-2.3-1.2-4.9-1.8-7.5-1.8s-5.1 0.6-7.5 1.8l-292.1 153.5c-2.5 1.3-5 1.9-7.5 1.9-9.3 0-17.5-8.4-15.8-18.7L245.66441 659.8c0.9-5.2-0.8-10.5-4.6-14.2L4.86441 415.3C-4.63559 406 0.56441 389.9 13.66441 388l326.5-47.5c5.2-0.8 9.7-4 12-8.8l146-295.9c2.9-5.9 8.6-8.9 14.3-8.9s11.4 3 14.3 8.9l146 295.9c2.3 4.7 6.8 8 12 8.8L1011.66441 388c13.1 1.9 18.4 18 8.9 27.3L784.16441 645.6z",
+  },
+  cafe: {
+    viewBox: "0 0 1024 1024",
+    path: "M485.12 956.928c197.312 0 357.184-147.328 357.184-328.96 0-121.152-119.04-309.12-357.12-563.968C247.04 318.784 128 506.88 128 627.904c0 181.76 159.872 328.96 357.12 328.96z",
+  },
+  flower: {
+    viewBox: "0 0 1024 1024",
+    path: "M508.57 127.613l355.79 368.179-368.18 355.789L140.392 483.4 508.57 127.614z",
+  },
+};
+
+const archiveSubjectItems = [
+  { id: "Me", label: "我" },
+  { id: "Xiaoye", label: "小叶" },
+];
 
 export default function InsDiaryPrototype() {
   const [selectedStyleId, setSelectedStyleId] = useState("cafe");
@@ -77,6 +102,7 @@ export default function InsDiaryPrototype() {
   const [statsPeriod, setStatsPeriod] = useState("day");
   const [highlightResult, setHighlightResult] = useState(null);
   const [diaryShareOpen, setDiaryShareOpen] = useState(false);
+  const [archiveSubject, setArchiveSubject] = useState("Me");
   const [selectedXiaoyeMode, setSelectedXiaoyeMode] = useState("Ins");
   const [remoteConversationsState, setRemoteConversationsState] = useState({});
   const [remoteTimelineStateValue, setRemoteTimelineStateValue] = useState({});
@@ -723,6 +749,9 @@ export default function InsDiaryPrototype() {
     () => styleThemes.find((item) => item.id === "cafe") ?? styleThemes[0],
     [],
   );
+  const archiveShowsXiaoye =
+    activeSection === "Xiaoye" ||
+    (activeSection === "Archive" && archiveSubject === "Xiaoye");
   const page = useMemo(() => {
     if (activeSection === "Conversation")
       return buildConversationPage(
@@ -733,7 +762,7 @@ export default function InsDiaryPrototype() {
       );
     if (activeSection === "Timeline")
       return buildTimelinePage(timelineStyleTheme, selectedDate, remoteData);
-    if (activeSection === "Xiaoye")
+    if (archiveShowsXiaoye)
       return buildXiaoyePage(
         styleTheme,
         selectedDate,
@@ -748,6 +777,7 @@ export default function InsDiaryPrototype() {
     selectedMode,
     selectedXiaoyeMode,
     activeSection,
+    archiveSubject,
     selectedThreadId,
     remoteConversationsState,
     remoteTimelineStateValue,
@@ -775,6 +805,42 @@ export default function InsDiaryPrototype() {
   };
   const isValidDotDate = (value) =>
     /^\d{4}\.\d{2}\.\d{2}$/.test(String(value ?? ""));
+  const topToolbarControl =
+    activeSection === "Conversation" ? (
+      <ThreadSwitch
+        page={page}
+        selectedThreadId={selectedThreadId}
+        onSelectThread={handleSelectThread}
+        threadIds={availableThreadIds}
+      />
+    ) : activeSection === "Timeline" ? (
+      <TimelineModeSwitch
+        page={page}
+        selectedView={timelineView}
+        onSelectView={setTimelineView}
+      />
+    ) : (
+      <SegmentSwitch
+        page={page}
+        items={archiveSubjectItems}
+        selectedId={archiveSubject}
+        onSelect={setArchiveSubject}
+      />
+    );
+  const archiveModeControl =
+    activeSection === "Archive" && archiveSubject === "Me" ? (
+      <TopModeSwitch
+        page={page}
+        selectedMode={selectedMode}
+        onSelectMode={setSelectedMode}
+      />
+    ) : archiveShowsXiaoye ? (
+      <XiaoyeModeSwitch
+        page={page}
+        selectedXiaoyeMode={selectedXiaoyeMode}
+        onSelectXiaoyeMode={setSelectedXiaoyeMode}
+      />
+    ) : null;
 
   return (
     <div
@@ -791,31 +857,36 @@ export default function InsDiaryPrototype() {
       <AppScrollbarStyle />
       <div className="pointer-events-none fixed inset-0 opacity-[0.24] [background-image:radial-gradient(#6f6a60_0.55px,transparent_0.55px)] [background-size:8px_8px]" />
       <main
-        className="relative mx-auto flex h-[100dvh] w-full max-w-[430px] flex-col overflow-hidden border-x bg-[#eeeae1] px-4 pt-[calc(16px+env(safe-area-inset-top))] sm:h-[852px] sm:w-[393px] sm:border sm:pt-4"
+        className="relative mx-auto flex h-[100dvh] w-full max-w-[430px] flex-col overflow-hidden border-x bg-[#eeeae1] px-4 pt-[calc(12px+env(safe-area-inset-top))] sm:h-[852px] sm:w-[393px] sm:border sm:pt-3.5"
         style={{ borderColor: page.line }}
       >
         <div className="diary-scroll flex-1 overflow-y-auto overflow-x-hidden pb-4">
           <header
-            className="mb-4 border-b pb-3"
+            className="mb-3 border-b pb-2"
             style={{ borderBottomColor: page.line }}
           >
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="font-mono text-[11px] uppercase tracking-[0.32em] text-black/40">
-                  interactive journal archive
-                </div>
-                <h1 className="mt-1 font-serif text-4xl tracking-[0.16em] text-black/75">
-                  {activeSection === "Conversation"
-                    ? "对话"
-                    : activeSection === "Timeline"
-                      ? "时间轴"
-                      : page.modeTitle}
-                </h1>
-                <div className="mt-2 font-mono text-[10px] tracking-[0.16em] text-black/45">
-                  NO RADIUS · PAPER · INS
-                </div>
+            <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2">
+              <div className="flex min-w-0 items-center gap-0.5 sm:gap-1">
+                {styleThemes.map((item, index) => {
+                  const icon = themeIconByStyleId[item.id];
+
+                  return (
+                    <ThemeIconButton
+                      key={item.id}
+                      label={`Theme ${index + 1}`}
+                      viewBox={icon.viewBox}
+                      path={icon.path}
+                      selected={selectedStyleId === item.id}
+                      accentColor={page.color}
+                      onClick={() => setSelectedStyleId(item.id)}
+                    />
+                  );
+                })}
               </div>
-              <div className="flex flex-col items-end gap-2">
+              <div className="flex min-w-0 items-center justify-center">
+                {topToolbarControl}
+              </div>
+              <div className="flex min-w-0 items-center justify-end">
                 <DiarySearchBox
                   page={page}
                   selectedDate={selectedDate}
@@ -831,55 +902,29 @@ export default function InsDiaryPrototype() {
                       setActiveSection("Timeline");
                       setTimelineView(result.timelineView || "line");
                     } else if (result.mode === "Xiaoye") {
-                      setActiveSection("Xiaoye");
+                      setActiveSection("Archive");
+                      setArchiveSubject("Xiaoye");
                       if (result.xiaoyeMode) {
                         setSelectedXiaoyeMode(result.xiaoyeMode);
                       }
                     } else {
                       setActiveSection("Archive");
+                      setArchiveSubject("Me");
                       setSelectedMode(result.mode);
                     }
                     if (isValidDotDate(result.date)) setSelectedDate(result.date);
                     setHighlightResult(result);
                   }}
                 />
-                {activeSection === "Conversation" ? (
-                  <ThreadSwitch
-                    page={page}
-                    selectedThreadId={selectedThreadId}
-                    onSelectThread={handleSelectThread}
-                    threadIds={availableThreadIds}
-                  />
-                ) : activeSection === "Archive" ? (
-                  <TopModeSwitch
-                    page={page}
-                    selectedMode={selectedMode}
-                    onSelectMode={setSelectedMode}
-                  />
-                ) : activeSection === "Xiaoye" ? (
-                  <XiaoyeModeSwitch
-                    page={page}
-                    selectedXiaoyeMode={selectedXiaoyeMode}
-                    onSelectXiaoyeMode={setSelectedXiaoyeMode}
-                  />
-                ) : null}
               </div>
             </div>
           </header>
-          {activeSection === "Timeline" ? (
-            <TimelineModeSwitch
-              page={page}
-              selectedView={timelineView}
-              onSelectView={setTimelineView}
-            />
-          ) : (
-            <ChapterTabs
-              page={page}
-              selectedStyleId={selectedStyleId}
-              setSelectedStyleId={setSelectedStyleId}
-            />
-          )}
-          <div className="mt-5 pb-8">
+          {archiveModeControl ? (
+            <div className="mb-3 flex items-center justify-start">
+              {archiveModeControl}
+            </div>
+          ) : null}
+          <div className="mt-3 pb-8">
             <SwipeDateArea onSwipeDate={handleSwipeDate}>
               <AnimatePresence mode="wait">
                 {activeSection === "Conversation" ? (
@@ -901,7 +946,7 @@ export default function InsDiaryPrototype() {
                     onMonthSelect={handleSelectMonth}
                     scrollHitIntoView={scrollHitIntoView}
                   />
-                ) : activeSection === "Xiaoye" ? (
+                ) : archiveShowsXiaoye ? (
                   <XiaoyePage
                     page={page}
                     highlightResult={highlightResult}
@@ -917,7 +962,9 @@ export default function InsDiaryPrototype() {
                     onMonthSelect={handleSelectMonth}
                     onOpenShare={() => setDiaryShareOpen(true)}
                     diaryShareOpen={
-                      diaryShareOpen && activeSection === "Archive"
+                      diaryShareOpen &&
+                      activeSection === "Archive" &&
+                      archiveSubject === "Me"
                     }
                     onCloseShare={() => setDiaryShareOpen(false)}
                     scrollHitIntoView={scrollHitIntoView}
@@ -928,7 +975,9 @@ export default function InsDiaryPrototype() {
           </div>
         </div>
         <BottomNav
-          activeSection={activeSection}
+          activeSection={
+            activeSection === "Xiaoye" ? "Archive" : activeSection
+          }
           onSelectSection={setActiveSection}
           page={page}
         />

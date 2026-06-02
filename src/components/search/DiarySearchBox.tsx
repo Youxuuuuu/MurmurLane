@@ -48,22 +48,24 @@ export function DiarySearchBox({
   const debouncedQuery = useDebouncedValue(inputQuery, 300);
   const searchQuery = isComposing ? "" : debouncedQuery;
   const searchBoxRef = useRef(null);
+
   useEffect(() => {
-  const handlePointerDown = (event) => {
-    if (!searchBoxRef.current) return;
+    const handlePointerDown = (event) => {
+      if (!searchBoxRef.current) return;
 
-    if (!searchBoxRef.current.contains(event.target)) {
-      setFocused(false);
-      setSearchFilterOpen(false);
-    }
-  };
+      if (!searchBoxRef.current.contains(event.target)) {
+        setFocused(false);
+        setSearchFilterOpen(false);
+      }
+    };
 
-  document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("pointerdown", handlePointerDown);
 
-  return () => {
-    document.removeEventListener("pointerdown", handlePointerDown);
-  };
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
   }, []);
+
   const searchState = useMemo(
     () => {
       const shouldLog =
@@ -120,11 +122,18 @@ export function DiarySearchBox({
   }, [isComposing, searchQuery, onSearchQueryChange]);
 
   return (
-      <div ref={searchBoxRef} className="relative z-50 w-[174px] font-mono">
+    <div
+      ref={searchBoxRef}
+      className="relative z-50 w-[146px] font-mono sm:w-[170px]"
+    >
       <div className="flex items-stretch gap-1">
         <button
-          className="shrink-0 border bg-white/30 px-2 text-[8px] uppercase tracking-[0.12em] text-black/55 transition hover:bg-white/45"
-          style={{ borderColor: page.line }}
+          className="shrink-0 border bg-white/30 px-2.5 text-[8px] uppercase tracking-[0.12em] text-black/55 transition hover:bg-white/45"
+          style={{
+            borderColor: searchFilterOpen ? page.color : page.line,
+            color: searchFilterOpen ? page.color : "rgba(0,0,0,.55)",
+            background: searchFilterOpen ? `${page.color}10` : "rgba(255,255,255,.3)",
+          }}
           type="button"
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => {
@@ -135,8 +144,11 @@ export function DiarySearchBox({
           筛选
         </button>
         <input
-          className="min-w-0 flex-1 border bg-white/25 px-2.5 py-2 text-[9px] uppercase leading-none tracking-[0.08em] text-black/55 outline-none placeholder:text-black/28"
-          style={{ borderColor: page.line }}
+          className="min-w-0 flex-1 border bg-white/25 px-2.5 py-1.5 text-[9px] uppercase leading-none tracking-[0.08em] text-black/55 outline-none placeholder:text-black/28"
+          style={{
+            borderColor: focused ? page.color : page.line,
+            background: focused ? "rgba(255,255,255,.42)" : "rgba(255,255,255,.25)",
+          }}
           value={inputQuery}
           placeholder="SEARCH"
           onChange={(event) => {
@@ -157,7 +169,7 @@ export function DiarySearchBox({
       <AnimatePresence>
         {showPanel && (
           <motion.div
-            className="absolute right-0 top-[calc(100%+6px)] w-[236px] max-w-[calc(100vw-32px)] border bg-[#f4f0e8] p-2"
+            className="absolute right-0 top-[calc(100%+6px)] w-[236px] max-w-[calc(100vw-32px)] border bg-[#f4f0e8] p-2 sm:w-[248px]"
             style={{ borderColor: page.line }}
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
