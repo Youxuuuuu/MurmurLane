@@ -47,16 +47,15 @@ export function getDiaryShareLongText(page, selectedText = "") {
   const selectedValue = normalizeSelectedShareText(selectedText);
 
   if (selectedValue) {
-    return trimShareText(selectedValue, 760);
+    return selectedValue;
   }
 
   const lineBreak = String.fromCharCode(10);
-  const text = page.sections
-    .map((item) => item.text)
-    .filter(Boolean)
-    .join(lineBreak);
-
-  return text.length > 760 ? `${text.slice(0, 760).trim()}...` : text;
+    return page.sections
+      .map((item) => item.text)
+      .filter(Boolean)
+      .join(lineBreak)
+      .trim();
 }
 
 export function DiaryShareText({ text, className }) {
@@ -226,7 +225,8 @@ export function DiaryShareModal({ page, onClose, selectedText = "" }) {
             </button>
           ))}
         </div>
-        <div ref={shareCardRef}>
+        <div className="max-h-[70vh] overflow-y-auto overflow-x-auto px-2 py-2">
+          <div ref={shareCardRef} className="mx-auto w-fit">
           {shareTemplate === "tag" ? (
             <div className="relative mx-auto w-[286px] bg-[#fbf6ea] px-7 pb-8 pt-10 text-center shadow-[0_16px_42px_rgba(96,69,38,.10)]">
               <PaperTexture mode="warm" />
@@ -244,7 +244,7 @@ export function DiaryShareModal({ page, onClose, selectedText = "" }) {
               </h3>
               <DiaryShareText
                 text={excerpt}
-                className="relative mt-4 text-left font-serif text-[13px] leading-[1.72] tracking-[0.02em] text-black/62"
+                className="relative mt-4 text-left font-serif text-[12px] leading-[1.72] tracking-[0.02em] text-black/62"
               />
               <div
                 className="relative mt-5 font-serif text-[18px] leading-none"
@@ -257,7 +257,7 @@ export function DiaryShareModal({ page, onClose, selectedText = "" }) {
               </div>
             </div>
           ) : shareTemplate === "rain" ? (
-            <div className="relative mx-auto w-[286px] overflow-hidden bg-[#edf3f1] px-7 pb-9 pt-8 text-left shadow-[0_16px_42px_rgba(71,91,86,.12)]">
+            <div className="relative mx-auto w-[486px] overflow-hidden bg-[#edf3f1] px-7 pb-9 pt-8 text-left shadow-[0_16px_42px_rgba(71,91,86,.12)]">
               <PaperTexture mode="light" />
               <div className="pointer-events-none absolute inset-0 opacity-35">
                 {Array.from({ length: 20 }, (_, index) => (
@@ -301,7 +301,7 @@ export function DiaryShareModal({ page, onClose, selectedText = "" }) {
               </div>
             </div>
           ) : (
-            <div className="relative mx-auto w-[286px] overflow-hidden bg-[#f4eee4] px-7 pb-9 pt-8 text-left shadow-[0_16px_42px_rgba(84,65,45,.10)]">
+            <div className="relative w-[620px] min-h-[594px] overflow-visible border border-[#d8cbbb] bg-[#f4eee4] px-10 py-12">
               <PaperTexture mode="warm" />
 
               <div className="relative flex items-start justify-between gap-3">
@@ -317,12 +317,12 @@ export function DiaryShareModal({ page, onClose, selectedText = "" }) {
                   ✎
                 </div>
               </div>
-              <h3 className="relative mt-5 font-serif text-[25px] leading-[1.22] tracking-[0.04em] text-[#705b49]">
+              <h3 className="relative mt-5 font-serif text-[23px] leading-[1.22] tracking-[0.04em] text-[#705b49]">
                 {page.title}
               </h3>
               <DiaryShareText
                 text={longText}
-                className="relative mt-4 font-serif text-[12px] leading-[1.66] tracking-[0.02em] text-black/62"
+                className="relative mt-4 font-serif text-[11px] leading-6 tracking-[0.02em] text-black/62"
               />
               <div className="relative mt-5 flex items-center justify-between gap-3">
                 <span className="font-serif text-[15px] text-[#8a745f]">✧</span>
@@ -333,6 +333,7 @@ export function DiaryShareModal({ page, onClose, selectedText = "" }) {
               </div>
             </div>
           )}
+          </div>
         </div>
         <div className="relative mt-4 grid grid-cols-2 gap-2 font-mono text-[10px] uppercase tracking-[0.12em]">
           <button
