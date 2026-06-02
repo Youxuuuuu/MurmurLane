@@ -144,7 +144,7 @@ export function DiarySearchBox({
           筛选
         </button>
         <input
-          className="min-w-0 flex-1 border bg-white/25 px-2.5 py-1.5 text-[9px] uppercase leading-none tracking-[0.08em] text-black/55 outline-none placeholder:text-black/28"
+          className="min-w-0 flex-1 border bg-white/25 px-2.5 py-2 text-[9px] uppercase leading-none tracking-[0.08em] text-black/55 outline-none placeholder:text-black/28"
           style={{
             borderColor: focused ? page.color : page.line,
             background: focused ? "rgba(255,255,255,.42)" : "rgba(255,255,255,.25)",

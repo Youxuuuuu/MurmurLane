@@ -31,7 +31,7 @@ export function XiaoyePage({
     >
       <PaperTexture mode={page.texture} />
       <div className="relative min-h-[920px]">
-        <div className="absolute right-0 top-0 z-20">
+        <div className="absolute right-0 top-5 z-[30]">
           <XiaoyeModeSwitch
             page={page}
             selectedXiaoyeMode={selectedXiaoyeMode}

@@ -37,7 +37,7 @@ export function DirectoryPage({
       >
         <PaperTexture mode={page.texture} />
         <div className="relative min-h-[920px]">
-          <div className="absolute right-0 top-0 z-20">
+          <div className="absolute right-0 top-5 z-[30]">
             <TopModeSwitch
               page={page}
               selectedMode={selectedMode}
@@ -52,7 +52,7 @@ export function DirectoryPage({
               <div className="mb-1 text-[10px] tracking-[0.22em] text-black/35">
                 {page.mode.toUpperCase()} · {page.mark}
               </div>
-              <h2 className="max-w-[270px] font-serif text-2xl leading-[1.15] tracking-[0.08em] text-black/75">
+              <h2 className="max-w-[200px] font-serif text-2xl leading-[1.15] tracking-[0.08em] text-black/75">
                 {page.title}
               </h2>
             </div>
