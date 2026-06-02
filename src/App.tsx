@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence } from "framer-motion";
 import {
   fetchConversations,
@@ -53,8 +53,6 @@ import { SegmentSwitch } from "./components/controls/SegmentSwitch";
 import { ThreadSwitch } from "./components/controls/ThreadSwitch";
 import { ThemeIconButton } from "./components/controls/ThemeIconButton";
 import { TimelineModeSwitch } from "./components/controls/TimelineModeSwitch";
-import { TopModeSwitch } from "./components/controls/TopModeSwitch";
-import { XiaoyeModeSwitch } from "./components/controls/XiaoyeModeSwitch";
 import { validateAppData } from "./dev/validateAppData";
 
 const ENABLE_APP_DEBUG_LOG = false;
@@ -68,19 +66,19 @@ if (import.meta.env.DEV && typeof console !== "undefined")
 const themeIconByStyleId = {
   plant: {
     viewBox: "0 0 1024 1024",
-    path: "M962 416.5l-309-53.8-130.8-285-146.7 277.2L64 391.3l218.4 225.1-61.7 307.5 281.6-138 273.4 153.7-44.3-310.5z",
+    path: "M450.56 128h61.44v768H450.56zM512 128h61.44v768h-61.44z",
   },
   tree: {
     viewBox: "0 0 1025 1024",
-    path: "M512.001023 857.386308l-3.543709-3.913123c-6.236028-1.168616-10.215666-5.347798-11.968589-9.298783-0.473791-1.065262-0.939395-2.433422-1.191128-4.03899-33.998325-27.125801-188.201359-119.909997-284.491403-176.12123C116.743888 609.785094 65.058738 504.854253 79.201853 396.72865c15.290241-116.765377 107.24556-210.577996 223.63436-228.116441 65.332984-9.846252 135.858224 16.939811 209.16481 79.631642 73.321936-62.698994 143.840012-89.514733 209.16481-79.631642 116.439966 17.553795 208.40347 111.395066 223.641523 228.212632 14.121626 108.221794-37.674041 213.174124-131.937938 267.381723-96.127338 56.116065-250.190179 148.818397-284.165991 175.921685-0.251733 1.612731-0.717338 2.980891-1.191128 4.03899-1.74576 3.949962-5.725398 8.129144-11.961426 9.305947L512.001023 857.386308z",
+    path: "M450.56 128h61.44v768H450.56zM512 128h61.44v768h-61.44z",
   },
   cafe: {
     viewBox: "0 0 1024 1024",
-    path: "M485.12 956.928c197.312 0 357.184-147.328 357.184-328.96 0-121.152-119.04-309.12-357.12-563.968C247.04 318.784 128 506.88 128 627.904c0 181.76 159.872 328.96 357.12 328.96z",
+    path: "M450.56 128h61.44v768H450.56zM512 128h61.44v768h-61.44z",
   },
   flower: {
     viewBox: "0 0 1024 1024",
-    path: "M508.57 127.613l355.79 368.179-368.18 355.789L140.392 483.4 508.57 127.614z",
+    path: "M450.56 128h61.44v768H450.56zM512 128h61.44v768h-61.44z",
   },
 };
 
@@ -197,7 +195,6 @@ export default function InsDiaryPrototype() {
     threadSelectionTouchedRef.current = true;
     setSelectedThreadId(threadId);
   };
-
   useEffect(() => {
     const dotDate = toDotDate(selectedDate);
     const remoteConversationCount = Object.values(
@@ -818,6 +815,7 @@ export default function InsDiaryPrototype() {
         page={page}
         selectedView={timelineView}
         onSelectView={setTimelineView}
+        className="w-[210px]"
       />
     ) : (
       <SegmentSwitch
@@ -827,20 +825,6 @@ export default function InsDiaryPrototype() {
         onSelect={setArchiveSubject}
       />
     );
-  const archiveModeControl =
-    activeSection === "Archive" && archiveSubject === "Me" ? (
-      <TopModeSwitch
-        page={page}
-        selectedMode={selectedMode}
-        onSelectMode={setSelectedMode}
-      />
-    ) : archiveShowsXiaoye ? (
-      <XiaoyeModeSwitch
-        page={page}
-        selectedXiaoyeMode={selectedXiaoyeMode}
-        onSelectXiaoyeMode={setSelectedXiaoyeMode}
-      />
-    ) : null;
 
   return (
     <div
@@ -860,9 +844,15 @@ export default function InsDiaryPrototype() {
         className="relative mx-auto flex h-[100dvh] w-full max-w-[430px] flex-col overflow-hidden border-x bg-[#eeeae1] px-4 pt-[calc(12px+env(safe-area-inset-top))] sm:h-[852px] sm:w-[393px] sm:border sm:pt-3.5"
         style={{ borderColor: page.line }}
       >
-        <div className="diary-scroll flex-1 overflow-y-auto overflow-x-hidden pb-4">
+        
+        <div
+          key={`${activeSection}-${archiveSubject}-${timelineView}`}
+          className={`diary-scroll flex-1 overflow-x-hidden overscroll-contain pb-4 ${
+            activeSection === "Conversation" ? "overflow-hidden" : "overflow-y-auto"
+          }`}
+        >
           <header
-            className="mb-3 border-b pb-2"
+            className="sticky top-0 z-[80] mb-3 border-b bg-[#eeeae1]/95 pb-2 pt-1 backdrop-blur-[2px]"
             style={{ borderBottomColor: page.line }}
           >
             <div
@@ -891,7 +881,11 @@ export default function InsDiaryPrototype() {
                 })}
               </div>
               )}
-              <div className="flex min-w-0 items-center justify-center overflow-visible">
+              <div
+                className={`flex min-w-0 items-center overflow-visible ${
+                  activeSection === "Timeline" ? "justify-start" : "justify-center"
+                }`}
+              >
                 {topToolbarControl}
               </div>
               <div className="flex min-w-0 items-center justify-end">
@@ -927,11 +921,7 @@ export default function InsDiaryPrototype() {
               </div>
             </div>
           </header>
-          {archiveModeControl ? (
-            <div className="mb-3 flex items-center justify-start">
-              {archiveModeControl}
-            </div>
-          ) : null}
+          
           <div className="mt-3 pb-8">
             <SwipeDateArea onSwipeDate={handleSwipeDate}>
               <AnimatePresence mode="wait">
@@ -960,6 +950,8 @@ export default function InsDiaryPrototype() {
                     highlightResult={highlightResult}
                     onOpenDatePicker={() => setDatePickerOpen(true)}
                     onMonthSelect={handleSelectMonth}
+                    onSelectXiaoyeMode={setSelectedXiaoyeMode}
+                    selectedXiaoyeMode={selectedXiaoyeMode}
                     scrollHitIntoView={scrollHitIntoView}
                   />
                 ) : (
@@ -969,6 +961,8 @@ export default function InsDiaryPrototype() {
                     onOpenDatePicker={() => setDatePickerOpen(true)}
                     onMonthSelect={handleSelectMonth}
                     onOpenShare={() => setDiaryShareOpen(true)}
+                    onSelectMode={setSelectedMode}
+                    selectedMode={selectedMode}
                     diaryShareOpen={
                       diaryShareOpen &&
                       activeSection === "Archive" &&

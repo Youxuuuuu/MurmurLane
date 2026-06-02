@@ -25,7 +25,7 @@ export function XiaoyeModeSwitch({ page, selectedXiaoyeMode, onSelectXiaoyeMode 
     xiaoyeModeMeta[selectedXiaoyeMode] ?? xiaoyeModeMeta.Ins;
 
   return (
-    <div className="relative z-40 w-[140px] font-mono sm:w-[160px]">
+    <div className="relative z-40 w-[116px] font-mono sm:w-[140px]">
       <button
         className="flex w-full items-center justify-between gap-2 border px-2.5 py-1.5 text-[9px] uppercase leading-none tracking-[0.1em]"
         style={{

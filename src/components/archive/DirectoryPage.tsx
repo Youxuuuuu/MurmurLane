@@ -5,6 +5,7 @@ import { PaperTexture } from "../common/PaperTexture";
 import { DiaryShareModal } from "./DiaryShareModal";
 import { MemoryContent } from "./MemoryContent";
 import { PageBottomMark } from "../layout/PageBottomMark";
+import { TopModeSwitch } from "../controls/TopModeSwitch";
 
 export function DirectoryPage({
   page,
@@ -12,6 +13,8 @@ export function DirectoryPage({
   onOpenDatePicker,
   onMonthSelect,
   onOpenShare,
+  onSelectMode,
+  selectedMode,
   diaryShareOpen,
   onCloseShare,
   scrollHitIntoView,
@@ -34,11 +37,12 @@ export function DirectoryPage({
       >
         <PaperTexture mode={page.texture} />
         <div className="relative min-h-[920px]">
-          <div
-            className="absolute right-0 top-0 z-10 font-mono text-[18px] tracking-[0.12em]"
-            style={{ color: page.color }}
-          >
-            {page.date.slice(0, 4)}
+          <div className="absolute right-0 top-0 z-20">
+            <TopModeSwitch
+              page={page}
+              selectedMode={selectedMode}
+              onSelectMode={onSelectMode}
+            />
           </div>
           <aside
             id={`hit-${page.mode}-${page.dateBased ? page.date : "static"}-title`}
@@ -48,7 +52,7 @@ export function DirectoryPage({
               <div className="mb-1 text-[10px] tracking-[0.22em] text-black/35">
                 {page.mode.toUpperCase()} · {page.mark}
               </div>
-              <h2 className="max-w-[270px] font-serif text-3xl leading-[1.15] tracking-[0.08em] text-black/75">
+              <h2 className="max-w-[270px] font-serif text-2xl leading-[1.15] tracking-[0.08em] text-black/75">
                 {page.title}
               </h2>
             </div>

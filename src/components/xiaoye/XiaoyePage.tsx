@@ -4,12 +4,15 @@ import { CalendarStrip } from "../calendar/CalendarStrip";
 import { PaperTexture } from "../common/PaperTexture";
 import { TinyIcon } from "../common/TinyIcon";
 import { ContinuousStaticMemoryContent } from "../archive/MemoryContent";
+import { XiaoyeModeSwitch } from "../controls/XiaoyeModeSwitch";
 
 export function XiaoyePage({
   page,
   highlightResult,
   onOpenDatePicker,
   onMonthSelect,
+  onSelectXiaoyeMode,
+  selectedXiaoyeMode,
   scrollHitIntoView,
 }) {
   useEffect(() => {
@@ -28,11 +31,12 @@ export function XiaoyePage({
     >
       <PaperTexture mode={page.texture} />
       <div className="relative min-h-[920px]">
-        <div
-          className="absolute right-0 top-0 z-10 font-mono text-[18px] tracking-[0.12em]"
-          style={{ color: page.color }}
-        >
-          小叶
+        <div className="absolute right-0 top-0 z-20">
+          <XiaoyeModeSwitch
+            page={page}
+            selectedXiaoyeMode={selectedXiaoyeMode}
+            onSelectXiaoyeMode={onSelectXiaoyeMode}
+          />
         </div>
         <aside
           id="hit-Xiaoye-static-title"
@@ -42,7 +46,7 @@ export function XiaoyePage({
             <div className="mb-1 text-[10px] tracking-[0.22em] text-black/35">
               XIAOYE · {page.mark}
             </div>
-            <h2 className="max-w-[270px] font-serif text-3xl leading-[1.15] tracking-[0.08em] text-black/75">
+            <h2 className="max-w-[270px] font-serif text-2xl leading-[1.15] tracking-[0.08em] text-black/75">
               {page.title}
             </h2>
           </div>

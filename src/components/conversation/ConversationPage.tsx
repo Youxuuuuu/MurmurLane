@@ -268,7 +268,7 @@ export function ConversationPage({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
-      className="relative flex h-[640px] flex-col overflow-hidden border bg-[#f7f5ee] p-5"
+      className="relative flex h-[calc(100dvh-142px)] min-h-[360px] flex-col overflow-hidden border bg-[#f7f5ee] p-5 sm:h-[640px]"
       style={{ background: page.paper, borderColor: page.line }}
     >
       <PaperTexture mode={page.texture} />
@@ -282,7 +282,7 @@ export function ConversationPage({
       {page.hasEntry ? (
         <div
           id="conversation-message-scroll"
-          className="diary-scroll relative z-10 min-h-0 flex-1 overflow-y-auto overflow-x-hidden pt-2 pb-5"
+          className="diary-scroll relative z-10 -mx-2 min-h-0 flex-1 overflow-y-auto overflow-x-hidden pt-1 pb-3"
           onScroll={handleConversationScroll}
         >
           {renderedMessages.map((message) => {
