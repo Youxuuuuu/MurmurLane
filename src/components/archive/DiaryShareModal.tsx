@@ -4,7 +4,32 @@ import { toPng } from "html-to-image";
 import { toHyphenDate } from "../../lib/date";
 import { PaperTexture } from "../common/PaperTexture";
 
-export function getDiaryShareExcerpt(page) {
+export function normalizeSelectedShareText(text) {
+  return String(text ?? "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\u00a0/g, " ")
+    .split("\n")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+}
+
+export function trimShareText(text, maxLength) {
+  const value = normalizeSelectedShareText(text);
+
+  if (value.length <= maxLength) return value;
+
+  return `${value.slice(0, maxLength).trim()}...`;
+}
+
+export function getDiaryShareExcerpt(page, selectedText = "") {
+  const selectedValue = normalizeSelectedShareText(selectedText);
+
+  if (selectedValue) {
+    return trimShareText(selectedValue, 170);
+  }
+
   const lineBreak = String.fromCharCode(10);
   const dividerBreak = `${lineBreak}---${lineBreak}`;
   const text = page.sections
@@ -12,17 +37,25 @@ export function getDiaryShareExcerpt(page) {
     .filter(Boolean)
     .join(lineBreak);
   const firstBlock = text.split(dividerBreak)[0]?.trim() || page.excerpt || "";
+
   return firstBlock.length > 170
     ? `${firstBlock.slice(0, 170).trim()}...`
     : firstBlock;
 }
 
-export function getDiaryShareLongText(page) {
+export function getDiaryShareLongText(page, selectedText = "") {
+  const selectedValue = normalizeSelectedShareText(selectedText);
+
+  if (selectedValue) {
+    return trimShareText(selectedValue, 760);
+  }
+
   const lineBreak = String.fromCharCode(10);
   const text = page.sections
     .map((item) => item.text)
     .filter(Boolean)
     .join(lineBreak);
+
   return text.length > 760 ? `${text.slice(0, 760).trim()}...` : text;
 }
 
@@ -78,13 +111,15 @@ export async function createShareImageFile(dataUrl, fileName) {
   return new File([blob], fileName, { type: "image/png" });
 }
 
-export function DiaryShareModal({ page, onClose }) {
+export function DiaryShareModal({ page, onClose, selectedText = "" }) {
   const shareCardRef = useRef(null);
   const [shareTemplate, setShareTemplate] = useState("tag");
   const [saveStatus, setSaveStatus] = useState("idle");
   const [saveMessage, setSaveMessage] = useState("");
-  const excerpt = getDiaryShareExcerpt(page);
-  const longText = getDiaryShareLongText(page);
+  const selectedShareText = normalizeSelectedShareText(selectedText);
+  const excerpt = getDiaryShareExcerpt(page, selectedShareText);
+  const longText = getDiaryShareLongText(page, selectedShareText);
+  const shareModeLabel = page.mode === "Letters" ? "letter" : "diary";
   const shareBackgroundColor =
     shareTemplateBackgrounds[shareTemplate] ?? shareTemplateBackgrounds.tag;
 
@@ -155,7 +190,7 @@ export function DiaryShareModal({ page, onClose }) {
         <PaperTexture mode="warm" />
         <div className="relative mb-3 flex items-center justify-between">
           <div className="font-mono text-[9px] uppercase tracking-[0.18em] text-black/38">
-            share diary
+            share {shareModeLabel}
           </div>
           <button
             className="font-mono text-[10px] uppercase tracking-[0.16em] text-black/45"
@@ -199,7 +234,7 @@ export function DiaryShareModal({ page, onClose }) {
               <div className="absolute left-1/2 top-1 h-px w-24 -translate-x-1/2 rotate-[-8deg] bg-[#9b8064]/45" />
               <div className="absolute left-1/2 top-1 h-px w-24 -translate-x-1/2 rotate-[8deg] bg-[#9b8064]/40" />
               <div className="relative mt-3 font-mono text-[9px] uppercase tracking-[0.18em] text-black/38">
-                {page.date} · diary archive
+                {page.date} · {shareModeLabel} archive
               </div>
               <h3
                 className="relative mt-6 font-serif text-[24px] leading-[1.25] tracking-[0.08em]"
@@ -242,7 +277,7 @@ export function DiaryShareModal({ page, onClose }) {
               <div className="relative flex items-start justify-between gap-4">
                 <div>
                   <div className="font-mono text-[9px] uppercase tracking-[0.18em] text-black/38">
-                    rain diary
+                    rain {shareModeLabel}
                   </div>
                   <div className="mt-1 font-mono text-[9px] tracking-[0.16em] text-black/34">
                     {page.date}

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { CalendarStrip } from "../calendar/CalendarStrip";
 import { PaperTexture } from "../common/PaperTexture";
@@ -19,15 +19,65 @@ export function DirectoryPage({
   onCloseShare,
   scrollHitIntoView,
 }) {
+    const pageRef = useRef(null);
+    const [selectedShareText, setSelectedShareText] = useState("");
+
   useEffect(() => {
     if (!highlightResult || highlightResult.mode !== page.mode) return;
     if (page.dateBased && highlightResult.date !== page.date) return;
     scrollHitIntoView(highlightResult.targetId);
   }, [highlightResult, page.mode, page.date, page.dateBased, scrollHitIntoView]);
 
+    const getSelectedTextInsidePage = () => {
+      const selection = window.getSelection();
+
+      if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+        return "";
+      }
+
+      const root = pageRef.current;
+      const anchorNode = selection.anchorNode;
+      const focusNode = selection.focusNode;
+
+      if (!root || !anchorNode || !focusNode) {
+        return "";
+      }
+
+      if (!root.contains(anchorNode) || !root.contains(focusNode)) {
+        return "";
+      }
+
+      return selection
+        .toString()
+        .replace(/\r\n/g, "\n")
+        .replace(/\u00a0/g, " ")
+        .split("\n")
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .join("\n")
+        .trim();
+    };
+
+    const handleOpenShare = () => {
+      setSelectedShareText(getSelectedTextInsidePage());
+
+      if (onOpenShare) {
+        onOpenShare();
+      }
+    };
+
+    const handleCloseShare = () => {
+      setSelectedShareText("");
+
+      if (onCloseShare) {
+        onCloseShare();
+      }
+    };
+
   return (
     <>
       <motion.section
+        ref={pageRef}
         key={`${page.id}-${page.mode}-${page.date}`}
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
@@ -64,7 +114,7 @@ export function DirectoryPage({
               className="absolute right-0 top-[80px] z-20 border px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em]"
               style={{ borderColor: page.color, color: page.color }}
               type="button"
-              onClick={onOpenShare}
+              onClick={handleOpenShare}
             >
               share
             </button>
@@ -100,7 +150,11 @@ export function DirectoryPage({
       <AnimatePresence>
         {diaryShareOpen &&
           (page.mode === "Diary" || page.mode === "Letters") && (
-          <DiaryShareModal page={page} onClose={onCloseShare} />
+            <DiaryShareModal
+              page={page}
+              selectedText={selectedShareText}
+              onClose={handleCloseShare}
+            />
         )}
       </AnimatePresence>
     </>
