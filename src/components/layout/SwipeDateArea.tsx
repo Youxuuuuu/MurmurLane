@@ -5,6 +5,7 @@ export function SwipeDateArea({ children, onSwipeDate }) {
 
   return (
     <div
+      className="h-full min-h-0"
       style={{ touchAction: "pan-y" }}
       onPointerDown={(event) => {
         gestureRef.current = {

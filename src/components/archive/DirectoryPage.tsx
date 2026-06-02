@@ -32,7 +32,7 @@ export function DirectoryPage({
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -8 }}
-        className="relative flex h-[calc(100dvh-142px)] min-h-[360px] flex-col overflow-hidden border bg-[#f7f5ee] p-5 sm:h-[640px]"
+        className="relative flex h-full min-h-0 flex-col overflow-hidden border bg-[#f7f5ee] p-5"
         style={{ background: page.paper, borderColor: page.line }}
       >
         <PaperTexture mode={page.texture} />
@@ -78,12 +78,12 @@ export function DirectoryPage({
               />
             </div>
             {page.hasEntry ? (
-              <div className="diary-scroll relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-16 pt-2">
+              <div className="diary-scroll relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-8 pt-2">
                 <MemoryContent page={page} highlightResult={highlightResult} />
                 <PageBottomMark page={page} />
               </div>
             ) : (
-              <div className="diary-scroll relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-16 pt-2">
+              <div className="diary-scroll relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-8 pt-3">
                 <p className="whitespace-nowrap font-serif text-[11px] leading-none text-black/48">
                   {page.blankText}
                 </p>

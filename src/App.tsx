@@ -749,6 +749,7 @@ export default function InsDiaryPrototype() {
   const archiveShowsXiaoye =
     activeSection === "Xiaoye" ||
     (activeSection === "Archive" && archiveSubject === "Xiaoye");
+  const shellShouldScroll = activeSection === "Timeline";
   const page = useMemo(() => {
     if (activeSection === "Conversation")
       return buildConversationPage(
@@ -847,8 +848,8 @@ export default function InsDiaryPrototype() {
         
         <div
           key={`${activeSection}-${archiveSubject}-${timelineView}`}
-          className={`diary-scroll flex-1 overflow-x-hidden overscroll-contain pb-4 ${
-            activeSection === "Conversation" ? "overflow-hidden" : "overflow-y-auto"
+          className={`diary-scroll flex min-h-0 flex-1 flex-col overflow-x-hidden overscroll-contain pb-4 ${
+            shellShouldScroll ? "overflow-y-auto" : "overflow-hidden"
           }`}
         >
           <header
@@ -922,7 +923,7 @@ export default function InsDiaryPrototype() {
             </div>
           </header>
           
-          <div className="mt-3 pb-8">
+          <div className="mt-3 flex min-h-0 flex-1 flex-col pb-8">
             <SwipeDateArea onSwipeDate={handleSwipeDate}>
               <AnimatePresence mode="wait">
                 {activeSection === "Conversation" ? (
