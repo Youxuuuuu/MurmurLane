@@ -26,11 +26,11 @@ export function XiaoyePage({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
-      className="relative min-h-[980px] border bg-[#f7f5ee] p-5 pb-10"
+      className="relative flex h-[calc(100dvh-142px)] min-h-[360px] flex-col overflow-hidden border bg-[#f7f5ee] p-5 sm:h-[640px]"
       style={{ background: page.paper, borderColor: page.line }}
     >
       <PaperTexture mode={page.texture} />
-      <div className="relative min-h-[920px]">
+      <div className="relative flex min-h-0 flex-1 flex-col">
         <div className="absolute right-0 top-5 z-[30]">
           <XiaoyeModeSwitch
             page={page}
@@ -51,14 +51,16 @@ export function XiaoyePage({
             </h2>
           </div>
         </aside>
-        <article className="relative min-h-[900px] pt-20">
-          <CalendarStrip
-            page={page}
-            onOpenDatePicker={onOpenDatePicker}
-            onMonthSelect={onMonthSelect}
-          />
+        <article className="relative z-10 flex min-h-0 flex-1 flex-col pt-20">
+          <div className="shrink-0">
+            <CalendarStrip
+              page={page}
+              onOpenDatePicker={onOpenDatePicker}
+              onMonthSelect={onMonthSelect}
+            />
+          </div>
           {page.hasEntry ? (
-            <div className="relative min-h-[780px] pb-16 pt-2">
+            <div className="diary-scroll relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-16 pt-2">
               <ContinuousStaticMemoryContent
                 page={page}
                 highlightResult={highlightResult}
@@ -68,7 +70,7 @@ export function XiaoyePage({
               </div>
             </div>
           ) : (
-            <div className="relative min-h-[780px] pb-16 pt-3">
+            <div className="diary-scroll relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-16 pt-2">
               <p className="whitespace-nowrap font-serif text-[11px] leading-none text-black/48">
                 {page.blankText}
               </p>
