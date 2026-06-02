@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { toPng } from "html-to-image";
 import { toHyphenDate } from "../../lib/date";
@@ -111,7 +111,13 @@ export async function createShareImageFile(dataUrl, fileName) {
 }
 
 export function DiaryShareModal({ page, onClose, selectedText = "" }) {
+  const previewViewportRef = useRef(null);
   const shareCardRef = useRef(null);
+  const [previewScale, setPreviewScale] = useState(1);
+  const [previewSize, setPreviewSize] = useState({
+    width: 0,
+    height: 0,
+  });
   const [shareTemplate, setShareTemplate] = useState("tag");
   const [saveStatus, setSaveStatus] = useState("idle");
   const [saveMessage, setSaveMessage] = useState("");
@@ -121,6 +127,40 @@ export function DiaryShareModal({ page, onClose, selectedText = "" }) {
   const shareModeLabel = page.mode === "Letters" ? "letter" : "diary";
   const shareBackgroundColor =
     shareTemplateBackgrounds[shareTemplate] ?? shareTemplateBackgrounds.tag;
+
+    useEffect(() => {
+    const viewport = previewViewportRef.current;
+    const card = shareCardRef.current;
+
+    if (!viewport || !card) return;
+
+    const updatePreviewScale = () => {
+      const viewportWidth = viewport.clientWidth;
+      const cardWidth = card.scrollWidth;
+      const cardHeight = card.scrollHeight;
+
+      if (!viewportWidth || !cardWidth) return;
+
+      const nextScale = Math.min(1, (viewportWidth - 24) / cardWidth);
+
+      setPreviewScale(nextScale);
+      setPreviewSize({
+        width: cardWidth,
+        height: cardHeight,
+      });
+    };
+
+    updatePreviewScale();
+
+    const resizeObserver = new ResizeObserver(updatePreviewScale);
+
+    resizeObserver.observe(viewport);
+    resizeObserver.observe(card);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [shareTemplate, page.id, page.date, selectedShareText, longText]);
 
   const handleSaveImage = async () => {
     if (!shareCardRef.current) return;
@@ -134,12 +174,23 @@ export function DiaryShareModal({ page, onClose, selectedText = "" }) {
           : window.devicePixelRatio >= 2
             ? 2
             : 2;
-      const dataUrl = await toPng(shareCardRef.current, {
+      const node = shareCardRef.current;
+      const exportWidth = node.scrollWidth;
+      const exportHeight = node.scrollHeight;
+
+      const dataUrl = await toPng(node, {
         pixelRatio,
         cacheBust: true,
         backgroundColor: shareBackgroundColor,
+        width: exportWidth,
+        height: exportHeight,
+        style: {
+          width: `${exportWidth}px`,
+          height: `${exportHeight}px`,
+          overflow: "visible",
+        },
       });
-      const fileName = getShareExportFileName(page, shareTemplate);
+            const fileName = getShareExportFileName(page, shareTemplate);
 
       if (navigator.share && navigator.canShare) {
         const file = await createShareImageFile(dataUrl, fileName);
@@ -225,8 +276,26 @@ export function DiaryShareModal({ page, onClose, selectedText = "" }) {
             </button>
           ))}
         </div>
-        <div className="max-h-[70vh] overflow-y-auto overflow-x-auto px-2 py-2">
-          <div ref={shareCardRef} className="mx-auto w-fit">
+          <div
+        ref={previewViewportRef}
+        className="relative max-h-[68vh] overflow-y-auto overflow-x-hidden px-2 py-2"
+      >
+        <div
+          className="mx-auto"
+          style={{
+            width: previewSize.width ? `${previewSize.width * previewScale}px` : "fit-content",
+            height: previewSize.height ? `${previewSize.height * previewScale}px` : "auto",
+          }}
+        >
+          <div
+            className="origin-top-left"
+            style={{
+              transform: `scale(${previewScale})`,
+              transformOrigin: "top left",
+              width: previewSize.width ? `${previewSize.width}px` : "fit-content",
+            }}
+          >
+      <div ref={shareCardRef} className="w-fit">
           {shareTemplate === "tag" ? (
             <div className="relative mx-auto w-[286px] bg-[#fbf6ea] px-7 pb-8 pt-10 text-center shadow-[0_16px_42px_rgba(96,69,38,.10)]">
               <PaperTexture mode="warm" />
@@ -257,7 +326,7 @@ export function DiaryShareModal({ page, onClose, selectedText = "" }) {
               </div>
             </div>
           ) : shareTemplate === "rain" ? (
-            <div className="relative mx-auto w-[486px] overflow-hidden bg-[#edf3f1] px-7 pb-9 pt-8 text-left shadow-[0_16px_42px_rgba(71,91,86,.12)]">
+            <div className="relative mx-auto w-[386px] overflow-hidden bg-[#edf3f1] px-7 pb-9 pt-8 text-left shadow-[0_16px_42px_rgba(71,91,86,.12)]">
               <PaperTexture mode="light" />
               <div className="pointer-events-none absolute inset-0 opacity-35">
                 {Array.from({ length: 20 }, (_, index) => (
@@ -301,7 +370,7 @@ export function DiaryShareModal({ page, onClose, selectedText = "" }) {
               </div>
             </div>
           ) : (
-            <div className="relative w-[620px] min-h-[594px] overflow-visible border border-[#d8cbbb] bg-[#f4eee4] px-10 py-12">
+            <div className="relative w-[620px] overflow-visible border border-[#d8cbbb] bg-[#f4eee4] px-10 py-12">
               <PaperTexture mode="warm" />
 
               <div className="relative flex items-start justify-between gap-3">
@@ -333,6 +402,8 @@ export function DiaryShareModal({ page, onClose, selectedText = "" }) {
               </div>
             </div>
           )}
+              </div>
+            </div>
           </div>
         </div>
         <div className="relative mt-4 grid grid-cols-2 gap-2 font-mono text-[10px] uppercase tracking-[0.12em]">
