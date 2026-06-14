@@ -58,16 +58,41 @@ export function DirectoryPage({
         .trim();
     };
 
-    const handleOpenShare = () => {
-      setSelectedShareText(getSelectedTextInsidePage());
+    const rememberSelectedShareText = () => {
+    const nextSelectedText = getSelectedTextInsidePage();
 
-      if (onOpenShare) {
-        onOpenShare();
-      }
+    if (nextSelectedText) {
+      setSelectedShareText(nextSelectedText);
+    }
+    };
+    const handleOpenShare = () => {
+    const nextSelectedText = getSelectedTextInsidePage();
+
+    if (nextSelectedText) {
+      setSelectedShareText(nextSelectedText);
+    }
+
+    clearTextSelection();
+
+    if (onOpenShare) {
+      onOpenShare();
+    }
+    };
+    const clearTextSelection = () => {
+    const selection = window.getSelection();
+
+    if (selection) {
+      selection.removeAllRanges();
+    }
+
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
     };
 
     const handleCloseShare = () => {
       setSelectedShareText("");
+      clearTextSelection();
 
       if (onCloseShare) {
         onCloseShare();
@@ -79,6 +104,11 @@ export function DirectoryPage({
       <motion.section
         ref={pageRef}
         key={`${page.id}-${page.mode}-${page.date}`}
+        onMouseUp={rememberSelectedShareText}
+        onKeyUp={rememberSelectedShareText}
+        onTouchEnd={() => {
+          window.setTimeout(rememberSelectedShareText, 80);
+        }}
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -8 }}
@@ -114,6 +144,9 @@ export function DirectoryPage({
               className="absolute right-0 top-[80px] z-20 border px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em]"
               style={{ borderColor: page.color, color: page.color }}
               type="button"
+              onMouseDown={(event) => {
+                event.preventDefault();
+              }}
               onClick={handleOpenShare}
             >
               share

@@ -178,10 +178,14 @@ export function ChecklistMemoryContent({ page, highlightResult }) {
               }}
             />
             <p
-              className={`min-w-0 flex-1 text-[11px] leading-[1.75] ${checked ? "text-black/34" : "text-black/56"}`}
+              className={`min-w-0 flex-1 text-[11px] leading-[1.75] ${checked ? "text-[#6f6862]" : "text-black/56"}`}
             >
               <span
-                className={`font-serif text-[12px] font-semibold ${checked ? "text-black/38 line-through decoration-black/20" : "text-black/68"}`}
+                className={`font-serif text-[12px] font-bold ${
+                  checked
+                    ? "text-[#5f5953] opacity-60 line-through decoration-[#928982]"
+                    : "text-black/68"
+                }`}
               >
                 <HighlightText
                   text={item.title}

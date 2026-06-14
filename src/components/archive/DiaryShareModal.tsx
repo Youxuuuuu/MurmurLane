@@ -306,7 +306,7 @@ export function DiaryShareModal({ page, onClose, selectedText = "" }) {
                 {page.date} · {shareModeLabel} archive
               </div>
               <h3
-                className="relative mt-6 font-serif text-[24px] leading-[1.25] tracking-[0.08em]"
+                className="relative mt-6 font-serif text-[22px] leading-[1.25] tracking-[0.08em]"
                 style={{ color: page.color }}
               >
                 {page.title}
