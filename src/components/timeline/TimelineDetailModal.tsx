@@ -7,7 +7,14 @@ import {
 } from "../../lib/timeline";
 import { PaperTexture } from "../common/PaperTexture";
 
-export function TimelineDetailModal({ event, page, onClose }) {
+export function TimelineDetailModal({
+  event,
+  page,
+  onClose,
+  onEdit,
+  canEdit = true,
+  editHint = "",
+}) {
   const {
     normalizedEvent,
     category,
@@ -37,14 +44,14 @@ export function TimelineDetailModal({ event, page, onClose }) {
         onClick={onClose}
       />
       <motion.section
-        className="relative max-h-[72dvh] w-full max-w-[342px] overflow-y-auto border bg-[#f6f0e6] p-5 text-black/72"
+        className="relative flex max-h-[72dvh] w-full max-w-[342px] min-h-0 flex-col overflow-hidden border bg-[#f6f0e6] p-5 text-black/72"
         initial={{ scale: 0.96, opacity: 0, y: 8 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
         exit={{ scale: 0.97, opacity: 0, y: 6 }}
         style={{ borderColor: page.line }}
       >
         <PaperTexture mode={page.texture} />
-        <div className="relative">
+        <div className="relative flex min-h-0 flex-1 flex-col">
           <div
             className="mb-3 flex items-start justify-between gap-3 border-b pb-3"
             style={{ borderBottomColor: category.color }}
@@ -68,7 +75,7 @@ export function TimelineDetailModal({ event, page, onClose }) {
               close
             </button>
           </div>
-          <div className="space-y-3 text-[12px] leading-6">
+          <div className="diary-scroll min-h-0 flex-1 space-y-3 overflow-y-auto pr-1 text-[12px] leading-6">
             <div className="font-mono text-[11px] tracking-[0.1em] text-black/46">
               {minutesToClock(toMinutes(event.startAt))} →{" "}
               {minutesToClock(toMinutes(event.endAt))} · {duration}分钟
@@ -89,6 +96,32 @@ export function TimelineDetailModal({ event, page, onClose }) {
                   #{tag}
                 </span>
               ))}
+            </div>
+          </div>
+          <div className="mt-4 shrink-0 border-t pt-3">
+            {!canEdit && editHint ? (
+              <p className="mb-2 text-[11px] leading-5 text-black/42">
+                {editHint}
+              </p>
+            ) : null}
+            <div className="flex items-center justify-end gap-2">
+              <button
+                className="border px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-black/52"
+                style={{ borderColor: page.line }}
+                type="button"
+                onClick={onClose}
+              >
+                close
+              </button>
+              <button
+                className="border px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] disabled:opacity-45"
+                style={{ borderColor: category.color, color: category.color }}
+                type="button"
+                onClick={onEdit}
+                disabled={!canEdit}
+              >
+                edit
+              </button>
             </div>
           </div>
         </div>

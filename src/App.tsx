@@ -2,6 +2,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence } from "framer-motion";
 import {
+  fetchEditableMemoryDocument,
   fetchConversations,
   fetchDateIndex,
   fetchMemoryDailySummary,
@@ -10,7 +11,9 @@ import {
   fetchMemoryStatic,
   fetchReminderHistory,
   fetchTimeline,
+  toggleOpenLoopsChecklistItem as toggleOpenLoopsChecklistItemApi,
   fetchXiaoyeStatic,
+  HAS_EDIT_TOKEN,
 } from "./data/api";
 import { staticModeApiMap } from "./config/contentSources";
 import { xiaoyeModeMeta, xiaoyeModes } from "./config/pageModes";
@@ -39,6 +42,11 @@ import {
   getRemoteDatedEntriesSource,
   getRemoteEntryByDate,
 } from "./lib/memoryPageData";
+import {
+  applyOpenLoopToggleToEntry,
+  removeDateIndexDate,
+  upsertDateIndexDate,
+} from "./lib/editableMemory";
 import { buildTimelinePage } from "./lib/timelinePageData";
 import { DatePickerModal } from "./components/calendar/DatePickerModal";
 import { DirectoryPage } from "./components/archive/DirectoryPage";
@@ -130,6 +138,11 @@ export default function InsDiaryPrototype() {
   });
   const [searchQuery, setSearchQuery] = useState("");
   const [remoteError, setRemoteError] = useState({});
+  const [editAccessState, setEditAccessState] = useState({
+    ready: false,
+    canWrite: false,
+    message: "",
+  });
   const threadSelectionTouchedRef = useRef(false);
   const searchPendingRef = useRef({
     conversations: new Set(),
@@ -137,6 +150,76 @@ export default function InsDiaryPrototype() {
     dailySummary: new Set(),
     letters: new Set(),
   });
+
+  useLayoutEffect(() => {
+    if (typeof window === "undefined") return;
+
+    let stableHeight = Math.max(
+      window.innerHeight || 0,
+      window.visualViewport?.height || 0,
+    );
+    const resetDocumentScroll = () => {
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+
+      if (window.scrollX !== 0 || window.scrollY !== 0) {
+        window.scrollTo(0, 0);
+      }
+    };
+
+    const applyStableViewport = () => {
+      const visualViewport = window.visualViewport;
+      const currentLayoutHeight = window.innerHeight || 0;
+      const currentVisualHeight = visualViewport?.height || 0;
+      const currentVisualOffsetTop = visualViewport?.offsetTop || 0;
+      const candidateHeight = Math.max(currentLayoutHeight, currentVisualHeight);
+      const nextKeyboardInset = Math.max(
+        0,
+        stableHeight - currentVisualHeight - currentVisualOffsetTop,
+      );
+      const keyboardIsOpen = nextKeyboardInset > 80;
+
+      if (!keyboardIsOpen || candidateHeight > stableHeight) {
+        stableHeight = candidateHeight;
+      }
+      const keyboardInset = Math.max(
+        0,
+        stableHeight - currentVisualHeight - currentVisualOffsetTop,
+      );
+
+      document.documentElement.style.setProperty(
+        "--app-stable-height",
+        `${Math.round(stableHeight)}px`,
+      );
+      document.documentElement.style.setProperty(
+        "--app-keyboard-inset",
+        `${Math.round(keyboardInset)}px`,
+      );
+      document.documentElement.style.setProperty(
+        "--app-keyboard-center-offset",
+        `${Math.round(keyboardInset / 2)}px`,
+      );
+
+      window.requestAnimationFrame(resetDocumentScroll);
+    };
+
+    applyStableViewport();
+    window.addEventListener("resize", applyStableViewport);
+    window.addEventListener("blur", resetDocumentScroll);
+    window.addEventListener("focusout", resetDocumentScroll);
+    document.addEventListener("visibilitychange", resetDocumentScroll);
+    window.visualViewport?.addEventListener("scroll", applyStableViewport);
+    window.visualViewport?.addEventListener("resize", applyStableViewport);
+
+    return () => {
+      window.removeEventListener("resize", applyStableViewport);
+      window.removeEventListener("blur", resetDocumentScroll);
+      window.removeEventListener("focusout", resetDocumentScroll);
+      document.removeEventListener("visibilitychange", resetDocumentScroll);
+      window.visualViewport?.removeEventListener("scroll", applyStableViewport);
+      window.visualViewport?.removeEventListener("resize", applyStableViewport);
+    };
+  }, []);
 
   const remoteData = useMemo(
     () => ({
@@ -271,12 +354,17 @@ export default function InsDiaryPrototype() {
         timelineResult,
         dateIndexResult,
         reminderHistoryResult,
+        editStatusResult,
         ...staticAndXiaoyeResults
       ] =
         await Promise.allSettled([
           fetchTimeline(),
           fetchDateIndex(),
           fetchReminderHistory(),
+          fetchEditableMemoryDocument({
+            documentType: "static-memory-document",
+            documentId: "preferences",
+          }),
           ...staticRequests.map(([, mode]) => fetchMemoryStatic(mode)),
           ...xiaoyeRequests.map(([, mode]) => fetchXiaoyeStatic(mode)),
         ]);
@@ -288,6 +376,30 @@ export default function InsDiaryPrototype() {
 
       if (cancelled) return;
 
+      if (editStatusResult.status === "fulfilled") {
+        const backendWriteEnabled = editStatusResult.value?.writeEnabled === true;
+        const canWrite = backendWriteEnabled && HAS_EDIT_TOKEN;
+        const message = canWrite
+          ? ""
+          : backendWriteEnabled && !HAS_EDIT_TOKEN
+            ? "编辑已关闭：未配置前端编辑 token。"
+            : !backendWriteEnabled && HAS_EDIT_TOKEN
+              ? "编辑已关闭：服务端未配置编辑 token。"
+              : "编辑已关闭：未配置编辑 token。";
+
+        setEditAccessState({
+          ready: true,
+          canWrite,
+          message,
+        });
+      } else {
+        setEditAccessState({
+          ready: true,
+          canWrite: false,
+          message: "编辑状态不可用。",
+        });
+      }
+
       if (
         timelineResult.status === "fulfilled" &&
         timelineResult.value &&
@@ -295,11 +407,26 @@ export default function InsDiaryPrototype() {
         typeof timelineResult.value === "object"
       ) {
         const timelineFacts = timelineResult.value.facts ?? timelineResult.value;
-        const nextTimelineState = Object.fromEntries(
+        const nextTimelineDates = Object.fromEntries(
           Object.entries(timelineFacts)
             .filter(([, value]) => value?.events)
             .map(([key, value]) => [toDotDate(key), value]),
         );
+        const nextTimelineState = {
+          ...nextTimelineDates,
+          ...(timelineResult.value.taxonomy
+            ? { taxonomy: timelineResult.value.taxonomy }
+            : {}),
+          ...(timelineResult.value.version != null
+            ? { version: timelineResult.value.version }
+            : {}),
+          ...(timelineResult.value.timezone
+            ? { timezone: timelineResult.value.timezone }
+            : {}),
+          ...(Array.isArray(timelineResult.value.proposals)
+            ? { proposals: timelineResult.value.proposals }
+            : {}),
+        };
         setRemoteTimelineStateValue(nextTimelineState);
         setRemoteSearchCacheState((current) => ({
           ...current,
@@ -708,6 +835,221 @@ export default function InsDiaryPrototype() {
     remoteSearchMissingState,
   ]);
 
+  const handleMemoryEntrySaved = (document, entry) => {
+    if (!document || !entry) {
+      return;
+    }
+
+    const dotDate = document.date ? toDotDate(document.date) : "";
+
+    if (document.documentId === "diary") {
+      setRemoteDiaryEntriesState((current) => ({
+        ...current,
+        [dotDate]: entry,
+      }));
+      setRemoteDateIndexState((current) =>
+        current
+          ? {
+              ...current,
+              diary: upsertDateIndexDate(current.diary, document.date),
+            }
+          : current,
+      );
+      return;
+    }
+
+    if (document.documentId === "daily-summary") {
+      setRemoteDailySummaryEntriesState((current) => ({
+        ...current,
+        [dotDate]: entry,
+      }));
+      setRemoteDateIndexState((current) =>
+        current
+          ? {
+              ...current,
+              dailySummary: upsertDateIndexDate(
+                current.dailySummary,
+                document.date,
+              ),
+            }
+          : current,
+      );
+      return;
+    }
+
+    if (document.documentId === "letters") {
+      setRemoteLetterEntriesState((current) => ({
+        ...current,
+        [dotDate]: entry,
+      }));
+      setRemoteDateIndexState((current) =>
+        current
+          ? {
+              ...current,
+              letters: upsertDateIndexDate(current.letters, document.date),
+            }
+          : current,
+      );
+      return;
+    }
+
+    if (document.documentType === "xiaoye-memory-document") {
+      const xiaoyeMode =
+        document.documentId === "personality_anchor"
+          ? "PersonalityAnchor"
+          : "Ins";
+
+      setRemoteXiaoyeEntriesState((current) => ({
+        ...current,
+        [xiaoyeMode]: entry,
+      }));
+      return;
+    }
+
+    const staticMode =
+      document.documentId === "projects"
+        ? "Project"
+        : document.documentId === "preferences"
+          ? "Preference"
+          : document.documentId === "facts"
+            ? "Facts"
+            : document.documentId === "patterns"
+              ? "Patterns"
+              : "Openloops";
+
+    setRemoteStaticModeEntriesState((current) => ({
+      ...current,
+      [staticMode]: entry,
+    }));
+  };
+
+  const handleToggleOpenLoop = async (no, checked) => {
+    const previousEntry = remoteStaticModeEntriesState.Openloops;
+
+    if (previousEntry) {
+      setRemoteStaticModeEntriesState((current) => ({
+        ...current,
+        Openloops: applyOpenLoopToggleToEntry(previousEntry, no, checked),
+      }));
+    }
+
+    try {
+      const result = await toggleOpenLoopsChecklistItemApi({
+        no: String(no),
+        checked,
+      });
+
+      if (result?.entry) {
+        setRemoteStaticModeEntriesState((current) => ({
+          ...current,
+          Openloops: result.entry,
+        }));
+      }
+    } catch (error) {
+      if (previousEntry) {
+        setRemoteStaticModeEntriesState((current) => ({
+          ...current,
+          Openloops: previousEntry,
+        }));
+      }
+
+      throw error;
+    }
+  };
+
+  const handleTimelineEventSaved = (date, event) => {
+    if (!event) {
+      return;
+    }
+
+    const dotDate = toDotDate(date);
+    const replaceEvent = (currentTimelineState) => {
+      const currentDay = currentTimelineState?.[dotDate] ?? {
+        status: "draft",
+        updatedAt: "",
+        source: null,
+        events: [],
+      };
+      const currentEvents = Array.isArray(currentDay.events)
+        ? currentDay.events
+        : [];
+      const nextEvents = currentEvents.some((item) => item.id === event.id)
+        ? currentEvents.map((item) => (item.id === event.id ? event : item))
+        : [...currentEvents, event];
+
+      return {
+        ...currentTimelineState,
+        [dotDate]: {
+          ...currentDay,
+          updatedAt: new Date().toISOString(),
+          events: nextEvents,
+        },
+      };
+    };
+
+    setRemoteTimelineStateValue((current) => replaceEvent(current));
+    setRemoteSearchCacheState((current) => ({
+      ...current,
+      timeline: replaceEvent(current.timeline),
+    }));
+    setRemoteDateIndexState((current) =>
+      current
+        ? {
+            ...current,
+            timeline: upsertDateIndexDate(
+              current.timeline,
+              dotDate.replace(/\./g, "-"),
+            ),
+          }
+        : current,
+    );
+  };
+
+  const handleTimelineEventDeleted = (date, eventId) => {
+    const dotDate = toDotDate(date);
+    const removeEvent = (currentTimelineState) => {
+      const currentDay = currentTimelineState?.[dotDate];
+
+      if (!currentDay || !Array.isArray(currentDay.events)) {
+        return currentTimelineState;
+      }
+
+      const nextEvents = currentDay.events.filter((item) => item.id !== eventId);
+
+      return {
+        ...currentTimelineState,
+        [dotDate]: {
+          ...currentDay,
+          updatedAt: new Date().toISOString(),
+          events: nextEvents,
+        },
+      };
+    };
+
+    setRemoteTimelineStateValue((current) => removeEvent(current));
+    setRemoteSearchCacheState((current) => ({
+      ...current,
+      timeline: removeEvent(current.timeline),
+    }));
+    setRemoteDateIndexState((current) => {
+      if (!current) {
+        return current;
+      }
+
+      const currentDay = remoteTimelineStateValue?.[dotDate];
+      const currentEvents = Array.isArray(currentDay?.events) ? currentDay.events : [];
+      const nextEventsCount = currentEvents.filter((item) => item.id !== eventId).length;
+
+      return {
+        ...current,
+        timeline:
+          nextEventsCount > 0
+            ? current.timeline
+            : removeDateIndexDate(current.timeline, dotDate.replace(/\./g, "-")),
+      };
+    });
+  };
+
   const searchDataVersion = useMemo(
     () =>
       [
@@ -829,7 +1171,7 @@ export default function InsDiaryPrototype() {
 
   return (
     <div
-      className="flex min-h-screen items-start justify-center text-stone-700 sm:px-3 sm:py-5"
+      className="flex min-h-[var(--app-stable-height,100svh)] items-start justify-center text-stone-700 sm:min-h-screen sm:px-3 sm:py-5"
       style={{
         background:
           activeSection === "Timeline"
@@ -842,8 +1184,11 @@ export default function InsDiaryPrototype() {
       <AppScrollbarStyle />
       <div className="pointer-events-none fixed inset-0 opacity-[0.24] [background-image:radial-gradient(#6f6a60_0.55px,transparent_0.55px)] [background-size:8px_8px]" />
       <main
-        className="relative mx-auto flex h-[100dvh] w-full max-w-[430px] flex-col overflow-hidden border-x bg-[#eeeae1] px-4 pt-[calc(12px+env(safe-area-inset-top))] sm:h-[852px] sm:w-[393px] sm:border sm:pt-3.5"
-        style={{ borderColor: page.line }}
+        className="relative mx-auto flex h-[var(--app-stable-height,100svh)] w-full max-w-[430px] flex-col overflow-hidden border-x bg-[#eeeae1] px-4 pt-[calc(12px+env(safe-area-inset-top))] sm:h-[852px] sm:w-[393px] sm:border sm:pt-3.5"
+        style={{
+          borderColor: page.line,
+          "--app-bottom-nav-space": "calc(76px + env(safe-area-inset-bottom))",
+        }}
       >
         
         <div
@@ -851,6 +1196,9 @@ export default function InsDiaryPrototype() {
           className={`diary-scroll flex min-h-0 flex-1 flex-col overflow-x-hidden overscroll-contain pb-4 ${
             shellShouldScroll ? "overflow-y-auto" : "overflow-hidden"
           }`}
+          style={{
+            paddingBottom: "var(--app-bottom-nav-space)",
+          }}
         >
           <header
             className="sticky top-0 z-[80] mb-3 border-b bg-[#eeeae1]/95 pb-2 pt-1 backdrop-blur-[2px]"
@@ -944,6 +1292,12 @@ export default function InsDiaryPrototype() {
                     onOpenDatePicker={() => setDatePickerOpen(true)}
                     onMonthSelect={handleSelectMonth}
                     scrollHitIntoView={scrollHitIntoView}
+                    onTimelineEventSaved={handleTimelineEventSaved}
+                    onTimelineEventDeleted={handleTimelineEventDeleted}
+                    canEdit={editAccessState.canWrite}
+                    editHint={
+                      editAccessState.ready ? editAccessState.message : ""
+                    }
                   />
                 ) : archiveShowsXiaoye ? (
                   <XiaoyePage
@@ -954,6 +1308,11 @@ export default function InsDiaryPrototype() {
                     onSelectXiaoyeMode={setSelectedXiaoyeMode}
                     selectedXiaoyeMode={selectedXiaoyeMode}
                     scrollHitIntoView={scrollHitIntoView}
+                    onMemoryEntrySaved={handleMemoryEntrySaved}
+                    canEdit={editAccessState.canWrite}
+                    editHint={
+                      editAccessState.ready ? editAccessState.message : ""
+                    }
                   />
                 ) : (
                   <DirectoryPage
@@ -971,6 +1330,14 @@ export default function InsDiaryPrototype() {
                     }
                     onCloseShare={() => setDiaryShareOpen(false)}
                     scrollHitIntoView={scrollHitIntoView}
+                    onMemoryEntrySaved={handleMemoryEntrySaved}
+                    onToggleOpenLoop={
+                      editAccessState.canWrite ? handleToggleOpenLoop : undefined
+                    }
+                    canEdit={editAccessState.canWrite}
+                    editHint={
+                      editAccessState.ready ? editAccessState.message : ""
+                    }
                   />
                 )}
               </AnimatePresence>

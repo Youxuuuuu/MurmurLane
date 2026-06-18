@@ -6,3 +6,10 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+.env
+.env.*
+!.env.example
+!.env.local.example
+.codex*/
+.tmp*/
+tmp*

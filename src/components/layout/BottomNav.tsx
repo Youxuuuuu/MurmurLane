@@ -6,8 +6,11 @@ export function BottomNav({ activeSection, onSelectSection, page }) {
   ];
   return (
     <nav
-      className="z-30 shrink-0 border-t bg-[#eeeae1]/95 px-3 py-3 pb-[calc(12px+env(safe-area-inset-bottom))] backdrop-blur"
-      style={{ borderColor: page.line }}
+      className="absolute inset-x-0 bottom-0 z-30 border-t bg-[#eeeae1]/95 px-3 py-3 pb-[calc(12px+env(safe-area-inset-bottom))] backdrop-blur"
+      style={{
+        borderColor: page.line,
+        transform: "translateY(var(--app-keyboard-inset, 0px))",
+      }}
     >
       <div className="grid grid-cols-3 gap-2 font-mono text-[10px] uppercase tracking-[0.12em]">
         {items.map((item) => (

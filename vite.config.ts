@@ -8,7 +8,7 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     allowedHosts: [
-      "kfae9b62.natappfree.cc",
+      "e75348a7.natappfree.cc",
     ],
     proxy: {
       "/api": {

@@ -1,11 +1,21 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { CalendarStrip } from "../calendar/CalendarStrip";
 import { PaperTexture } from "../common/PaperTexture";
 import { DiaryShareModal } from "./DiaryShareModal";
 import { MemoryContent } from "./MemoryContent";
+import { MemoryEditorShell } from "./MemoryEditorShell";
 import { PageBottomMark } from "../layout/PageBottomMark";
 import { TopModeSwitch } from "../controls/TopModeSwitch";
+import {
+  fetchEditableMemoryDocument,
+  saveEditableMemoryDocument,
+} from "../../data/api";
+import {
+  buildEditableMemoryTemplate,
+  getEditableMemoryDocumentForPage,
+  parseEditableMemoryContent,
+} from "../../lib/editableMemory";
 
 export function DirectoryPage({
   page,
@@ -18,9 +28,41 @@ export function DirectoryPage({
   diaryShareOpen,
   onCloseShare,
   scrollHitIntoView,
+  onMemoryEntrySaved,
+  onToggleOpenLoop,
+  canEdit,
+  editHint,
 }) {
-    const pageRef = useRef(null);
-    const [selectedShareText, setSelectedShareText] = useState("");
+  const pageRef = useRef(null);
+  const [selectedShareText, setSelectedShareText] = useState("");
+  const [isEditing, setIsEditing] = useState(false);
+  const [isPreview, setIsPreview] = useState(false);
+  const [draftContent, setDraftContent] = useState("");
+  const [editorError, setEditorError] = useState("");
+  const [isEditorLoading, setIsEditorLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [openLoopError, setOpenLoopError] = useState("");
+  const [pendingOpenLoopNo, setPendingOpenLoopNo] = useState("");
+  const editableDocument = useMemo(
+    () => getEditableMemoryDocumentForPage(page),
+    [page.mode, page.date],
+  );
+  const previewEntry = useMemo(() => {
+    if (!editableDocument) {
+      return null;
+    }
+
+    return parseEditableMemoryContent(editableDocument, draftContent);
+  }, [editableDocument, draftContent]);
+
+  useEffect(() => {
+    setIsEditing(false);
+    setIsPreview(false);
+    setDraftContent("");
+    setEditorError("");
+    setOpenLoopError("");
+    setPendingOpenLoopNo("");
+  }, [page.mode, page.date]);
 
   useEffect(() => {
     if (!highlightResult || highlightResult.mode !== page.mode) return;
@@ -28,44 +70,45 @@ export function DirectoryPage({
     scrollHitIntoView(highlightResult.targetId);
   }, [highlightResult, page.mode, page.date, page.dateBased, scrollHitIntoView]);
 
-    const getSelectedTextInsidePage = () => {
-      const selection = window.getSelection();
+  const getSelectedTextInsidePage = () => {
+    const selection = window.getSelection();
 
-      if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
-        return "";
-      }
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+      return "";
+    }
 
-      const root = pageRef.current;
-      const anchorNode = selection.anchorNode;
-      const focusNode = selection.focusNode;
+    const root = pageRef.current;
+    const anchorNode = selection.anchorNode;
+    const focusNode = selection.focusNode;
 
-      if (!root || !anchorNode || !focusNode) {
-        return "";
-      }
+    if (!root || !anchorNode || !focusNode) {
+      return "";
+    }
 
-      if (!root.contains(anchorNode) || !root.contains(focusNode)) {
-        return "";
-      }
+    if (!root.contains(anchorNode) || !root.contains(focusNode)) {
+      return "";
+    }
 
-      return selection
-        .toString()
-        .replace(/\r\n/g, "\n")
-        .replace(/\u00a0/g, " ")
-        .split("\n")
-        .map((item) => item.trim())
-        .filter(Boolean)
-        .join("\n")
-        .trim();
-    };
+    return selection
+      .toString()
+      .replace(/\r\n/g, "\n")
+      .replace(/\u00a0/g, " ")
+      .split("\n")
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .join("\n")
+      .trim();
+  };
 
-    const rememberSelectedShareText = () => {
+  const rememberSelectedShareText = () => {
     const nextSelectedText = getSelectedTextInsidePage();
 
     if (nextSelectedText) {
       setSelectedShareText(nextSelectedText);
     }
-    };
-    const handleOpenShare = () => {
+  };
+
+  const handleOpenShare = () => {
     const nextSelectedText = getSelectedTextInsidePage();
 
     if (nextSelectedText) {
@@ -74,11 +117,10 @@ export function DirectoryPage({
 
     clearTextSelection();
 
-    if (onOpenShare) {
-      onOpenShare();
-    }
-    };
-    const clearTextSelection = () => {
+    onOpenShare?.();
+  };
+
+  const clearTextSelection = () => {
     const selection = window.getSelection();
 
     if (selection) {
@@ -88,16 +130,167 @@ export function DirectoryPage({
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
     }
-    };
+  };
 
-    const handleCloseShare = () => {
-      setSelectedShareText("");
-      clearTextSelection();
+  const handleCloseShare = () => {
+    setSelectedShareText("");
+    clearTextSelection();
+    onCloseShare?.();
+  };
 
-      if (onCloseShare) {
-        onCloseShare();
+  const handleStartEditing = async () => {
+    if (!editableDocument) {
+      return;
+    }
+
+    if (!canEdit) {
+      setEditorError(editHint || "编辑当前不可用。");
+      return;
+    }
+
+    try {
+      setIsEditorLoading(true);
+      setEditorError("");
+      const result = await fetchEditableMemoryDocument(editableDocument);
+      setDraftContent(
+        result.content || buildEditableMemoryTemplate(editableDocument),
+      );
+      setIsEditing(true);
+      setIsPreview(false);
+    } catch (error) {
+      setEditorError(String(error?.message || error || "Failed to load document."));
+    } finally {
+      setIsEditorLoading(false);
+    }
+  };
+
+  const handleCancelEditing = () => {
+    setIsEditing(false);
+    setIsPreview(false);
+    setEditorError("");
+  };
+
+  const handleSaveEditing = async () => {
+    if (!editableDocument) {
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      setEditorError("");
+      const result = await saveEditableMemoryDocument({
+        ...editableDocument,
+        content: draftContent,
+      });
+      onMemoryEntrySaved?.(editableDocument, result.entry);
+      setDraftContent(result.content);
+      setIsEditing(false);
+      setIsPreview(false);
+    } catch (error) {
+      setEditorError(String(error?.bodyText || error?.message || error));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleToggleOpenLoop = async (no, checked) => {
+    if (!onToggleOpenLoop) {
+      return;
+    }
+
+    try {
+      setOpenLoopError("");
+      setPendingOpenLoopNo(String(no));
+      await onToggleOpenLoop(no, checked);
+    } catch (error) {
+      setOpenLoopError(String(error?.bodyText || error?.message || error));
+    } finally {
+      setPendingOpenLoopNo("");
+    }
+  };
+
+  const renderActionButtons = () => {
+    if (isEditing) {
+      return (
+        <button
+          className="absolute right-0 top-[80px] z-20 border px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em]"
+          style={{ borderColor: page.color, color: page.color }}
+          type="button"
+          onClick={() => setIsPreview((current) => !current)}
+        >
+          {isPreview ? "raw" : "preview"}
+        </button>
+      );
+    }
+
+    const showShare =
+      (page.mode === "Diary" || page.mode === "Letters") &&
+      page.hasEntry &&
+      onOpenShare;
+    const editLabel = page.hasEntry ? "edit" : "create";
+    const editDisabled = isEditorLoading || !canEdit;
+
+    if (showShare) {
+      return (
+        <div className="absolute right-0 top-[80px] z-20 flex flex-col items-end gap-1.5">
+          <div className="flex items-center gap-2">
+            <button
+              className="border px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] disabled:opacity-45"
+              style={{ borderColor: page.color, color: page.color }}
+              type="button"
+              onClick={handleStartEditing}
+              disabled={editDisabled}
+            >
+              {isEditorLoading ? "loading..." : editLabel}
+            </button>
+            <button
+              className="border px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em]"
+              style={{ borderColor: page.color, color: page.color }}
+              type="button"
+              onMouseDown={(event) => {
+                event.preventDefault();
+              }}
+              onClick={handleOpenShare}
+            >
+              share
+            </button>
+          </div>
+          {!canEdit && editHint ? (
+            <p className="max-w-[210px] text-right text-[10px] leading-4 text-black/42">
+              {editHint}
+            </p>
+          ) : null}
+        </div>
+      );
+    }
+
+    return (
+      <div className="absolute right-0 top-[80px] z-20 flex flex-col items-end gap-1.5">
+        <button
+          className="border px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] disabled:opacity-45"
+          style={{ borderColor: page.color, color: page.color }}
+          type="button"
+          onClick={handleStartEditing}
+          disabled={editDisabled}
+        >
+          {isEditorLoading ? "loading..." : editLabel}
+        </button>
+        {!canEdit && editHint ? (
+          <p className="max-w-[200px] text-right text-[10px] leading-4 text-black/42">
+            {editHint}
+          </p>
+        ) : null}
+      </div>
+    );
+  };
+
+  const previewPage = previewEntry
+    ? {
+        ...page,
+        ...previewEntry,
+        hasEntry: true,
       }
-    };
+    : page;
 
   return (
     <>
@@ -137,58 +330,81 @@ export function DirectoryPage({
               </h2>
             </div>
           </aside>
-          {(page.mode === "Diary" || page.mode === "Letters") &&
-            page.hasEntry &&
-            onOpenShare && (
-            <button
-              className="absolute right-0 top-[80px] z-20 border px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em]"
-              style={{ borderColor: page.color, color: page.color }}
-              type="button"
-              onMouseDown={(event) => {
-                event.preventDefault();
-              }}
-              onClick={handleOpenShare}
-            >
-              share
-            </button>
+          {renderActionButtons()}
+          {isEditing ? (
+            <MemoryEditorShell
+              page={page}
+              draftContent={draftContent}
+              isPreview={isPreview}
+              isSaving={isSaving}
+              error={editorError}
+              onDraftContentChange={setDraftContent}
+              onOpenDatePicker={onOpenDatePicker}
+              onMonthSelect={onMonthSelect}
+              onSave={handleSaveEditing}
+              onCancel={handleCancelEditing}
+              previewContent={
+                <div className="flex min-h-full flex-col">
+                  <MemoryContent
+                    page={previewPage}
+                    highlightResult={null}
+                  />
+                  <PageBottomMark page={previewPage} />
+                </div>
+              }
+            />
+          ) : (
+            <article className="relative z-10 flex min-h-0 flex-1 flex-col pt-20">
+              <div className="shrink-0">
+                <CalendarStrip
+                  page={page}
+                  onOpenDatePicker={onOpenDatePicker}
+                  onMonthSelect={onMonthSelect}
+                />
+              </div>
+              {page.hasEntry ? (
+                <div className="diary-scroll relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-8 pt-2">
+                  <div className="flex min-h-full flex-col">
+                    {openLoopError ? (
+                      <p className="mb-3 text-[11px] leading-5 text-[#a2594b]">
+                        {openLoopError}
+                      </p>
+                    ) : null}
+                    <MemoryContent
+                      page={page}
+                      highlightResult={highlightResult}
+                      onToggleOpenLoop={
+                        page.mode === "Openloops" ? handleToggleOpenLoop : undefined
+                      }
+                      pendingOpenLoopNo={pendingOpenLoopNo}
+                    />
+                    <PageBottomMark page={page} />
+                  </div>
+                </div>
+              ) : (
+                <div className="diary-scroll relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-8 pt-3">
+                  <div className="flex min-h-full flex-col">
+                    <p className="whitespace-nowrap font-serif text-[11px] leading-none text-black/48">
+                      {page.blankText}
+                    </p>
+                    <PageBottomMark page={page} />
+                  </div>
+                </div>
+              )}
+            </article>
           )}
-          <article className="relative z-10 flex min-h-0 flex-1 flex-col pt-20">
-            <div className="shrink-0">
-              <CalendarStrip
-                page={page}
-                onOpenDatePicker={onOpenDatePicker}
-                onMonthSelect={onMonthSelect}
-              />
-            </div>
-            {page.hasEntry ? (
-              <div className="diary-scroll relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-8 pt-2">
-                <div className="flex min-h-full flex-col">
-                  <MemoryContent page={page} highlightResult={highlightResult} />
-                  <PageBottomMark page={page} />
-                </div>
-              </div>
-            ) : (
-              <div className="diary-scroll relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-8 pt-3">
-                <div className="flex min-h-full flex-col">
-                  <p className="whitespace-nowrap font-serif text-[11px] leading-none text-black/48">
-                    {page.blankText}
-                  </p>
-                  <PageBottomMark page={page} />
-                </div>
-              </div>
-            )}
-          </article>
         </div>
       </motion.section>
       <AnimatePresence>
         {diaryShareOpen &&
-          (page.mode === "Diary" || page.mode === "Letters") && (
+          (page.mode === "Diary" || page.mode === "Letters") &&
+          !isEditing && (
             <DiaryShareModal
               page={page}
               selectedText={selectedShareText}
               onClose={handleCloseShare}
             />
-        )}
+          )}
       </AnimatePresence>
     </>
   );

@@ -1,6 +1,19 @@
 import express from "express";
+import { config as loadDotenv } from "dotenv";
 import { readdir, stat } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import path from "node:path";
+import {
+  createTimelineEvent,
+  deleteTimelineEvent,
+  findTimelineEventById,
+  patchTimelineEvent,
+  readEditableMemoryDocument,
+  readTimelineStateFile,
+  toggleOpenLoopsChecklistItem,
+  writeEditableMemoryDocument,
+  type EditableMemoryDocumentType,
+} from "./editing.js";
 import {
   findExistingDataPath,
   getCyberbossDataRoot,
@@ -26,9 +39,16 @@ import type {
   StaticMemoryMode,
 } from "./types.js";
 
+// Keep .env.local highest priority for local editing setup, with .env as fallback.
+loadDotenv({ path: ".env.local" });
+loadDotenv();
+
 const app = express();
 const host = process.env.API_HOST || "127.0.0.1";
 const port = Number(process.env.PORT || process.env.API_PORT || 8787);
+const distDir = path.resolve(process.cwd(), "dist");
+const distIndexPath = path.join(distDir, "index.html");
+const hasBuiltClient = existsSync(distIndexPath);
 const allowedMediaExtensions = new Set([
   ".png",
   ".jpg",
@@ -94,8 +114,14 @@ app.use((request, response, next) => {
     response.setHeader("Vary", "Origin");
   }
 
-  response.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
-  response.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  response.setHeader(
+    "Access-Control-Allow-Methods",
+    "GET,OPTIONS,PUT,PATCH,POST,DELETE",
+  );
+  response.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type,X-MurmurLane-Edit-Token",
+  );
 
   if (request.method === "OPTIONS") {
     response.status(204).end();
@@ -188,6 +214,83 @@ function getXiaoyeStaticModeQuery(
   }
 
   return value as XiaoyeStaticMode;
+}
+
+function getEditableMemoryDocumentTypeQuery(
+  value: unknown,
+  response: express.Response,
+) {
+  const supportedTypes: EditableMemoryDocumentType[] = [
+    "dated-memory-document",
+    "static-memory-document",
+    "xiaoye-memory-document",
+  ];
+
+  if (
+    typeof value !== "string" ||
+    !supportedTypes.includes(value as EditableMemoryDocumentType)
+  ) {
+    response.status(400).json({
+      error:
+        "Missing or invalid documentType. Expected dated-memory-document|static-memory-document|xiaoye-memory-document.",
+    });
+    return null;
+  }
+
+  return value as EditableMemoryDocumentType;
+}
+
+function getEditToken() {
+  return String(process.env.MURMURLANE_EDIT_TOKEN || "").trim();
+}
+
+function ensureEditToken(request: express.Request, response: express.Response) {
+  const configuredToken = getEditToken();
+
+  if (!configuredToken) {
+    response.status(403).json({
+      error: "Editing is disabled. Set MURMURLANE_EDIT_TOKEN to enable writes.",
+    });
+    return false;
+  }
+
+  const providedToken = String(
+    request.headers["x-murmurlane-edit-token"] || "",
+  ).trim();
+
+  if (!providedToken || providedToken !== configuredToken) {
+    response.status(403).json({
+      error: "Invalid edit token.",
+    });
+    return false;
+  }
+
+  return true;
+}
+
+function handleWritableRouteError(
+  error: unknown,
+  response: express.Response,
+  next: express.NextFunction,
+) {
+  if (!(error instanceof Error)) {
+    next(error);
+    return;
+  }
+
+  if (
+    /^(Missing|Invalid|Unsupported|Editing is disabled|Open loop #|Timeline .+ was not found\.|Timeline state was not found\.|Timeline taxonomy was not found\.)/i.test(
+      error.message,
+    )
+  ) {
+    const status = /not found/i.test(error.message) ? 404 : 400;
+    response.status(status).json({
+      error: error.message,
+    });
+    return;
+  }
+
+  next(error);
 }
 
 function notFoundEntry(response: express.Response<MemoryEntryResponse>) {
@@ -528,7 +631,7 @@ app.get("/api/conversations", async (request, response, next) => {
 
     response.json(limitedRecords);
   } catch (error) {
-    next(error);
+    handleWritableRouteError(error, response, next);
   }
 });
 
@@ -536,7 +639,7 @@ app.get("/api/index/dates", async (_request, response, next) => {
   try {
     response.json(await getDateIndex());
   } catch (error) {
-    next(error);
+    handleWritableRouteError(error, response, next);
   }
 });
 
@@ -768,6 +871,50 @@ app.get("/api/timeline", async (request, response, next) => {
   }
 });
 
+app.get("/api/timeline/event", async (request, response, next) => {
+  try {
+    const date = getDateQuery(request.query.date, response);
+    const eventId =
+      typeof request.query.eventId === "string"
+        ? request.query.eventId.trim()
+        : "";
+
+    if (!date) {
+      return;
+    }
+
+    if (!eventId) {
+      response.status(400).json({
+        error: "Missing or invalid eventId.",
+      });
+      return;
+    }
+
+    const timelineFile = await readTimelineStateFile();
+
+    if (!timelineFile.found || !timelineFile.data) {
+      response.json({
+        found: false,
+        event: null,
+      });
+      return;
+    }
+
+    const result = findTimelineEventById({
+      state: timelineFile.data,
+      date,
+      eventId,
+    });
+
+    response.json({
+      found: result.found,
+      event: result.event,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get("/api/memory/diary", async (request, response, next) => {
   try {
     const date = getDateQuery(request.query.date, response);
@@ -919,6 +1066,239 @@ app.get("/api/xiaoye/static", async (request, response, next) => {
   }
 });
 
+app.get("/api/editable-memory/document", async (request, response, next) => {
+  try {
+    const documentType = getEditableMemoryDocumentTypeQuery(
+      request.query.documentType,
+      response,
+    );
+    const documentId =
+      typeof request.query.documentId === "string"
+        ? request.query.documentId.trim()
+        : "";
+    const date =
+      typeof request.query.date === "string" ? request.query.date.trim() : "";
+
+    if (!documentType) {
+      return;
+    }
+
+    if (!documentId) {
+      response.status(400).json({
+        error: "Missing or invalid documentId.",
+      });
+      return;
+    }
+
+    const result = await readEditableMemoryDocument({
+      documentType,
+      documentId,
+      date,
+    });
+
+    response.json({
+      found: result.found,
+      writeEnabled: Boolean(getEditToken()),
+      path: result.path,
+      content: result.content,
+      entry: result.entry,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put("/api/editable-memory/document", async (request, response, next) => {
+  try {
+    if (!ensureEditToken(request, response)) {
+      return;
+    }
+
+    const body = request.body ?? {};
+    const documentType = getEditableMemoryDocumentTypeQuery(
+      body.documentType,
+      response,
+    );
+    const documentId =
+      typeof body.documentId === "string" ? body.documentId.trim() : "";
+    const date = typeof body.date === "string" ? body.date.trim() : "";
+    const content =
+      typeof body.content === "string" ? body.content : String(body.content ?? "");
+
+    if (!documentType) {
+      return;
+    }
+
+    if (!documentId) {
+      response.status(400).json({
+        error: "Missing or invalid documentId.",
+      });
+      return;
+    }
+
+    const result = await writeEditableMemoryDocument({
+      documentType,
+      documentId,
+      date,
+      content,
+    });
+
+    response.json({
+      found: true,
+      path: result.path,
+      content: result.content,
+      entry: result.entry,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch(
+  "/api/editable-memory/open-loops/toggle",
+  async (request, response, next) => {
+    try {
+      if (!ensureEditToken(request, response)) {
+        return;
+      }
+
+      const no = typeof request.body?.no === "string" ? request.body.no : "";
+      const checked = Boolean(request.body?.checked);
+      const result = await toggleOpenLoopsChecklistItem({
+        no,
+        checked,
+      });
+
+      response.json({
+        found: true,
+        path: result.path,
+        content: result.content,
+        entry: result.entry,
+      });
+    } catch (error) {
+      handleWritableRouteError(error, response, next);
+    }
+  },
+);
+
+app.patch("/api/timeline/event", async (request, response, next) => {
+  try {
+    if (!ensureEditToken(request, response)) {
+      return;
+    }
+
+    const date = getDateQuery(request.body?.date, response);
+    const eventId =
+      typeof request.body?.eventId === "string"
+        ? request.body.eventId.trim()
+        : "";
+    const changes =
+      request.body && typeof request.body.changes === "object"
+        ? request.body.changes
+        : request.body;
+
+    if (!date) {
+      return;
+    }
+
+    if (!eventId) {
+      response.status(400).json({
+        error: "Missing or invalid eventId.",
+      });
+      return;
+    }
+
+    const result = await patchTimelineEvent({
+      date,
+      eventId,
+      changes,
+    });
+
+    timelineStateCache = null;
+
+    response.json({
+      found: true,
+      date: result.dayKey,
+      event: result.event,
+    });
+  } catch (error) {
+    handleWritableRouteError(error, response, next);
+  }
+});
+
+app.post("/api/timeline/event", async (request, response, next) => {
+  try {
+    if (!ensureEditToken(request, response)) {
+      return;
+    }
+
+    const date = getDateQuery(request.body?.date, response);
+    const event =
+      request.body && typeof request.body.event === "object"
+        ? request.body.event
+        : request.body;
+
+    if (!date) {
+      return;
+    }
+
+    const result = await createTimelineEvent({
+      date,
+      event,
+    });
+
+    timelineStateCache = null;
+
+    response.json({
+      found: true,
+      date: result.dayKey,
+      event: result.event,
+    });
+  } catch (error) {
+    handleWritableRouteError(error, response, next);
+  }
+});
+
+app.delete("/api/timeline/event", async (request, response, next) => {
+  try {
+    if (!ensureEditToken(request, response)) {
+      return;
+    }
+
+    const date = getDateQuery(request.body?.date, response);
+    const eventId =
+      typeof request.body?.eventId === "string"
+        ? request.body.eventId.trim()
+        : "";
+
+    if (!date) {
+      return;
+    }
+
+    if (!eventId) {
+      response.status(400).json({
+        error: "Missing or invalid eventId.",
+      });
+      return;
+    }
+
+    const result = await deleteTimelineEvent({
+      date,
+      eventId,
+    });
+
+    timelineStateCache = null;
+
+    response.json({
+      found: true,
+      date: result.dayKey,
+      deleted: result.deleted,
+    });
+  } catch (error) {
+    handleWritableRouteError(error, response, next);
+  }
+});
+
 app.use(
   (
     error: unknown,
@@ -933,8 +1313,26 @@ app.use(
   },
 );
 
+if (hasBuiltClient) {
+  app.use(
+    express.static(distDir, {
+      index: false,
+    }),
+  );
+
+  app.get(/^(?!\/api(?:\/|$)).*/, (_request, response) => {
+    response.sendFile(distIndexPath);
+  });
+}
+
 app.listen(port, host, () => {
   console.log(
     `[cyberboss-api] listening on http://${host}:${port} (data root: ${getCyberbossDataRoot()})`,
   );
+
+  if (hasBuiltClient) {
+    console.log(
+      `[murmur-lane] serving built client from ${distDir}`,
+    );
+  }
 });

@@ -2,16 +2,21 @@ import type {
   ApiRequestOptions,
   ConversationsResponse,
   DateIndexResponse,
+  EditableMemoryDocumentApiRequest,
+  EditableMemoryDocumentApiResponse,
   FetchConversationsOptions,
   FetchTimelineOptions,
   MemoryApiResponse,
   ReminderHistoryApiResponse,
+  TimelineEventApiResponse,
   TimelineApiResponse,
 } from "../types/api";
 
 const env = (import.meta as { env?: Record<string, string | undefined> }).env;
 
 const API_BASE_URL = String(env?.VITE_API_BASE_URL || "").replace(/\/+$/, "");
+const EDIT_TOKEN = String(env?.VITE_MURMURLANE_EDIT_TOKEN || "").trim();
+export const HAS_EDIT_TOKEN = Boolean(EDIT_TOKEN);
 
 export class ApiError extends Error {
   status: number;
@@ -65,8 +70,17 @@ async function requestJson<T>(
   path: string,
   options: ApiRequestOptions = {},
 ): Promise<T> {
+  const headers = new Headers(options.headers);
+
+  if (EDIT_TOKEN && !headers.has("X-MurmurLane-Edit-Token")) {
+    headers.set("X-MurmurLane-Edit-Token", EDIT_TOKEN);
+  }
+
   const response = await fetch(buildApiUrl(path), {
     signal: options.signal,
+    method: options.method,
+    headers,
+    body: options.body,
   });
 
   if (!response.ok) {
@@ -146,6 +160,112 @@ export function fetchXiaoyeStatic(mode: string): Promise<MemoryApiResponse> {
   return requestJson<MemoryApiResponse>(
     `/api/xiaoye/static?mode=${encodeURIComponent(mode)}`,
   );
+}
+
+export function fetchEditableMemoryDocument(
+  input: EditableMemoryDocumentApiRequest,
+): Promise<EditableMemoryDocumentApiResponse> {
+  const query = buildQuery({
+    documentType: input.documentType,
+    documentId: input.documentId,
+    date: input.date ? normalizeDate(input.date) : undefined,
+  });
+
+  return requestJson<EditableMemoryDocumentApiResponse>(
+    `/api/editable-memory/document?${query}`,
+  );
+}
+
+export function saveEditableMemoryDocument(
+  input: EditableMemoryDocumentApiRequest & { content: string },
+): Promise<EditableMemoryDocumentApiResponse> {
+  return requestJson<EditableMemoryDocumentApiResponse>(
+    "/api/editable-memory/document",
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ...input,
+        date: input.date ? normalizeDate(input.date) : undefined,
+      }),
+    },
+  );
+}
+
+export function toggleOpenLoopsChecklistItem(input: {
+  no: string;
+  checked: boolean;
+}) {
+  return requestJson<EditableMemoryDocumentApiResponse>(
+    "/api/editable-memory/open-loops/toggle",
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export function fetchTimelineEvent(
+  date: string,
+  eventId: string,
+): Promise<TimelineEventApiResponse> {
+  const query = buildQuery({
+    date: normalizeDate(date),
+    eventId,
+  });
+
+  return requestJson<TimelineEventApiResponse>(`/api/timeline/event?${query}`);
+}
+
+export function patchTimelineEvent(input: {
+  date: string;
+  eventId: string;
+  changes: Record<string, unknown>;
+}) {
+  return requestJson<TimelineEventApiResponse>("/api/timeline/event", {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      ...input,
+      date: normalizeDate(input.date),
+    }),
+  });
+}
+
+export function createTimelineEvent(input: {
+  date: string;
+  event: Record<string, unknown>;
+}) {
+  return requestJson<TimelineEventApiResponse>("/api/timeline/event", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      ...input,
+      date: normalizeDate(input.date),
+    }),
+  });
+}
+
+export function deleteTimelineEvent(input: { date: string; eventId: string }) {
+  return requestJson<TimelineEventApiResponse>("/api/timeline/event", {
+    method: "DELETE",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      ...input,
+      date: normalizeDate(input.date),
+    }),
+  });
 }
 
 export function resolveApiFileUrl(filePath: string) {

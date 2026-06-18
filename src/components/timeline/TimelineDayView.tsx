@@ -9,14 +9,20 @@ import {
   layoutTimelineEvents,
 } from "../../lib/timeline";
 import { TimelineDetailModal } from "./TimelineDetailModal";
+import { TimelineEventEditorDrawer } from "./TimelineEventEditorDrawer";
 import { TimelineEventCard } from "./TimelineEventCard";
 
 export function TimelineDayView({
   page,
   highlightResult,
   scrollHitIntoView,
+  onTimelineEventSaved,
+  onTimelineEventDeleted,
+  canEdit,
+  editHint,
 }) {
-  const [selectedEvent, setSelectedEvent] = useState(null);
+  const [detailEvent, setDetailEvent] = useState(null);
+  const [editingEvent, setEditingEvent] = useState(null);
   const events = getTimelineDay(page.date, page.remoteData).events;
   const range = getTimelineRange(events);
   const laidOutEvents = useMemo(
@@ -71,7 +77,7 @@ export function TimelineDayView({
               highlightResult?.targetId === item.event.id
             }
             highlightQuery={highlightResult?.query}
-            onSelectEvent={setSelectedEvent}
+            onSelectEvent={setDetailEvent}
           />
         ))
       ) : (
@@ -83,11 +89,26 @@ export function TimelineDayView({
         </div>
       )}
       <AnimatePresence>
-        {selectedEvent && (
+        {detailEvent && (
           <TimelineDetailModal
-            event={selectedEvent}
+            event={detailEvent}
             page={page}
-            onClose={() => setSelectedEvent(null)}
+            onClose={() => setDetailEvent(null)}
+            onEdit={() => {
+              setEditingEvent(detailEvent);
+              setDetailEvent(null);
+            }}
+            canEdit={canEdit}
+            editHint={editHint}
+          />
+        )}
+        {editingEvent && (
+          <TimelineEventEditorDrawer
+            event={editingEvent}
+            page={page}
+            onClose={() => setEditingEvent(null)}
+            onEventSaved={onTimelineEventSaved}
+            onEventDeleted={onTimelineEventDeleted}
           />
         )}
       </AnimatePresence>

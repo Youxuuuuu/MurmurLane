@@ -29,7 +29,12 @@ export function stripMemoryItemDate(text) {
   return value.slice(dateText.length).replace(/^[:： ]+/, "");
 }
 
-export function MemoryContent({ page, highlightResult }) {
+export function MemoryContent({
+  page,
+  highlightResult,
+  onToggleOpenLoop = undefined,
+  pendingOpenLoopNo = "",
+}) {
   const kind: string = getMemoryContentKind(page.mode);
 
   if (kind === "prose") {
@@ -41,7 +46,14 @@ export function MemoryContent({ page, highlightResult }) {
   }
 
   if (kind === "checklist") {
-    return <ChecklistMemoryContent page={page} highlightResult={highlightResult} />;
+    return (
+      <ChecklistMemoryContent
+        page={page}
+        highlightResult={highlightResult}
+        onToggleOpenLoop={onToggleOpenLoop}
+        pendingOpenLoopNo={pendingOpenLoopNo}
+      />
+    );
   }
 
  if (
@@ -153,13 +165,19 @@ export function SummaryMemoryContent({ page, highlightResult }) {
   );
 }
 
-export function ChecklistMemoryContent({ page, highlightResult }) {
+export function ChecklistMemoryContent({
+  page,
+  highlightResult,
+  onToggleOpenLoop = undefined,
+  pendingOpenLoopNo = "",
+}) {
   return (
     <div className="space-y-3">
       {page.sections.map((item) => {
         const targetId = `${page.mode}-static-${item.no}`;
         const active = highlightResult?.targetId === targetId;
         const checked = Boolean(item.checked);
+        const toggling = String(pendingOpenLoopNo ?? "") === String(item.no);
         return (
           <section
             id={`hit-${targetId}`}
@@ -169,13 +187,17 @@ export function ChecklistMemoryContent({ page, highlightResult }) {
               background: active ? `${page.color}10` : "transparent",
             }}
           >
-            <span
-              className="mt-[6px] h-2 w-2 shrink-0 rounded-full border"
+            <button
+              className="mt-[6px] h-2 w-2 shrink-0 appearance-none rounded-full border bg-transparent p-0"
               style={{
                 background: checked ? page.color : "transparent",
                 borderColor: page.color,
                 opacity: checked ? 0.42 : 0.72,
               }}
+              type="button"
+              aria-label={checked ? "标记为未完成" : "标记为已完成"}
+              disabled={!onToggleOpenLoop || toggling}
+              onClick={() => onToggleOpenLoop?.(item.no, !checked)}
             />
             <p
               className={`min-w-0 flex-1 text-[11px] leading-[1.75] ${checked ? "text-[#6f6862]" : "text-black/56"}`}

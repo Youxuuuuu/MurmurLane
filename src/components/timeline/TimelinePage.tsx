@@ -14,6 +14,10 @@ export function TimelinePage({
   onOpenDatePicker,
   onMonthSelect,
   scrollHitIntoView,
+  onTimelineEventSaved,
+  onTimelineEventDeleted,
+  canEdit,
+  editHint,
 }) {
   return (
     <motion.section
@@ -21,7 +25,7 @@ export function TimelinePage({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
-      className="relative min-h-[980px] border bg-[#f7f5ee] p-5 pb-10"
+      className="relative min-h-[980px] border bg-[#f7f5ee] p-5 pb-[calc(var(--app-bottom-nav-space,96px)+28px)]"
       style={{ background: page.paper, borderColor: page.line }}
     >
       <PaperTexture mode={page.texture} />
@@ -36,6 +40,10 @@ export function TimelinePage({
             page={page}
             highlightResult={highlightResult}
             scrollHitIntoView={scrollHitIntoView}
+            onTimelineEventSaved={onTimelineEventSaved}
+            onTimelineEventDeleted={onTimelineEventDeleted}
+            canEdit={canEdit}
+            editHint={editHint}
           />
         ) : timelineView === "stats" ? (
           <TimelineStatsView
@@ -44,7 +52,13 @@ export function TimelinePage({
             onSelectPeriod={onSelectStatsPeriod}
           />
         ) : (
-          <TimelineReminderView page={page} />
+          <TimelineReminderView
+            page={page}
+            onTimelineEventSaved={onTimelineEventSaved}
+            onTimelineEventDeleted={onTimelineEventDeleted}
+            canEdit={canEdit}
+            editHint={editHint}
+          />
         )}
       </div>
     </motion.section>

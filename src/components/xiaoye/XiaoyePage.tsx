@@ -1,10 +1,20 @@
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { CalendarStrip } from "../calendar/CalendarStrip";
 import { PaperTexture } from "../common/PaperTexture";
 import { PageBottomMark } from "../layout/PageBottomMark";
 import { ContinuousStaticMemoryContent } from "../archive/MemoryContent";
+import { MemoryEditorShell } from "../archive/MemoryEditorShell";
 import { XiaoyeModeSwitch } from "../controls/XiaoyeModeSwitch";
+import {
+  fetchEditableMemoryDocument,
+  saveEditableMemoryDocument,
+} from "../../data/api";
+import {
+  buildEditableMemoryTemplate,
+  getEditableMemoryDocumentForPage,
+  parseEditableMemoryContent,
+} from "../../lib/editableMemory";
 
 export function XiaoyePage({
   page,
@@ -14,11 +24,96 @@ export function XiaoyePage({
   onSelectXiaoyeMode,
   selectedXiaoyeMode,
   scrollHitIntoView,
+  onMemoryEntrySaved,
+  canEdit,
+  editHint,
 }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [isPreview, setIsPreview] = useState(false);
+  const [draftContent, setDraftContent] = useState("");
+  const [editorError, setEditorError] = useState("");
+  const [isEditorLoading, setIsEditorLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const editableDocument = useMemo(
+    () => getEditableMemoryDocumentForPage(page),
+    [page.mode, page.xiaoyeMode],
+  );
+  const previewEntry = useMemo(() => {
+    if (!editableDocument) {
+      return null;
+    }
+
+    return parseEditableMemoryContent(editableDocument, draftContent);
+  }, [editableDocument, draftContent]);
+
   useEffect(() => {
     if (!highlightResult || highlightResult.mode !== "Xiaoye") return;
     scrollHitIntoView(highlightResult.targetId);
   }, [highlightResult, page.xiaoyeMode, scrollHitIntoView]);
+
+  useEffect(() => {
+    setIsEditing(false);
+    setIsPreview(false);
+    setDraftContent("");
+    setEditorError("");
+  }, [page.xiaoyeMode]);
+
+  const handleStartEditing = async () => {
+    if (!editableDocument) {
+      return;
+    }
+
+    if (!canEdit) {
+      setEditorError(editHint || "编辑当前不可用。");
+      return;
+    }
+
+    try {
+      setIsEditorLoading(true);
+      setEditorError("");
+      const result = await fetchEditableMemoryDocument(editableDocument);
+      setDraftContent(
+        result.content || buildEditableMemoryTemplate(editableDocument),
+      );
+      setIsEditing(true);
+      setIsPreview(false);
+    } catch (error) {
+      setEditorError(String(error?.message || error || "Failed to load document."));
+    } finally {
+      setIsEditorLoading(false);
+    }
+  };
+
+  const handleSaveEditing = async () => {
+    if (!editableDocument) {
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      setEditorError("");
+      const result = await saveEditableMemoryDocument({
+        ...editableDocument,
+        content: draftContent,
+      });
+      onMemoryEntrySaved?.(editableDocument, result.entry);
+      setDraftContent(result.content);
+      setIsEditing(false);
+      setIsPreview(false);
+    } catch (error) {
+      setEditorError(String(error?.bodyText || error?.message || error));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const previewPage = previewEntry
+    ? {
+        ...page,
+        ...previewEntry,
+        hasEntry: true,
+      }
+    : page;
 
   return (
     <motion.section
@@ -51,33 +146,91 @@ export function XiaoyePage({
             </h2>
           </div>
         </aside>
-        <article className="relative z-10 flex min-h-0 flex-1 flex-col pt-20">
-          <div className="shrink-0">
-            <CalendarStrip
-              page={page}
-              onOpenDatePicker={onOpenDatePicker}
-              onMonthSelect={onMonthSelect}
-            />
+        {isEditing ? (
+          <button
+            className="absolute right-0 top-[80px] z-20 border px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em]"
+            style={{ borderColor: page.color, color: page.color }}
+            type="button"
+            onClick={() => setIsPreview((current) => !current)}
+          >
+            {isPreview ? "raw" : "preview"}
+          </button>
+        ) : (
+          <div className="absolute right-0 top-[80px] z-20 flex flex-col items-end gap-1.5">
+            <button
+              className="border px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] disabled:opacity-45"
+              style={{ borderColor: page.color, color: page.color }}
+              type="button"
+              onClick={handleStartEditing}
+              disabled={isEditorLoading || !canEdit}
+            >
+              {isEditorLoading ? "loading..." : page.hasEntry ? "edit" : "create"}
+            </button>
+            {!canEdit && editHint ? (
+              <p className="max-w-[210px] text-right text-[10px] leading-4 text-black/42">
+                {editHint}
+              </p>
+            ) : null}
           </div>
-          {page.hasEntry ? (
-            <div className="diary-scroll relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-4 pt-1">
+        )}
+        {isEditing ? (
+          <MemoryEditorShell
+            page={page}
+            draftContent={draftContent}
+            isPreview={isPreview}
+            isSaving={isSaving}
+            error={editorError}
+            onDraftContentChange={setDraftContent}
+            onOpenDatePicker={onOpenDatePicker}
+            onMonthSelect={onMonthSelect}
+            onSave={handleSaveEditing}
+            onCancel={() => {
+              setIsEditing(false);
+              setIsPreview(false);
+              setEditorError("");
+            }}
+            previewContent={
               <div className="flex min-h-full flex-col">
-                <ContinuousStaticMemoryContent page={page} highlightResult={highlightResult} />
-                <PageBottomMark page={page} />
+                <ContinuousStaticMemoryContent
+                  page={previewPage}
+                  highlightResult={null}
+                />
+                <PageBottomMark page={previewPage} />
               </div>
+            }
+          />
+        ) : (
+          <article className="relative z-10 flex min-h-0 flex-1 flex-col pt-20">
+            <div className="shrink-0">
+              <CalendarStrip
+                page={page}
+                onOpenDatePicker={onOpenDatePicker}
+                onMonthSelect={onMonthSelect}
+              />
             </div>
-          ) : (
-            <div className="diary-scroll relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-4 pt-1">
-              <div className="flex min-h-full flex-col">
-                <p className="text-[11px] leading-7 tracking-[0.08em] text-[#8f877b]">
-                  {page.blankText}
-                </p>
+            {page.hasEntry ? (
+              <div className="diary-scroll relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-4 pt-1">
+                <div className="flex min-h-full flex-col">
+                  <ContinuousStaticMemoryContent
+                    page={page}
+                    highlightResult={highlightResult}
+                  />
+                  <PageBottomMark page={page} />
+                </div>
+              </div>
+            ) : (
+              <div className="diary-scroll relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-4 pt-1">
+                <div className="flex min-h-full flex-col">
+                  <p className="text-[11px] leading-7 tracking-[0.08em] text-[#8f877b]">
+                    {page.blankText}
+                  </p>
 
-                <PageBottomMark page={page} />
+                  <PageBottomMark page={page} />
+                </div>
               </div>
-            </div>
-          )}
-        </article>
+            )}
+          </article>
+        )}
       </div>
     </motion.section>
   );

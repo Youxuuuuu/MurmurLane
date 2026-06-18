@@ -8,9 +8,12 @@
     "server": "tsx server/index.ts",
     "dev:all": "concurrently \"npm run dev\" \"npm run server\"",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "serve:prod": "npm run build && npm run server",
+    "serve:prod:lan": "npm run build && powershell -NoProfile -Command \"$env:API_HOST='0.0.0.0'; $env:API_PORT='8790'; & npm.cmd run server\""
   },
   "dependencies": {
+    "dotenv": "^17.4.2",
     "express": "^5.1.0",
     "framer-motion": "^12.23.24",
     "html-to-image": "^1.11.13",
