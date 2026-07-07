@@ -1,4 +1,0 @@
-
-> murmur-lane@0.0.0 dev:all
-> concurrently "npm run dev" "npm run server"
-
