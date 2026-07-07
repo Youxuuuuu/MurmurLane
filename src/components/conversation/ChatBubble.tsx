@@ -6,9 +6,11 @@ import {
   getConversationQuoteText,
   getConversationVisualKind,
   getOperationDisplayPaths,
+  buildCloudMusicCardData,
 } from "../../lib/conversation";
 import { formatConversationTime } from "../../lib/conversationPageData";
 import { TinyIcon } from "../common/TinyIcon";
+import { MusicShareCard } from "./MusicShareCard";
 
 export function BubbleRow({
   message,
@@ -37,7 +39,7 @@ export function MessageTime({ message, align = "left" }) {
   );
 }
 
-export function ChatBubble({ message, page }) {
+export function ChatBubble({ message, page, messages = [] }) {
   const visualKind = getConversationVisualKind(message);
   const displayText = getConversationDisplayText(message);
   const fromUser = message.type === "user";
@@ -64,7 +66,19 @@ export function ChatBubble({ message, page }) {
     );
   }
 
-  if (visualKind === "operation") {
+  if (visualKind === "music") {
+    const musicData = buildCloudMusicCardData(message, messages);
+
+    if (musicData) {
+      return (
+        <BubbleRow message={message} side="left">
+          <MusicShareCard data={musicData} page={page} />
+        </BubbleRow>
+      );
+    }
+  }
+
+  if (visualKind === "operation" || visualKind === "music") {
     return (
       <div className="flex justify-center py-0.5">
         <button

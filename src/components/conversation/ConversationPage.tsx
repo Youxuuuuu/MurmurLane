@@ -300,7 +300,11 @@ export function ConversationPage({
                   background: active ? `${page.color}12` : "transparent",
                 }}
               >
-                <ChatBubble message={message} page={page} />
+                <ChatBubble
+                  message={message}
+                  page={page}
+                  messages={visibleMessages}
+                />
               </div>
             );
           })}

@@ -1184,7 +1184,7 @@ export default function InsDiaryPrototype() {
       <AppScrollbarStyle />
       <div className="pointer-events-none fixed inset-0 opacity-[0.24] [background-image:radial-gradient(#6f6a60_0.55px,transparent_0.55px)] [background-size:8px_8px]" />
       <main
-        className="relative mx-auto flex h-[var(--app-stable-height,100svh)] w-full max-w-[430px] flex-col overflow-hidden border-x bg-[#eeeae1] px-4 pt-[calc(12px+env(safe-area-inset-top))] sm:h-[852px] sm:w-[393px] sm:border sm:pt-3.5"
+        className="relative mx-auto flex h-[var(--app-stable-height,100svh)] w-full max-w-[560px] flex-col overflow-hidden border-x bg-[#eeeae1] px-4 pt-[calc(12px+env(safe-area-inset-top))] md:max-w-[640px] sm:h-[852px] sm:border sm:pt-3.5"
         style={{
           borderColor: page.line,
           "--app-bottom-nav-space": "calc(76px + env(safe-area-inset-bottom))",

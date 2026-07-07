@@ -7,6 +7,17 @@ import type {
 } from "../types/conversation";
 import { resolveApiFileUrl } from "../data/api";
 import { toHyphenDate } from "./date";
+
+export type CloudMusicDevice = "mobile" | "desktop";
+
+export interface CloudMusicCardData {
+  device: CloudMusicDevice;
+  songId: string;
+  title: string;
+  artist: string;
+  sourceLabel: string;
+}
+
 export function safeParseActionText(
   text: unknown,
 ): ConversationActionPayload | null {
@@ -21,6 +32,243 @@ export function safeParseActionText(
   } catch {
     return null;
   }
+}
+
+function safeJsonParse(value: string): unknown {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function getCloudMusicToolHints(record: ConversationRecord) {
+  return [
+    record?.meta?.toolName,
+    record?.meta?.rawToolName,
+    record?.text,
+  ].map((value) => String(value ?? ""));
+}
+
+export function getCloudMusicDevice(
+  record: ConversationRecord,
+): CloudMusicDevice | null {
+  const [toolName, rawToolName, text] = getCloudMusicToolHints(record);
+
+  if (
+    toolName === "cloud_music_android_play" ||
+    rawToolName.includes("cloud_music_android_play") ||
+    text.includes("[cloud_music_android_play]")
+  ) {
+    return "mobile";
+  }
+
+  if (
+    toolName === "cloud_music_play" ||
+    rawToolName.includes("cloud_music_play") ||
+    text.includes("[cloud_music_play]")
+  ) {
+    return "desktop";
+  }
+
+  return null;
+}
+
+export function isCloudMusicRecord(record: ConversationRecord) {
+  return Boolean(getCloudMusicDevice(record));
+}
+
+function decodeText(value: unknown) {
+  return String(value ?? "")
+    .replace(/\\"/g, '"')
+    .replace(/\\\//g, "/")
+    .trim();
+}
+
+function pickString(value: unknown) {
+  const text = decodeText(value);
+  return text || "";
+}
+
+function extractQuotedField(source: string, field: "title" | "artist") {
+  const patterns = [
+    new RegExp(`"${field}"\\s*:\\s*"([^"]+)"`, "i"),
+    new RegExp(`\\\\"${field}\\\\"\\s*:\\s*\\\\"([^"]+)\\\\"`, "i"),
+    new RegExp(`${field}\\s*[:=]\\s*["']([^"']+)["']`, "i"),
+  ];
+
+  for (const pattern of patterns) {
+    const match = source.match(pattern)?.[1];
+    if (match) return decodeText(match);
+  }
+
+  return "";
+}
+
+function extractSongIdFromText(source: string) {
+  const text = decodeText(source);
+  const patterns = [
+    /\[cloud_music_(?:android_)?play\]\s*(\d{4,})/i,
+    /orpheus:\/\/song\/(\d{4,})/i,
+    /"id"\s*:\s*"?(\d{4,})"?/i,
+    /\\"id\\"\s*:\s*\\"?(\d{4,})\\"?/i,
+    /\bsong\s+(\d{4,})\b/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern)?.[1];
+    if (match) return match;
+  }
+
+  return "";
+}
+
+function mergeCloudMusicMeta(
+  current: Partial<CloudMusicCardData>,
+  next: Partial<CloudMusicCardData>,
+) {
+  if (!current.songId && next.songId) current.songId = next.songId;
+  if (!current.title && next.title) current.title = next.title;
+  if (!current.artist && next.artist) current.artist = next.artist;
+}
+
+function extractCloudMusicMetaFromValue(
+  value: unknown,
+  seen = new Set<unknown>(),
+): Partial<CloudMusicCardData> {
+  const result: Partial<CloudMusicCardData> = {};
+
+  if (value === null || value === undefined) return result;
+
+  if (typeof value === "string") {
+    const parsed = safeJsonParse(value);
+    if (parsed && !seen.has(parsed)) {
+      mergeCloudMusicMeta(
+        result,
+        extractCloudMusicMetaFromValue(parsed, seen),
+      );
+    }
+
+    const reparsed = parsed && typeof parsed === "string" ? safeJsonParse(parsed) : null;
+    if (reparsed && !seen.has(reparsed)) {
+      mergeCloudMusicMeta(
+        result,
+        extractCloudMusicMetaFromValue(reparsed, seen),
+      );
+    }
+
+    if (!result.songId) result.songId = extractSongIdFromText(value);
+    if (!result.title) result.title = extractQuotedField(value, "title");
+    if (!result.artist) result.artist = extractQuotedField(value, "artist");
+    return result;
+  }
+
+  if (typeof value !== "object") {
+    return result;
+  }
+
+  if (seen.has(value)) return result;
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    value.forEach((item) => {
+      mergeCloudMusicMeta(
+        result,
+        extractCloudMusicMetaFromValue(item, seen),
+      );
+    });
+    return result;
+  }
+
+  const objectValue = value as Record<string, unknown>;
+  const id = pickString(objectValue.id);
+  const title = pickString(objectValue.title);
+  const artist = pickString(objectValue.artist);
+  const deepLink = pickString(objectValue.deepLink);
+
+  if (id) result.songId = id;
+  if (title) result.title = title;
+  if (artist) result.artist = artist;
+  if (!result.songId && deepLink) {
+    result.songId = extractSongIdFromText(deepLink);
+  }
+
+  Object.values(objectValue).forEach((item) => {
+    mergeCloudMusicMeta(
+      result,
+      extractCloudMusicMetaFromValue(item, seen),
+    );
+  });
+
+  return result;
+}
+
+function getCloudMusicMetaCandidates(record: ConversationRecord) {
+  return [
+    record?.meta?.toolResultPreview,
+    record?.meta?.resultSummary,
+    record?.text,
+  ];
+}
+
+export function extractCloudMusicSongId(record: ConversationRecord) {
+  for (const candidate of getCloudMusicMetaCandidates(record)) {
+    const meta = extractCloudMusicMetaFromValue(candidate);
+    if (meta.songId) return meta.songId;
+  }
+
+  return "";
+}
+
+export function extractCloudMusicSongMeta(record: ConversationRecord) {
+  const result: Partial<CloudMusicCardData> = {};
+
+  getCloudMusicMetaCandidates(record).forEach((candidate) => {
+    mergeCloudMusicMeta(result, extractCloudMusicMetaFromValue(candidate));
+  });
+
+  return result;
+}
+
+export function buildCloudMusicCardData(
+  record: ConversationRecord,
+  records: ConversationRecord[] = [],
+): CloudMusicCardData | null {
+  const device = getCloudMusicDevice(record);
+  if (!device) return null;
+
+  const currentMeta = extractCloudMusicSongMeta(record);
+  const songId = currentMeta.songId || extractCloudMusicSongId(record);
+  if (!songId) return null;
+
+  let title = currentMeta.title || "";
+  let artist = currentMeta.artist || "";
+
+  if (!title || !artist) {
+    records.some((candidate) => {
+      if (candidate === record) return false;
+      const candidateMeta = extractCloudMusicSongMeta(candidate);
+      const candidateSongId =
+        candidateMeta.songId || extractCloudMusicSongId(candidate);
+
+      if (candidateSongId !== songId) return false;
+
+      if (!title && candidateMeta.title) title = candidateMeta.title;
+      if (!artist && candidateMeta.artist) artist = candidateMeta.artist;
+
+      return Boolean(title && artist);
+    });
+  }
+
+  const deviceLabel = device === "mobile" ? "手机播放" : "电脑播放";
+
+  return {
+    device,
+    songId,
+    title: title || `歌曲 ${songId}`,
+    artist: artist || deviceLabel,
+    sourceLabel: "Cloud Music",
+  };
 }
 
 export function isAttachmentInputRecord(record: ConversationRecord) {
@@ -201,6 +449,7 @@ export function getConversationVisualKind(record: ConversationRecord) {
   if (isAttachmentInputRecord(record)) return "hidden";
 
   if (record?.type === "thinking") return "thinking";
+  if (isCloudMusicRecord(record)) return "music";
   if (record?.type === "operation") return "operation";
   if (record?.type === "user") return "user";
   if (record?.type === "assistant") return "assistant";
