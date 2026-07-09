@@ -877,14 +877,17 @@ export async function deleteTimelineEvent(input: {
     throw new Error(`Timeline event ${input.eventId} was not found.`);
   }
 
-  const nextFacts = {
-    ...facts,
-    [dayKey]: {
+  const nextFacts = { ...facts };
+
+  if (nextEvents.length === 0) {
+    delete nextFacts[dayKey];
+  } else {
+    nextFacts[dayKey] = {
       ...dayRecord,
       updatedAt: new Date().toISOString(),
       events: nextEvents,
-    },
-  };
+    };
+  }
   const nextState = withTimelineFactsRoot(state, nextFacts);
 
   await writeTimelineStateFile(timelineFile.path, nextState);

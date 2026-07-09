@@ -1,6 +1,5 @@
-import { motion } from "framer-motion";
-import { PaperTexture } from "../common/PaperTexture";
 import { CalendarStrip } from "../calendar/CalendarStrip";
+import { PageCard } from "../layout/PageCard";
 import { TimelineDayView } from "./TimelineDayView";
 import { TimelineReminderView } from "./TimelineReminderView";
 import { TimelineStatsView } from "./TimelineStatsView";
@@ -20,15 +19,11 @@ export function TimelinePage({
   editHint,
 }) {
   return (
-    <motion.section
-      key={`${page.id}-timeline-${page.date}-${timelineView}-${statsPeriod}`}
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -8 }}
+    <PageCard
+      page={page}
+      motionKey={`${page.id}-timeline-${page.date}-${timelineView}-${statsPeriod}`}
       className="relative min-h-[980px] border bg-[#f7f5ee] p-5 pb-[calc(var(--app-bottom-nav-space,96px)+28px)]"
-      style={{ background: page.paper, borderColor: page.line }}
     >
-      <PaperTexture mode={page.texture} />
       <div className="relative min-h-[920px]">
         <CalendarStrip
           page={page}
@@ -61,6 +56,6 @@ export function TimelinePage({
           />
         )}
       </div>
-    </motion.section>
+    </PageCard>
   );
 }

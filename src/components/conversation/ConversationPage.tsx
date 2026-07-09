@@ -1,9 +1,9 @@
 // @ts-nocheck
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { motion } from "framer-motion";
 import { shouldHideConversationRecord } from "../../lib/conversation";
-import { PaperTexture } from "../common/PaperTexture";
 import { CalendarStrip } from "../calendar/CalendarStrip";
+import { CardScrollArea } from "../layout/CardScrollArea";
+import { PageCard } from "../layout/PageCard";
 import { ChatBubble } from "./ChatBubble";
 import { ConversationEmptyState } from "./ConversationEmptyState";
 
@@ -263,15 +263,11 @@ export function ConversationPage({
   };
 
   return (
-    <motion.section
-      key={`${page.id}-conversation-${page.date}-${selectedThreadId}`}
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -8 }}
-      className="relative flex h-[calc(100dvh-142px)] min-h-[360px] flex-col overflow-hidden border bg-[#f7f5ee] p-5 sm:h-[640px]"
-      style={{ background: page.paper, borderColor: page.line }}
+    <PageCard
+      page={page}
+      motionKey={`${page.id}-conversation-${page.date}-${selectedThreadId}`}
+      className="relative flex h-full min-h-0 flex-col overflow-hidden border bg-[#f7f5ee] p-5"
     >
-      <PaperTexture mode={page.texture} />
       <div className="relative z-10 shrink-0">
         <CalendarStrip
           page={page}
@@ -280,9 +276,9 @@ export function ConversationPage({
         />
       </div>
       {page.hasEntry ? (
-        <div
+        <CardScrollArea
           id="conversation-message-scroll"
-          className="diary-scroll relative z-10 -mx-2 min-h-0 flex-1 overflow-y-auto overflow-x-hidden pt-1 pb-3"
+          className="z-10 -mx-2 pt-1 pb-3"
           onScroll={handleConversationScroll}
         >
           {renderedMessages.map((message) => {
@@ -308,10 +304,10 @@ export function ConversationPage({
               </div>
             );
           })}
-        </div>
+        </CardScrollArea>
       ) : (
         <ConversationEmptyState />
       )}
-    </motion.section>
+    </PageCard>
   );
 }

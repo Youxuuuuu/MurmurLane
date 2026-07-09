@@ -49,13 +49,15 @@ import {
 } from "./lib/editableMemory";
 import { buildTimelinePage } from "./lib/timelinePageData";
 import { DatePickerModal } from "./components/calendar/DatePickerModal";
+import { DiaryShareModal } from "./components/archive/DiaryShareModal";
 import { DirectoryPage } from "./components/archive/DirectoryPage";
 import { ConversationPage } from "./components/conversation/ConversationPage";
 import { TimelinePage } from "./components/timeline/TimelinePage";
 import { XiaoyePage } from "./components/xiaoye/XiaoyePage";
-import { AppScrollbarStyle } from "./components/layout/AppScrollbarStyle";
+import { AppShell } from "./components/layout/AppShell";
 import { BottomNav } from "./components/layout/BottomNav";
 import { SwipeDateArea } from "./components/layout/SwipeDateArea";
+import { PageViewport } from "./components/layout/PageViewport";
 import { DiarySearchBox } from "./components/search/DiarySearchBox";
 import { SegmentSwitch } from "./components/controls/SegmentSwitch";
 import { ThreadSwitch } from "./components/controls/ThreadSwitch";
@@ -108,6 +110,7 @@ export default function InsDiaryPrototype() {
   const [statsPeriod, setStatsPeriod] = useState("day");
   const [highlightResult, setHighlightResult] = useState(null);
   const [diaryShareOpen, setDiaryShareOpen] = useState(false);
+  const [selectedShareText, setSelectedShareText] = useState("");
   const [archiveSubject, setArchiveSubject] = useState("Me");
   const [selectedXiaoyeMode, setSelectedXiaoyeMode] = useState("Ins");
   const [remoteConversationsState, setRemoteConversationsState] = useState({});
@@ -1091,7 +1094,7 @@ export default function InsDiaryPrototype() {
   const archiveShowsXiaoye =
     activeSection === "Xiaoye" ||
     (activeSection === "Archive" && archiveSubject === "Xiaoye");
-  const shellShouldScroll = activeSection === "Timeline";
+  const pageScrollMode = activeSection === "Timeline" ? "page" : "contained";
   const page = useMemo(() => {
     if (activeSection === "Conversation")
       return buildConversationPage(
@@ -1169,37 +1172,18 @@ export default function InsDiaryPrototype() {
       />
     );
 
+  const closeDiaryShare = () => {
+    setDiaryShareOpen(false);
+    setSelectedShareText("");
+  };
+
   return (
-    <div
-      className="flex min-h-[var(--app-stable-height,100svh)] items-start justify-center text-stone-700 sm:min-h-screen sm:px-3 sm:py-5"
-      style={{
-        background:
-          activeSection === "Timeline"
-            ? "#d8d4cb"
-            : selectedStyleId === "plant"
-              ? "#eef0e8"
-              : "#d8d4cb",
-      }}
-    >
-      <AppScrollbarStyle />
-      <div className="pointer-events-none fixed inset-0 opacity-[0.24] [background-image:radial-gradient(#6f6a60_0.55px,transparent_0.55px)] [background-size:8px_8px]" />
-      <main
-        className="relative mx-auto flex h-[var(--app-stable-height,100svh)] w-full max-w-[560px] flex-col overflow-hidden border-x bg-[#eeeae1] px-4 pt-[calc(12px+env(safe-area-inset-top))] md:max-w-[640px] sm:h-[852px] sm:border sm:pt-3.5"
-        style={{
-          borderColor: page.line,
-          "--app-bottom-nav-space": "calc(76px + env(safe-area-inset-bottom))",
-        }}
-      >
-        
-        <div
-          key={`${activeSection}-${archiveSubject}-${timelineView}`}
-          className={`diary-scroll flex min-h-0 flex-1 flex-col overflow-x-hidden overscroll-contain pb-4 ${
-            shellShouldScroll ? "overflow-y-auto" : "overflow-hidden"
-          }`}
-          style={{
-            paddingBottom: "var(--app-bottom-nav-space)",
-          }}
-        >
+    <AppShell
+      viewport={
+        <PageViewport
+          viewportKey={`${activeSection}-${archiveSubject}-${timelineView}`}
+          scrollMode={pageScrollMode}
+          header={
           <header
             className="sticky top-0 z-[80] mb-3 border-b bg-[#eeeae1]/95 pb-2 pt-1 backdrop-blur-[2px]"
             style={{ borderBottomColor: page.line }}
@@ -1270,8 +1254,8 @@ export default function InsDiaryPrototype() {
               </div>
             </div>
           </header>
-          
-          <div className="mt-1 flex min-h-0 flex-1 flex-col pb-0.6">
+          }
+        >
             <SwipeDateArea onSwipeDate={handleSwipeDate}>
               <AnimatePresence mode="wait">
                 {activeSection === "Conversation" ? (
@@ -1323,12 +1307,7 @@ export default function InsDiaryPrototype() {
                     onOpenShare={() => setDiaryShareOpen(true)}
                     onSelectMode={setSelectedMode}
                     selectedMode={selectedMode}
-                    diaryShareOpen={
-                      diaryShareOpen &&
-                      activeSection === "Archive" &&
-                      archiveSubject === "Me"
-                    }
-                    onCloseShare={() => setDiaryShareOpen(false)}
+                    onSelectedShareTextChange={setSelectedShareText}
                     scrollHitIntoView={scrollHitIntoView}
                     onMemoryEntrySaved={handleMemoryEntrySaved}
                     onToggleOpenLoop={
@@ -1342,8 +1321,9 @@ export default function InsDiaryPrototype() {
                 )}
               </AnimatePresence>
             </SwipeDateArea>
-          </div>
-        </div>
+        </PageViewport>
+      }
+      bottomNavigation={
         <BottomNav
           activeSection={
             activeSection === "Xiaoye" ? "Archive" : activeSection
@@ -1351,6 +1331,8 @@ export default function InsDiaryPrototype() {
           onSelectSection={setActiveSection}
           page={page}
         />
+      }
+      modalLayer={
         <AnimatePresence>
           {datePickerOpen && (
             <DatePickerModal
@@ -1359,9 +1341,19 @@ export default function InsDiaryPrototype() {
               onSelectDate={handleSelectDate}
             />
           )}
+          {diaryShareOpen &&
+            activeSection === "Archive" &&
+            archiveSubject === "Me" &&
+            (page.mode === "Diary" || page.mode === "Letters") && (
+              <DiaryShareModal
+                page={page}
+                selectedText={selectedShareText}
+                onClose={closeDiaryShare}
+              />
+            )}
         </AnimatePresence>
-      </main>
-    </div>
+      }
+    />
   );
 }
 

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { motion } from "framer-motion";
 import { CalendarStrip } from "../calendar/CalendarStrip";
-import { PaperTexture } from "../common/PaperTexture";
 import { PageBottomMark } from "../layout/PageBottomMark";
+import { CardScrollArea } from "../layout/CardScrollArea";
+import { PageCard } from "../layout/PageCard";
 import { ContinuousStaticMemoryContent } from "../archive/MemoryContent";
 import { MemoryEditorShell } from "../archive/MemoryEditorShell";
 import { XiaoyeModeSwitch } from "../controls/XiaoyeModeSwitch";
@@ -116,15 +116,11 @@ export function XiaoyePage({
     : page;
 
   return (
-    <motion.section
-      key={`${page.id}-${page.mode}-${page.xiaoyeMode}`}
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -8 }}
+    <PageCard
+      page={page}
+      motionKey={`${page.id}-${page.mode}-${page.xiaoyeMode}`}
       className="relative flex h-full min-h-0 flex-col overflow-hidden border bg-[#f7f5ee] p-5"
-      style={{ background: page.paper, borderColor: page.line }}
     >
-      <PaperTexture mode={page.texture} />
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div className="absolute right-0 top-5 z-[30]">
           <XiaoyeModeSwitch
@@ -209,7 +205,7 @@ export function XiaoyePage({
               />
             </div>
             {page.hasEntry ? (
-              <div className="diary-scroll relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-4 pt-1">
+              <CardScrollArea className="pb-4 pt-1">
                 <div className="flex min-h-full flex-col">
                   <ContinuousStaticMemoryContent
                     page={page}
@@ -217,9 +213,9 @@ export function XiaoyePage({
                   />
                   <PageBottomMark page={page} />
                 </div>
-              </div>
+              </CardScrollArea>
             ) : (
-              <div className="diary-scroll relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-4 pt-1">
+              <CardScrollArea className="pb-4 pt-1">
                 <div className="flex min-h-full flex-col">
                   <p className="text-[11px] leading-7 tracking-[0.08em] text-[#8f877b]">
                     {page.blankText}
@@ -227,11 +223,11 @@ export function XiaoyePage({
 
                   <PageBottomMark page={page} />
                 </div>
-              </div>
+              </CardScrollArea>
             )}
           </article>
         )}
       </div>
-    </motion.section>
+    </PageCard>
   );
 }

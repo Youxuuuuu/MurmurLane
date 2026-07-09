@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
 import { CalendarStrip } from "../calendar/CalendarStrip";
-import { PaperTexture } from "../common/PaperTexture";
-import { DiaryShareModal } from "./DiaryShareModal";
 import { MemoryContent } from "./MemoryContent";
 import { MemoryEditorShell } from "./MemoryEditorShell";
 import { PageBottomMark } from "../layout/PageBottomMark";
+import { CardScrollArea } from "../layout/CardScrollArea";
+import { PageCard } from "../layout/PageCard";
 import { TopModeSwitch } from "../controls/TopModeSwitch";
 import {
   fetchEditableMemoryDocument,
@@ -25,8 +24,7 @@ export function DirectoryPage({
   onOpenShare,
   onSelectMode,
   selectedMode,
-  diaryShareOpen,
-  onCloseShare,
+  onSelectedShareTextChange,
   scrollHitIntoView,
   onMemoryEntrySaved,
   onToggleOpenLoop,
@@ -34,7 +32,6 @@ export function DirectoryPage({
   editHint,
 }) {
   const pageRef = useRef(null);
-  const [selectedShareText, setSelectedShareText] = useState("");
   const [isEditing, setIsEditing] = useState(false);
   const [isPreview, setIsPreview] = useState(false);
   const [draftContent, setDraftContent] = useState("");
@@ -104,7 +101,7 @@ export function DirectoryPage({
     const nextSelectedText = getSelectedTextInsidePage();
 
     if (nextSelectedText) {
-      setSelectedShareText(nextSelectedText);
+      onSelectedShareTextChange?.(nextSelectedText);
     }
   };
 
@@ -112,7 +109,7 @@ export function DirectoryPage({
     const nextSelectedText = getSelectedTextInsidePage();
 
     if (nextSelectedText) {
-      setSelectedShareText(nextSelectedText);
+      onSelectedShareTextChange?.(nextSelectedText);
     }
 
     clearTextSelection();
@@ -130,12 +127,6 @@ export function DirectoryPage({
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
     }
-  };
-
-  const handleCloseShare = () => {
-    setSelectedShareText("");
-    clearTextSelection();
-    onCloseShare?.();
   };
 
   const handleStartEditing = async () => {
@@ -293,22 +284,17 @@ export function DirectoryPage({
     : page;
 
   return (
-    <>
-      <motion.section
-        ref={pageRef}
-        key={`${page.id}-${page.mode}-${page.date}`}
-        onMouseUp={rememberSelectedShareText}
-        onKeyUp={rememberSelectedShareText}
-        onTouchEnd={() => {
-          window.setTimeout(rememberSelectedShareText, 80);
-        }}
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -8 }}
-        className="relative flex h-full min-h-0 flex-col overflow-hidden border bg-[#f7f5ee] p-5"
-        style={{ background: page.paper, borderColor: page.line }}
-      >
-        <PaperTexture mode={page.texture} />
+    <PageCard
+      sectionRef={pageRef}
+      motionKey={`${page.id}-${page.mode}-${page.date}`}
+      onMouseUp={rememberSelectedShareText}
+      onKeyUp={rememberSelectedShareText}
+      onTouchEnd={() => {
+        window.setTimeout(rememberSelectedShareText, 80);
+      }}
+      page={page}
+      className="relative flex h-full min-h-0 flex-col overflow-hidden border bg-[#f7f5ee] p-5"
+    >
         <div className="relative flex min-h-0 flex-1 flex-col">
           <div className="absolute right-0 top-5 z-[30]">
             <TopModeSwitch
@@ -363,7 +349,7 @@ export function DirectoryPage({
                 />
               </div>
               {page.hasEntry ? (
-                <div className="diary-scroll relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-8 pt-2">
+                <CardScrollArea className="pb-8 pt-2">
                   <div className="flex min-h-full flex-col">
                     {openLoopError ? (
                       <p className="mb-3 text-[11px] leading-5 text-[#a2594b]">
@@ -380,32 +366,20 @@ export function DirectoryPage({
                     />
                     <PageBottomMark page={page} />
                   </div>
-                </div>
+                </CardScrollArea>
               ) : (
-                <div className="diary-scroll relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-8 pt-3">
+                <CardScrollArea className="pb-8 pt-3">
                   <div className="flex min-h-full flex-col">
                     <p className="whitespace-nowrap font-serif text-[11px] leading-none text-black/48">
                       {page.blankText}
                     </p>
                     <PageBottomMark page={page} />
                   </div>
-                </div>
+                </CardScrollArea>
               )}
             </article>
           )}
         </div>
-      </motion.section>
-      <AnimatePresence>
-        {diaryShareOpen &&
-          (page.mode === "Diary" || page.mode === "Letters") &&
-          !isEditing && (
-            <DiaryShareModal
-              page={page}
-              selectedText={selectedShareText}
-              onClose={handleCloseShare}
-            />
-          )}
-      </AnimatePresence>
-    </>
+    </PageCard>
   );
 }
