@@ -4,6 +4,10 @@ import { readdir, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import {
+  readConversationProfiles,
+  writeConversationProfile,
+} from "./conversationProfiles.js";
+import {
   createTimelineEvent,
   deleteTimelineEvent,
   findTimelineEventById,
@@ -73,6 +77,17 @@ function getApiFileMaxBytes() {
     : defaultApiFileMaxBytes;
 }
 
+function getMomentDateParts(offset: number) {
+  const date = new Date();
+  date.setHours(12, 0, 0, 0);
+  date.setDate(date.getDate() - offset);
+  return {
+    year: String(date.getFullYear()),
+    month: String(date.getMonth() + 1).padStart(2, "0"),
+    day: String(date.getDate()).padStart(2, "0"),
+  };
+}
+
 function elapsedMs(startedAt: bigint) {
   return Number((process.hrtime.bigint() - startedAt) / 1_000_000n);
 }
@@ -102,7 +117,7 @@ function logApiFileAccess({
   );
 }
 
-app.use(express.json());
+app.use(express.json({ limit: "6mb" }));
 app.use((request, response, next) => {
   const origin = request.headers.origin;
 
@@ -634,6 +649,99 @@ app.get("/api/conversations", async (request, response, next) => {
     handleWritableRouteError(error, response, next);
   }
 });
+
+app.get("/api/moments", async (request, response, next) => {
+  try {
+    const requestedDays = Number(request.query.days ?? 3);
+    const days = Number.isFinite(requestedDays)
+      ? Math.min(7, Math.max(1, Math.floor(requestedDays)))
+      : 3;
+    const momentRoot = resolveDataPath("MLane", "moment");
+    const moments: Array<{
+      id: string;
+      date: string;
+      fileName: string;
+      path: string;
+      src: string;
+    }> = [];
+
+    for (let offset = 0; offset < days; offset += 1) {
+      const { year, month, day } = getMomentDateParts(offset);
+      const date = `${year}-${month}-${day}`;
+      const directoryPath = path.join(momentRoot, year, month, day);
+      let entries;
+
+      try {
+        entries = await readdir(directoryPath, { withFileTypes: true });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+        throw error;
+      }
+
+      entries
+        .filter(
+          (entry) =>
+            entry.isFile() &&
+            allowedMediaExtensions.has(path.extname(entry.name).toLowerCase()),
+        )
+        .sort((left, right) => left.name.localeCompare(right.name))
+        .forEach((entry) => {
+          const filePath = path.join(directoryPath, entry.name);
+          moments.push({
+            id: `${date}:${entry.name}`,
+            date,
+            fileName: entry.name,
+            path: filePath,
+            src: `/api/file?path=${encodeURIComponent(filePath)}`,
+          });
+        });
+    }
+
+    response.json({ root: momentRoot, days, moments });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/conversation-profiles", async (_request, response, next) => {
+  try {
+    response.json(await readConversationProfiles());
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put("/api/conversation-profiles/user", async (request, response, next) => {
+  try {
+    if (!ensureEditToken(request, response)) return;
+    response.json(
+      await writeConversationProfile({
+        scope: "user",
+        payload: request.body ?? {},
+      }),
+    );
+  } catch (error) {
+    handleWritableRouteError(error, response, next);
+  }
+});
+
+app.put(
+  "/api/conversation-profiles/thread/:threadId",
+  async (request, response, next) => {
+    try {
+      if (!ensureEditToken(request, response)) return;
+      response.json(
+        await writeConversationProfile({
+          scope: "thread",
+          threadId: request.params.threadId,
+          payload: request.body ?? {},
+        }),
+      );
+    } catch (error) {
+      handleWritableRouteError(error, response, next);
+    }
+  },
+);
 
 app.get("/api/index/dates", async (_request, response, next) => {
   try {

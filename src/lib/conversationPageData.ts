@@ -14,7 +14,11 @@ import {
   toDotDate,
   toHyphenDate,
 } from "./date";
-import { legacyConversationMessageToRecord } from "./conversation";
+import {
+  getConversationDisplayText,
+  legacyConversationMessageToRecord,
+  shouldHideConversationRecord,
+} from "./conversation";
 
 export const defaultConversationThreadId =
   "266618a6-b29f-4a8d-abd4-12ff874eb859";
@@ -305,6 +309,104 @@ export function formatConversationTime(timestamp: string | null | undefined) {
   if (Number.isNaN(date.getTime())) return "";
 
   return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+}
+
+export function getConversationRecordsForThread(
+  threadId: string,
+  remoteData: RemoteData = emptyRemoteData,
+): ConversationRecord[] {
+  const recordsByKey = new Map<string, ConversationRecord>();
+  const collect = (dateGroups: ConversationDateEntries) => {
+    Object.entries(dateGroups ?? {}).forEach(([dateText, threads]) => {
+      (threads?.[threadId] ?? []).forEach((record, index) => {
+        const date = toDotDate(dateText);
+        const key = `${date}:${record.id || index}`;
+        recordsByKey.set(key, { ...record, conversationDate: date });
+      });
+    });
+  };
+
+  collect(remoteData.searchCache.conversations);
+  collect(remoteData.conversationEntries);
+
+  if (!recordsByKey.size) {
+    Object.entries(conversationEntries ?? {}).forEach(([dateText, threads]) => {
+      (threads?.[threadId] ?? []).forEach((message) => {
+        const date = toDotDate(dateText);
+        const record = legacyConversationMessageToRecord(message, date, threadId);
+        recordsByKey.set(`${date}:${record.id}`, {
+          ...record,
+          conversationDate: date,
+        });
+      });
+    });
+  }
+
+  return Array.from(recordsByKey.values()).sort((left, right) => {
+    const leftDate = String(left.conversationDate ?? "");
+    const rightDate = String(right.conversationDate ?? "");
+    return (
+      getConversationRecordSortTime(leftDate, left) -
+      getConversationRecordSortTime(rightDate, right)
+    );
+  });
+}
+
+export function getConversationThreadSummaries(
+  threadIds: string[],
+  remoteData: RemoteData = emptyRemoteData,
+) {
+  const threadIndex = getRemoteConversationThreadIndex(remoteData);
+
+  return threadIds.map((threadId) => {
+    const records = getConversationRecordsForThread(threadId, remoteData).filter(
+      (record) => !shouldHideConversationRecord(record),
+    );
+    const latestRecord = records[records.length - 1] ?? null;
+    const indexedDates = threadIndex[threadId] ?? [];
+    const latestDate =
+      String(latestRecord?.conversationDate ?? "") ||
+      toDotDate(indexedDates[indexedDates.length - 1] ?? "");
+    const snippet = latestRecord
+      ? getConversationDisplayText(latestRecord).split(/\r?\n/).find(Boolean) || ""
+      : "载入对话记录中…";
+
+    return {
+      threadId,
+      latestDate,
+      latestRecord,
+      snippet,
+      messageCount: records.length,
+    };
+  });
+}
+
+export function buildConversationThreadPage(
+  styleTheme: Record<string, unknown>,
+  threadId: string,
+  remoteData: RemoteData = emptyRemoteData,
+) {
+  const messages = getConversationRecordsForThread(threadId, remoteData);
+  const latestDate = String(
+    messages[messages.length - 1]?.conversationDate ?? toDotDate(new Date().toISOString().slice(0, 10)),
+  );
+  const { month, day } = getDateParts(latestDate);
+
+  return {
+    ...styleTheme,
+    remoteData,
+    mode: "Conversation",
+    modeTitle: "对话",
+    date: latestDate,
+    month,
+    day,
+    threadId,
+    messages,
+    sourcePath: `conversations/${threadId}`,
+    color: monthColors[month] ?? "#667064",
+    pale: monthPales[month] ?? "#e9ebe4",
+    hasEntry: messages.length > 0,
+  };
 }
 
 export function buildConversationPage(

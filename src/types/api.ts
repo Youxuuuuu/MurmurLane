@@ -43,6 +43,37 @@ export interface DateIndexResponse {
   timeline: string[];
 }
 
+export interface ConversationMoment {
+  id: string;
+  date: string;
+  fileName: string;
+  path: string;
+  src: string;
+}
+
+export interface ConversationMomentsResponse {
+  root: string;
+  days: number;
+  moments: ConversationMoment[];
+}
+
+export interface ConversationProfileApiData {
+  name: string;
+  handle: string;
+  signature: string;
+  avatar: string;
+  background?: string;
+  backgroundImage?: string;
+  threadId?: string;
+  updatedAt?: string;
+}
+
+export interface ConversationProfilesResponse {
+  root: string;
+  user: ConversationProfileApiData | null;
+  threads: Record<string, ConversationProfileApiData>;
+}
+
 export interface RemoteSearchCache {
   conversations: ConversationDateEntries;
   diary: DatedMemoryEntries;

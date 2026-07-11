@@ -11,35 +11,64 @@ import {
 import { formatConversationTime } from "../../lib/conversationPageData";
 import { TinyIcon } from "../common/TinyIcon";
 import { MusicShareCard } from "./MusicShareCard";
+import { ConversationAvatar } from "./ConversationAvatar";
 
 export function BubbleRow({
   message,
   children,
   side = message.type === "user" ? "right" : "left",
+  avatar = "",
+  name = "",
+  onAvatarClick = undefined,
 }) {
   const fromRight = side === "right";
   return (
     <div
-      className={`flex items-end gap-2 ${fromRight ? "justify-end" : "justify-start"}`}
+      className={`flex items-start gap-2 ${fromRight ? "justify-end" : "justify-start"}`}
     >
-      {fromRight && <MessageTime message={message} align="right" />}
-      {children}
-      {!fromRight && <MessageTime message={message} align="left" />}
+      {!fromRight && (
+        <button type="button" onClick={onAvatarClick} className="mt-0.5 shrink-0">
+          <ConversationAvatar src={avatar} name={name || "对方"} size="sm" />
+        </button>
+      )}
+      <div className={`min-w-0 ${fromRight ? "text-right" : "text-left"}`}>
+        <MessageTime message={message} align={fromRight ? "right" : "left"} read={fromRight} />
+        {children}
+      </div>
+      {fromRight && (
+        <ConversationAvatar src={avatar} name={name || "我"} size="sm" />
+      )}
     </div>
   );
 }
 
-export function MessageTime({ message, align = "left" }) {
+export function MessageTime({ message, align = "left", read = false }) {
   return (
-    <span
-      className={`shrink-0 pb-1 font-serif text-[9px] italic tracking-[0.1em] text-black/30 ${align === "right" ? "text-right" : "text-left"}`}
+    <div
+      className={`mb-1 font-sans text-[9px] tracking-[0.06em] text-black/25 ${align === "right" ? "text-right" : "text-left"}`}
     >
+      {read && <span>Read · ✓✓ </span>}
       {formatConversationTime(message.timestamp)}
-    </span>
+    </div>
   );
 }
 
-export function ChatBubble({ message, page, messages = [] }) {
+function splitBubbleText(text) {
+  const parts = String(text ?? "")
+    .split(/\r?\n/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return parts.length ? parts : [""];
+}
+
+export function ChatBubble({
+  message,
+  page,
+  messages = [],
+  userProfile,
+  threadProfile,
+  onEditThread,
+}) {
   const visualKind = getConversationVisualKind(message);
   const displayText = getConversationDisplayText(message);
   const fromUser = message.type === "user";
@@ -47,6 +76,7 @@ export function ChatBubble({ message, page, messages = [] }) {
   const primaryMediaItem = getConversationPrimaryMediaItem(message);
   const operationPaths = getOperationDisplayPaths(message);
   const [actionOpen, setActionOpen] = useState(false);
+  const [thinkingOpen, setThinkingOpen] = useState(false);
   const [mediaFailed, setMediaFailed] = useState(false);
 
   if (visualKind === "hidden") {
@@ -71,7 +101,13 @@ export function ChatBubble({ message, page, messages = [] }) {
 
     if (musicData) {
       return (
-        <BubbleRow message={message} side="left">
+        <BubbleRow
+          message={message}
+          side="left"
+          avatar={threadProfile?.avatar}
+          name={threadProfile?.name}
+          onAvatarClick={onEditThread}
+        >
           <MusicShareCard data={musicData} page={page} />
         </BubbleRow>
       );
@@ -110,14 +146,21 @@ export function ChatBubble({ message, page, messages = [] }) {
   if (visualKind === "thinking") {
     return (
       <div className="flex justify-start">
-        <div className="max-w-[320px] bg-white/28 px-3 py-2 text-left">
-          <div className="mb-1 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-black/35">
+        <div className="max-w-[min(86vw,520px)] bg-transparent px-3 py-2 text-left">
+          <button
+            type="button"
+            onClick={() => setThinkingOpen((value) => !value)}
+            className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-black/35"
+          >
             <span className="h-1.5 w-1.5 rounded-full bg-black/30" />
             Thinking
-          </div>
-          <div className="whitespace-pre-line text-[9px] leading-[1.45] text-black/48">
-            {displayText}
-          </div>
+            <span className="ml-1 text-[12px]">{thinkingOpen ? "⌄" : "›"}</span>
+          </button>
+          {thinkingOpen && (
+            <div className="mt-2 whitespace-pre-line font-serif text-[11px] leading-[1.55] text-black/52">
+              {displayText}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -125,13 +168,22 @@ export function ChatBubble({ message, page, messages = [] }) {
 
   if (fromUser && quoteText) {
     return (
-      <BubbleRow message={message} side="right">
+      <BubbleRow
+        message={message}
+        side="right"
+        avatar={userProfile?.avatar}
+        name={userProfile?.name}
+      >
         <div className="max-w-[280px] text-right">
-          <div
-            className="inline-block border bg-[#cbc5bb] px-2.5 py-1.5 text-left text-[11px] leading-relaxed text-white"
-            style={{ borderColor: "transparent" }}
-          >
-            {displayText}
+          <div className="ml-auto flex flex-col items-end gap-2">
+            {splitBubbleText(displayText).map((part, index) => (
+              <div
+                key={`${message.id}-quote-part-${index}`}
+                className="inline-block rounded-[7px] border border-black/[0.06] bg-[#f3f3f2] px-3 py-2 text-left font-sans text-[14px] leading-[1.55] text-black/78"
+              >
+                {part}
+              </div>
+            ))}
           </div>
           <div
             className="ml-auto mt-1 max-w-[260px] border-l-4 bg-white/35 px-2 py-1.5 text-left font-mono text-[8px] text-black/42"
@@ -155,7 +207,13 @@ export function ChatBubble({ message, page, messages = [] }) {
       "FILE";
 
     return (
-      <BubbleRow message={message} side={fromUser ? "right" : "left"}>
+      <BubbleRow
+        message={message}
+        side={fromUser ? "right" : "left"}
+        avatar={fromUser ? userProfile?.avatar : threadProfile?.avatar}
+        name={fromUser ? userProfile?.name : threadProfile?.name}
+        onAvatarClick={fromUser ? undefined : onEditThread}
+      >
         <div
           className="flex max-w-[204px] items-center gap-2 border bg-white/72 px-3 py-2 text-left"
           style={{ borderColor: page.line }}
@@ -194,7 +252,13 @@ export function ChatBubble({ message, page, messages = [] }) {
           "图片";
 
     return (
-      <BubbleRow message={message} side={fromUser ? "right" : "left"}>
+      <BubbleRow
+        message={message}
+        side={fromUser ? "right" : "left"}
+        avatar={fromUser ? userProfile?.avatar : threadProfile?.avatar}
+        name={fromUser ? userProfile?.name : threadProfile?.name}
+        onAvatarClick={fromUser ? undefined : onEditThread}
+      >
       <div className={visualKind === "sticker" ? "max-w-[96px]" : "max-w-[220px]"}>
   <div
     className={
@@ -226,12 +290,23 @@ export function ChatBubble({ message, page, messages = [] }) {
   }
 
   return (
-    <BubbleRow message={message} side={fromUser ? "right" : "left"}>
-      <div
-        className={`${fromUser ? "bg-[#d7d0c4] text-white" : "border bg-[#f7efe4]/80 text-black/72"} max-w-[300px] border px-2.5 py-1.5 whitespace-pre-line text-[11px] leading-[1.45]`}
-        style={{ borderColor: fromUser ? "transparent" : page.line }}
-      >
-        {displayText}
+    <BubbleRow
+      message={message}
+      side={fromUser ? "right" : "left"}
+      avatar={fromUser ? userProfile?.avatar : threadProfile?.avatar}
+      name={fromUser ? userProfile?.name : threadProfile?.name}
+      onAvatarClick={fromUser ? undefined : onEditThread}
+    >
+      <div className={`flex max-w-[min(78vw,360px)] flex-col gap-2 ${fromUser ? "items-end" : "items-start"}`}>
+        {splitBubbleText(displayText).map((part, index) => (
+          <div
+            key={`${message.id}-part-${index}`}
+            className={`${fromUser ? "border border-black/[0.06] bg-[#f3f3f2] text-black/78" : "border bg-white/88 text-black/72"} w-fit max-w-full rounded-[7px] px-3 py-2 text-left font-sans text-[14px] leading-[1.55] shadow-[0_1px_0_rgba(0,0,0,.02)]`}
+            style={{ borderColor: fromUser ? "rgba(0,0,0,.06)" : page.line }}
+          >
+            {part}
+          </div>
+        ))}
       </div>
     </BubbleRow>
   );

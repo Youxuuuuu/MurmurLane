@@ -16,7 +16,14 @@ import {
   hasRemoteDateIndexMark,
 } from "../../lib/timelinePageData";
 
-export function DatePickerModal({ page, onClose, onSelectDate }) {
+export function DatePickerModal({
+  page,
+  onClose,
+  onSelectDate,
+  variant = "archive",
+  markedDates = null,
+}) {
+  const isConversation = variant === "conversation";
   const parts = getDateParts(page.date);
   const [view, setView] = useState(() => ({
     year: Number(parts.year),
@@ -59,7 +66,7 @@ export function DatePickerModal({ page, onClose, onSelectDate }) {
 
   return (
     <motion.div
-      className="absolute inset-0 z-50 flex items-end bg-black/18 px-4 pb-[calc(18px+env(safe-area-inset-bottom))]"
+      className={`absolute inset-0 z-50 flex items-end bg-black/18 ${isConversation ? "px-0 pb-0" : "px-4 pb-[calc(18px+env(safe-area-inset-bottom))]"}`}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -71,20 +78,20 @@ export function DatePickerModal({ page, onClose, onSelectDate }) {
         onClick={handleClose}
       />
       <motion.section
-        className="relative w-full border bg-[#f3efe6] p-5 text-black/70"
+        className={`relative w-full p-5 text-black/70 ${isConversation ? "rounded-t-[24px] border-0 bg-white pb-[calc(24px+env(safe-area-inset-bottom))] font-sans shadow-[0_-12px_35px_rgba(0,0,0,.08)]" : "border bg-[#f3efe6]"}`}
         initial={{ y: 28, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         exit={{ y: 24, opacity: 0 }}
         style={{ borderColor: page.line }}
       >
-        <PaperTexture mode={page.texture} />
+        {!isConversation && <PaperTexture mode={page.texture} />}
         <div
           className="relative mb-4 flex items-start justify-between border-b pb-3"
           style={{ borderBottomColor: page.color }}
         >
           <div className="relative">
             <div className="font-mono text-[9px] uppercase tracking-[0.22em] text-black/38">
-              select date
+              {isConversation ? "jump to date" : "select date"}
             </div>
             <div
               className="mt-1 flex items-center gap-1 font-serif text-[28px] leading-none tracking-[0.08em]"
@@ -188,12 +195,17 @@ export function DatePickerModal({ page, onClose, onSelectDate }) {
           ))}
           {Array.from({ length: days }, (_, index) => index + 1).map((day) => {
             const dateText = formatDiaryDate(view.year, view.month, day);
-            const selected = dateText === page.date;
-            const marked = hasCalendarMarkForPage(page, dateText, undefined, {
-              hasConversationForDate,
-              hasRemoteDateIndexMark,
-              getTimelineDay,
-            });
+            const normalizedDate = dateText.replace(/-/g, ".");
+            const selected = normalizedDate === String(page.date).replace(/-/g, ".");
+            const marked = Array.isArray(markedDates)
+              ? markedDates.some(
+                  (item) => String(item).replace(/-/g, ".") === normalizedDate,
+                )
+              : hasCalendarMarkForPage(page, dateText, undefined, {
+                  hasConversationForDate,
+                  hasRemoteDateIndexMark,
+                  getTimelineDay,
+                });
             return (
               <button
                 key={dateText}
@@ -205,12 +217,11 @@ export function DatePickerModal({ page, onClose, onSelectDate }) {
                       ? page.color
                       : "rgba(0,0,0,.48)",
                   background: selected ? page.color : "transparent",
-                  border:
-                    marked && !selected
-                      ? `1px solid ${page.color}`
-                      : "1px solid transparent",
+                  border: "1px solid transparent",
+                  opacity: isConversation && !marked ? 0.24 : 1,
                 }}
                 type="button"
+                disabled={isConversation && !marked}
                 onClick={() => {
                   onSelectDate(dateText);
                   onClose();
@@ -219,7 +230,7 @@ export function DatePickerModal({ page, onClose, onSelectDate }) {
                 {pad2(day)}
                 {marked && !selected && (
                   <span
-                    className="absolute -bottom-1 h-1 w-1 rounded-full"
+                    className="absolute bottom-0 h-1 w-1 rounded-full"
                     style={{ background: page.color }}
                   />
                 )}

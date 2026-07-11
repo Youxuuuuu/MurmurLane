@@ -1,6 +1,9 @@
 import type {
   ApiRequestOptions,
   ConversationsResponse,
+  ConversationMomentsResponse,
+  ConversationProfileApiData,
+  ConversationProfilesResponse,
   DateIndexResponse,
   EditableMemoryDocumentApiRequest,
   EditableMemoryDocumentApiResponse,
@@ -107,6 +110,41 @@ export function fetchConversations(
   });
 
   return requestJson<ConversationsResponse>(`/api/conversations?${query}`);
+}
+
+export function fetchConversationMoments(
+  days = 3,
+): Promise<ConversationMomentsResponse> {
+  const query = buildQuery({ days });
+  return requestJson<ConversationMomentsResponse>(`/api/moments?${query}`);
+}
+
+export function fetchConversationProfiles(): Promise<ConversationProfilesResponse> {
+  return requestJson<ConversationProfilesResponse>("/api/conversation-profiles");
+}
+
+export function saveConversationUserProfile(
+  profile: ConversationProfileApiData,
+): Promise<ConversationProfileApiData> {
+  return requestJson<ConversationProfileApiData>("/api/conversation-profiles/user", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(profile),
+  });
+}
+
+export function saveConversationThreadProfile(
+  threadId: string,
+  profile: ConversationProfileApiData,
+): Promise<ConversationProfileApiData> {
+  return requestJson<ConversationProfileApiData>(
+    `/api/conversation-profiles/thread/${encodeURIComponent(threadId)}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(profile),
+    },
+  );
 }
 
 export function fetchTimeline(

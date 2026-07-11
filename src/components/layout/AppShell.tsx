@@ -5,14 +5,17 @@ export function AppShell({
   viewport,
   bottomNavigation,
   modalLayer,
+  edgeToEdge = false,
 }) {
   return (
     <div className="min-h-[var(--app-stable-height,100svh)] bg-[#eeeae1] text-stone-700">
       <AppScrollbarStyle />
       <main
-        className="relative flex h-[var(--app-stable-height,100svh)] w-full flex-col overflow-hidden border-x border-transparent bg-[#eeeae1] px-4 pt-[calc(12px+env(safe-area-inset-top))]"
+        className={`relative flex h-[var(--app-stable-height,100svh)] w-full flex-col overflow-hidden border-x border-transparent ${edgeToEdge ? "bg-white px-0 pt-[env(safe-area-inset-top)]" : "bg-[#eeeae1] px-4 pt-[calc(12px+env(safe-area-inset-top))]"}`}
         style={{
-          "--app-bottom-nav-space": "calc(76px + env(safe-area-inset-bottom))",
+          "--app-bottom-nav-space": bottomNavigation
+            ? "calc(76px + env(safe-area-inset-bottom))"
+            : "0px",
         } as CSSProperties}
       >
         {viewport}

@@ -4,6 +4,7 @@ import { AnimatePresence } from "framer-motion";
 import {
   fetchEditableMemoryDocument,
   fetchConversations,
+  fetchConversationMoments,
   fetchDateIndex,
   fetchMemoryDailySummary,
   fetchMemoryDiary,
@@ -30,10 +31,11 @@ import {
 } from "./lib/date";
 import { scrollHitIntoView } from "./lib/dom";
 import {
-  buildConversationPage,
+  buildConversationThreadPage,
   defaultConversationThreadId,
   getAllConversationThreadIds,
   getLatestConversationThreadId,
+  getConversationThreadSummaries,
   groupConversationRecordsByThread,
 } from "./lib/conversationPageData";
 import {
@@ -52,6 +54,10 @@ import { DatePickerModal } from "./components/calendar/DatePickerModal";
 import { DiaryShareModal } from "./components/archive/DiaryShareModal";
 import { DirectoryPage } from "./components/archive/DirectoryPage";
 import { ConversationPage } from "./components/conversation/ConversationPage";
+import { ConversationListPage } from "./components/conversation/ConversationListPage";
+import { ConversationHeader } from "./components/conversation/ConversationHeader";
+import { ConversationPlaceholderPage } from "./components/conversation/ConversationPlaceholderPage";
+import { ConversationSettingsModal } from "./components/conversation/ConversationSettingsModal";
 import { TimelinePage } from "./components/timeline/TimelinePage";
 import { XiaoyePage } from "./components/xiaoye/XiaoyePage";
 import { AppShell } from "./components/layout/AppShell";
@@ -60,10 +66,10 @@ import { SwipeDateArea } from "./components/layout/SwipeDateArea";
 import { PageViewport } from "./components/layout/PageViewport";
 import { DiarySearchBox } from "./components/search/DiarySearchBox";
 import { SegmentSwitch } from "./components/controls/SegmentSwitch";
-import { ThreadSwitch } from "./components/controls/ThreadSwitch";
 import { ThemeIconButton } from "./components/controls/ThemeIconButton";
 import { TimelineModeSwitch } from "./components/controls/TimelineModeSwitch";
 import { validateAppData } from "./dev/validateAppData";
+import { useConversationProfiles } from "./lib/conversationProfiles";
 
 const ENABLE_APP_DEBUG_LOG = false;
 
@@ -103,6 +109,13 @@ export default function InsDiaryPrototype() {
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [selectedMode, setSelectedMode] = useState("Diary");
   const [activeSection, setActiveSection] = useState("Conversation");
+  const [conversationView, setConversationView] = useState("list");
+  const [conversationSettingsMode, setConversationSettingsMode] = useState(null);
+  const [conversationPlaceholder, setConversationPlaceholder] = useState(null);
+  const [conversationMoments, setConversationMoments] = useState([]);
+  const [conversationDateLoading, setConversationDateLoading] = useState(false);
+  const [conversationJumpDate, setConversationJumpDate] = useState(null);
+  const [conversationFloatingDate, setConversationFloatingDate] = useState("");
   const [selectedThreadId, setSelectedThreadId] = useState(
     defaultConversationThreadId,
   );
@@ -254,6 +267,37 @@ export default function InsDiaryPrototype() {
   const availableThreadIds = useMemo(
     () => getAllConversationThreadIds(remoteData),
     [remoteData],
+  );
+  const {
+    userProfile,
+    setUserProfile,
+    threadProfiles,
+    updateThreadProfile,
+  } = useConversationProfiles(availableThreadIds);
+  const conversationThreadSummaries = useMemo(
+    () => getConversationThreadSummaries(availableThreadIds, remoteData),
+    [availableThreadIds, remoteData],
+  );
+  const selectedThreadDates = useMemo(
+    () =>
+      (remoteDateIndexState?.conversationThreads?.[selectedThreadId] ?? [])
+        .map(toDotDate)
+        .sort(),
+    [remoteDateIndexState, selectedThreadId],
+  );
+  const loadedSelectedThreadDates = useMemo(
+    () =>
+      selectedThreadDates.filter(
+        (date) =>
+          Boolean(remoteConversationsState[date]?.[selectedThreadId]) ||
+          Boolean(remoteSearchCacheState.conversations[date]?.[selectedThreadId]),
+      ),
+    [
+      selectedThreadDates,
+      selectedThreadId,
+      remoteConversationsState,
+      remoteSearchCacheState.conversations,
+    ],
   );
   const latestConversationThreadId = useMemo(
     () => getLatestConversationThreadId(remoteData),
@@ -636,6 +680,84 @@ export default function InsDiaryPrototype() {
       cancelled = true;
     };
   }, [selectedDate]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    fetchConversationMoments(3)
+      .then((result) => {
+        if (!cancelled) setConversationMoments(result.moments ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setConversationMoments([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (
+      activeSection !== "Conversation" ||
+      conversationView !== "list" ||
+      !remoteDateIndexState
+    )
+      return;
+
+    const threadIndex = remoteDateIndexState.conversationThreads ?? {};
+    const requestedDates = Object.values(threadIndex)
+      .map((dates) => dates?.[dates.length - 1])
+      .filter(Boolean);
+    const dates = Array.from(new Set(requestedDates.map(toDotDate))).filter(
+      (date) =>
+        !remoteConversationsState[date] &&
+        !remoteSearchCacheState.conversations[date] &&
+        !searchPendingRef.current.conversations.has(date),
+    );
+
+    if (!dates.length) return;
+
+    let cancelled = false;
+    dates.forEach((date) => searchPendingRef.current.conversations.add(date));
+
+    const loadThreadDates = async () => {
+      const results = await Promise.allSettled(
+        dates.map((date) => fetchConversations(date)),
+      );
+      if (cancelled) return;
+
+      const conversations = {};
+      results.forEach((result, index) => {
+        const date = dates[index];
+        searchPendingRef.current.conversations.delete(date);
+        if (result.status === "fulfilled" && Array.isArray(result.value)) {
+          conversations[date] = result.value.length
+            ? groupConversationRecordsByThread(result.value)
+            : {};
+        }
+      });
+
+      if (Object.keys(conversations).length) {
+        setRemoteSearchCacheState((current) => ({
+          ...current,
+          conversations: { ...current.conversations, ...conversations },
+        }));
+      }
+    };
+
+    loadThreadDates();
+    return () => {
+      cancelled = true;
+      dates.forEach((date) => searchPendingRef.current.conversations.delete(date));
+    };
+  }, [
+    activeSection,
+    conversationView,
+    remoteDateIndexState,
+    remoteConversationsState,
+    remoteSearchCacheState.conversations,
+  ]);
 
   useEffect(() => {
     const normalizedQuery = String(searchQuery ?? "").trim();
@@ -1097,12 +1219,7 @@ export default function InsDiaryPrototype() {
   const pageScrollMode = activeSection === "Timeline" ? "page" : "contained";
   const page = useMemo(() => {
     if (activeSection === "Conversation")
-      return buildConversationPage(
-        styleTheme,
-        selectedDate,
-        selectedThreadId,
-        remoteData,
-      );
+      return buildConversationThreadPage(styleTheme, selectedThreadId, remoteData);
     if (activeSection === "Timeline")
       return buildTimelinePage(timelineStyleTheme, selectedDate, remoteData);
     if (archiveShowsXiaoye)
@@ -1149,14 +1266,7 @@ export default function InsDiaryPrototype() {
   const isValidDotDate = (value) =>
     /^\d{4}\.\d{2}\.\d{2}$/.test(String(value ?? ""));
   const topToolbarControl =
-    activeSection === "Conversation" ? (
-      <ThreadSwitch
-        page={page}
-        selectedThreadId={selectedThreadId}
-        onSelectThread={handleSelectThread}
-        threadIds={availableThreadIds}
-      />
-    ) : activeSection === "Timeline" ? (
+    activeSection === "Timeline" ? (
       <TimelineModeSwitch
         page={page}
         selectedView={timelineView}
@@ -1172,6 +1282,67 @@ export default function InsDiaryPrototype() {
       />
     );
 
+  const handleSelectSection = (section) => {
+    setActiveSection(section);
+    setHighlightResult(null);
+    setConversationPlaceholder(null);
+    if (section === "Conversation") setConversationView("list");
+  };
+
+  const openConversationThread = (summary) => {
+    handleSelectThread(summary.threadId);
+    if (summary.latestDate) setSelectedDate(summary.latestDate);
+    setConversationJumpDate(null);
+    setConversationPlaceholder(null);
+    setConversationView("chat");
+  };
+
+  const loadConversationThreadDate = async (dateText) => {
+    const date = toDotDate(dateText);
+    const alreadyLoaded =
+      remoteConversationsState[date]?.[selectedThreadId] ||
+      remoteSearchCacheState.conversations[date]?.[selectedThreadId];
+    if (alreadyLoaded || conversationDateLoading) return;
+
+    setConversationDateLoading(true);
+    try {
+      const records = await fetchConversations(date, {
+        threadId: selectedThreadId,
+      });
+      const grouped = groupConversationRecordsByThread(records);
+      setRemoteSearchCacheState((current) => ({
+        ...current,
+        conversations: {
+          ...current.conversations,
+          [date]: {
+            ...(current.conversations[date] ?? {}),
+            ...grouped,
+          },
+        },
+      }));
+    } finally {
+      setConversationDateLoading(false);
+    }
+  };
+
+  const handleLoadEarlierConversationDate = async () => {
+    const earliestLoaded = loadedSelectedThreadDates[0];
+    const earliestIndex = selectedThreadDates.indexOf(earliestLoaded);
+    if (earliestIndex <= 0) return;
+    await loadConversationThreadDate(selectedThreadDates[earliestIndex - 1]);
+  };
+
+  const handleSelectConversationDate = async (dateText) => {
+    const date = toDotDate(dateText);
+    setSelectedDate(date);
+    setConversationJumpDate(date);
+    await loadConversationThreadDate(date);
+  };
+
+  const hasEarlierConversationDate =
+    loadedSelectedThreadDates.length > 0 &&
+    selectedThreadDates.indexOf(loadedSelectedThreadDates[0]) > 0;
+
   const closeDiaryShare = () => {
     setDiaryShareOpen(false);
     setSelectedShareText("");
@@ -1179,94 +1350,162 @@ export default function InsDiaryPrototype() {
 
   return (
     <AppShell
+      edgeToEdge={activeSection === "Conversation"}
       viewport={
         <PageViewport
-          viewportKey={`${activeSection}-${archiveSubject}-${timelineView}`}
+          viewportKey={`${activeSection}-${archiveSubject}-${timelineView}-${conversationView}-${conversationPlaceholder?.title || ""}`}
           scrollMode={pageScrollMode}
           header={
-          <header
-            className="sticky top-0 z-[80] mb-3 border-b bg-[#eeeae1]/95 pb-2 pt-1 backdrop-blur-[2px]"
-            style={{ borderBottomColor: page.line }}
-          >
-            <div
-              className={`grid items-center gap-1.5 ${
-                activeSection === "Timeline"
-                  ? "grid-cols-[minmax(0,1fr)_auto]"
-                  : "grid-cols-[auto_minmax(0,1fr)_auto]"
-              }`}
-            >
-              {activeSection !== "Timeline" &&(
-              <div className="flex min-w-0 items-center gap-0.5 sm:gap-1">
-                {styleThemes.map((item, index) => {
-                  const icon = themeIconByStyleId[item.id];
-
-                  return (
-                    <ThemeIconButton
-                      key={item.id}
-                      label={`Theme ${index + 1}`}
-                      viewBox={icon.viewBox}
-                      path={icon.path}
-                      selected={selectedStyleId === item.id}
-                      accentColor={page.color}
-                      onClick={() => setSelectedStyleId(item.id)}
-                    />
-                  );
-                })}
-              </div>
-              )}
-              <div
-                className={`flex min-w-0 items-center overflow-visible ${
-                  activeSection === "Timeline" ? "justify-start" : "justify-center"
-                }`}
-              >
-                {topToolbarControl}
-              </div>
-              <div className="flex min-w-0 items-center justify-end">
-                <DiarySearchBox
-                  page={page}
-                  selectedDate={selectedDate}
-                  selectedThreadId={selectedThreadId}
-                  onSearchQueryChange={setSearchQuery}
-                  searchRemoteData={remoteData}
-                  searchDataVersion={searchDataVersion}
-                  onSelectResult={(result) => {
-                    if (result.mode === "Conversation") {
-                      setActiveSection("Conversation");
-                      if (result.threadId) handleSelectThread(result.threadId);
-                    } else if (result.mode === "Timeline") {
-                      setActiveSection("Timeline");
-                      setTimelineView(result.timelineView || "line");
-                    } else if (result.mode === "Xiaoye") {
-                      setActiveSection("Archive");
-                      setArchiveSubject("Xiaoye");
-                      if (result.xiaoyeMode) {
-                        setSelectedXiaoyeMode(result.xiaoyeMode);
-                      }
-                    } else {
-                      setActiveSection("Archive");
-                      setArchiveSubject("Me");
-                      setSelectedMode(result.mode);
-                    }
-                    if (isValidDotDate(result.date)) setSelectedDate(result.date);
-                    setHighlightResult(result);
-                  }}
+            activeSection === "Conversation" ? (
+              conversationView === "chat" && !conversationPlaceholder ? (
+                <ConversationHeader
+                  userProfile={userProfile}
+                  threadProfile={threadProfiles[selectedThreadId]}
+                  onBack={() => setConversationView("list")}
+                  onEditThread={() => setConversationSettingsMode("thread")}
+                  onOpenSearch={() =>
+                    setConversationPlaceholder({
+                      title: "搜索当前聊天",
+                      description: "当前线程搜索入口已经接好，搜索界面将在后续设计。",
+                    })
+                  }
+                  floatingDate={conversationFloatingDate}
+                  onOpenDatePicker={() => setDatePickerOpen(true)}
                 />
-              </div>
-            </div>
-          </header>
+              ) : null
+            ) : (
+              <header
+                className="sticky top-0 z-[80] mb-3 border-b bg-[#eeeae1]/95 pb-2 pt-1 backdrop-blur-[2px]"
+                style={{ borderBottomColor: page.line }}
+              >
+                <div
+                  className={`grid items-center gap-1.5 ${
+                    activeSection === "Timeline"
+                      ? "grid-cols-[minmax(0,1fr)_auto]"
+                      : "grid-cols-[auto_minmax(0,1fr)_auto]"
+                  }`}
+                >
+                  {activeSection !== "Timeline" && (
+                    <div className="flex min-w-0 items-center gap-0.5 sm:gap-1">
+                      {styleThemes.map((item, index) => {
+                        const icon = themeIconByStyleId[item.id];
+                        return (
+                          <ThemeIconButton
+                            key={item.id}
+                            label={`Theme ${index + 1}`}
+                            viewBox={icon.viewBox}
+                            path={icon.path}
+                            selected={selectedStyleId === item.id}
+                            accentColor={page.color}
+                            onClick={() => setSelectedStyleId(item.id)}
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
+                  <div
+                    className={`flex min-w-0 items-center overflow-visible ${
+                      activeSection === "Timeline" ? "justify-start" : "justify-center"
+                    }`}
+                  >
+                    {topToolbarControl}
+                  </div>
+                  <div className="flex min-w-0 items-center justify-end">
+                    <DiarySearchBox
+                      page={page}
+                      selectedDate={selectedDate}
+                      selectedThreadId={selectedThreadId}
+                      onSearchQueryChange={setSearchQuery}
+                      searchRemoteData={remoteData}
+                      searchDataVersion={searchDataVersion}
+                      onSelectResult={(result) => {
+                        if (result.mode === "Conversation") {
+                          setActiveSection("Conversation");
+                          setConversationView("chat");
+                          if (result.threadId) handleSelectThread(result.threadId);
+                        } else if (result.mode === "Timeline") {
+                          setActiveSection("Timeline");
+                          setTimelineView(result.timelineView || "line");
+                        } else if (result.mode === "Xiaoye") {
+                          setActiveSection("Archive");
+                          setArchiveSubject("Xiaoye");
+                          if (result.xiaoyeMode) setSelectedXiaoyeMode(result.xiaoyeMode);
+                        } else {
+                          setActiveSection("Archive");
+                          setArchiveSubject("Me");
+                          setSelectedMode(result.mode);
+                        }
+                        if (isValidDotDate(result.date)) setSelectedDate(result.date);
+                        setHighlightResult(result);
+                      }}
+                    />
+                  </div>
+                </div>
+              </header>
+            )
           }
         >
+          {activeSection === "Conversation" ? (
+            conversationPlaceholder ? (
+              <ConversationPlaceholderPage
+                title={conversationPlaceholder.title}
+                description={conversationPlaceholder.description}
+                onBack={() => setConversationPlaceholder(null)}
+              />
+            ) : conversationView === "list" ? (
+              <ConversationListPage
+                userProfile={userProfile}
+                threadProfiles={threadProfiles}
+                threadSummaries={conversationThreadSummaries}
+                moments={conversationMoments}
+                onBack={() => setActiveSection("Timeline")}
+                onEditProfile={() => setConversationSettingsMode("user")}
+                onOpenSearch={() =>
+                  setConversationPlaceholder({
+                    title: "搜索全部对话",
+                    description: "这里只会搜索线程聊天记录；具体搜索界面将在后续设计。",
+                  })
+                }
+                onOpenMenu={() =>
+                  setConversationPlaceholder({
+                    title: "对话设置",
+                    description: "全局对话设置入口已经预留。",
+                  })
+                }
+                onAddMoment={() =>
+                  setConversationPlaceholder({
+                    title: "上传瞬间",
+                    description: "上传页将在后续设计；文件会统一保存到 D:\\study\\.cyberboss\\MLane\\moment\\yyyy\\mm\\dd\\。",
+                  })
+                }
+                onOpenMoment={() =>
+                  setConversationPlaceholder({
+                    title: "瞬间",
+                    description: "瞬间查看页将在后续设计。",
+                  })
+                }
+                onSelectThread={openConversationThread}
+              />
+            ) : (
+              <ConversationPage
+                page={page}
+                selectedThreadId={selectedThreadId}
+                highlightResult={highlightResult}
+                userProfile={userProfile}
+                threadProfile={threadProfiles[selectedThreadId]}
+                onEditThread={() => setConversationSettingsMode("thread")}
+                targetDate={conversationJumpDate}
+                onTargetDateHandled={() => setConversationJumpDate(null)}
+                onLoadEarlier={handleLoadEarlierConversationDate}
+                hasEarlierDate={hasEarlierConversationDate}
+                earlierDateLoading={conversationDateLoading}
+                onFloatingDateChange={setConversationFloatingDate}
+              />
+            )
+          ) : (
             <SwipeDateArea onSwipeDate={handleSwipeDate}>
               <AnimatePresence mode="wait">
-                {activeSection === "Conversation" ? (
-                  <ConversationPage
-                    page={page}
-                    selectedThreadId={selectedThreadId}
-                    highlightResult={highlightResult}
-                    onOpenDatePicker={() => setDatePickerOpen(true)}
-                    onMonthSelect={handleSelectMonth}
-                  />
-                ) : activeSection === "Timeline" ? (
+                {activeSection === "Timeline" ? (
                   <TimelinePage
                     page={page}
                     timelineView={timelineView}
@@ -1321,24 +1560,55 @@ export default function InsDiaryPrototype() {
                 )}
               </AnimatePresence>
             </SwipeDateArea>
+          )}
         </PageViewport>
       }
       bottomNavigation={
-        <BottomNav
-          activeSection={
-            activeSection === "Xiaoye" ? "Archive" : activeSection
-          }
-          onSelectSection={setActiveSection}
-          page={page}
-        />
+        activeSection === "Conversation" ? null : (
+          <BottomNav
+            activeSection={activeSection === "Xiaoye" ? "Archive" : activeSection}
+            onSelectSection={handleSelectSection}
+            page={page}
+          />
+        )
       }
       modalLayer={
         <AnimatePresence>
+          {conversationSettingsMode === "user" && (
+            <ConversationSettingsModal
+              mode="user"
+              profile={userProfile}
+              onSave={setUserProfile}
+              onClose={() => setConversationSettingsMode(null)}
+            />
+          )}
+          {conversationSettingsMode === "thread" && threadProfiles[selectedThreadId] && (
+            <ConversationSettingsModal
+              mode="thread"
+              profile={threadProfiles[selectedThreadId]}
+              onSave={(profile) => updateThreadProfile(selectedThreadId, profile)}
+              onClose={() => setConversationSettingsMode(null)}
+            />
+          )}
           {datePickerOpen && (
             <DatePickerModal
-              page={page}
+              page={
+                activeSection === "Conversation"
+                  ? { ...page, date: selectedDate }
+                  : page
+              }
               onClose={() => setDatePickerOpen(false)}
-              onSelectDate={handleSelectDate}
+              onSelectDate={
+                activeSection === "Conversation"
+                  ? handleSelectConversationDate
+                  : handleSelectDate
+              }
+              variant={
+                activeSection === "Conversation" ? "conversation" : "archive"
+              }
+              markedDates={
+                activeSection === "Conversation" ? selectedThreadDates : null
+              }
             />
           )}
           {diaryShareOpen &&

@@ -1,7 +1,6 @@
 // @ts-nocheck
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { shouldHideConversationRecord } from "../../lib/conversation";
-import { CalendarStrip } from "../calendar/CalendarStrip";
 import { CardScrollArea } from "../layout/CardScrollArea";
 import { PageCard } from "../layout/PageCard";
 import { ChatBubble } from "./ChatBubble";
@@ -10,13 +9,36 @@ import { ConversationEmptyState } from "./ConversationEmptyState";
 const CONVERSATION_RECENT_RENDER_LIMIT = 200;
 const CONVERSATION_HIT_CONTEXT_LIMIT = 80;
 const CONVERSATION_SCROLL_EDGE_THRESHOLD = 80;
+const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function getMessageDate(message) {
+  return String(message?.conversationDate || "").replace(/-/g, ".");
+}
+
+function formatDateDivider(dateText) {
+  const [year, month, day] = String(dateText).split(".").map(Number);
+  const date = new Date(year, month - 1, day);
+  return `${year}.${month}.${day} ${weekdayLabels[date.getDay()] || ""}`;
+}
+
+function formatFloatingDate(dateText) {
+  const [year, month, day] = String(dateText).split(".").map(Number);
+  return year && month && day ? `${year}/${month}/${day}` : "";
+}
 
 export function ConversationPage({
   page,
   selectedThreadId,
   highlightResult,
-  onOpenDatePicker,
-  onMonthSelect,
+  userProfile,
+  threadProfile,
+  onEditThread,
+  targetDate,
+  onTargetDateHandled,
+  onLoadEarlier,
+  hasEarlierDate,
+  earlierDateLoading,
+  onFloatingDateChange,
 }) {
   const visibleMessages = useMemo(
     () =>
@@ -35,11 +57,13 @@ export function ConversationPage({
   const shouldResetToBottomRef = useRef(false);
   const resetVisibleRangeRef = useRef(null);
   const pendingHighlightTargetRef = useRef(null);
+  const pendingDateTargetRef = useRef(null);
+  const pendingEarlierAnchorRef = useRef(null);
+  const floatingDateTimerRef = useRef(null);
   const conversationKeyRef = useRef(null);
-  const conversationKey = `${page.date}:${selectedThreadId}`;
+  const conversationKey = selectedThreadId;
   const hasConversationHit =
     highlightResult?.mode === "Conversation" &&
-    highlightResult.date === page.date &&
     highlightResult.threadId === selectedThreadId;
   const hitIndex = useMemo(() => {
     if (!hasConversationHit) return -1;
@@ -66,10 +90,60 @@ export function ConversationPage({
       ),
     [visibleMessages, clampedVisibleRange],
   );
+  const targetDateIndex = useMemo(() => {
+    if (!targetDate) return -1;
+    const normalizedTarget = String(targetDate).replace(/-/g, ".");
+    return visibleMessages.findIndex(
+      (message) => getMessageDate(message) === normalizedTarget,
+    );
+  }, [targetDate, visibleMessages]);
 
   useEffect(() => {
     visibleRangeRef.current = clampedVisibleRange;
   }, [clampedVisibleRange]);
+
+  useEffect(
+    () => () => {
+      if (floatingDateTimerRef.current) {
+        window.clearTimeout(floatingDateTimerRef.current);
+      }
+      onFloatingDateChange?.("");
+    },
+    [onFloatingDateChange],
+  );
+
+  useLayoutEffect(() => {
+    if (!targetDate || targetDateIndex < 0) return;
+    const nextRange = {
+      start: Math.max(0, targetDateIndex - 20),
+      end: Math.min(
+        visibleMessages.length,
+        targetDateIndex + CONVERSATION_RECENT_RENDER_LIMIT,
+      ),
+    };
+    pendingDateTargetRef.current = String(targetDate).replace(/-/g, ".");
+    shouldResetToBottomRef.current = false;
+    resetVisibleRangeRef.current = null;
+    setVisibleRange(nextRange);
+  }, [targetDate, targetDateIndex, visibleMessages.length]);
+
+  useLayoutEffect(() => {
+    const pending = pendingEarlierAnchorRef.current;
+    if (!pending || visibleMessages.length <= pending.messageCount) return;
+    const anchorIndex = visibleMessages.findIndex(
+      (message) => message.id === pending.messageId,
+    );
+    if (anchorIndex < 0) return;
+
+    pendingEarlierAnchorRef.current = null;
+    setVisibleRange({
+      start: Math.max(0, anchorIndex - CONVERSATION_RECENT_RENDER_LIMIT),
+      end: Math.min(
+        visibleMessages.length,
+        anchorIndex + pending.renderedCount,
+      ),
+    });
+  }, [visibleMessages]);
 
   useLayoutEffect(() => {
     const keyChanged = conversationKeyRef.current !== conversationKey;
@@ -207,6 +281,16 @@ export function ConversationPage({
       return;
     }
 
+    if (pendingDateTargetRef.current) {
+      const date = pendingDateTargetRef.current;
+      const target = document.getElementById(`conversation-date-${date}`);
+      if (!target) return;
+      pendingDateTargetRef.current = null;
+      scrollBox.scrollTo({ top: Math.max(0, target.offsetTop - 12), behavior: "auto" });
+      onTargetDateHandled?.();
+      return;
+    }
+
     if (shouldStickToBottomRef.current) {
       scrollBox.scrollTo({
         top: scrollBox.scrollHeight,
@@ -222,9 +306,30 @@ export function ConversationPage({
     selectedThreadId,
   ]);
 
+  const updateFloatingDate = (scrollBox) => {
+    const boxTop = scrollBox.getBoundingClientRect().top;
+    const messageElements = Array.from(
+      scrollBox.querySelectorAll("[data-conversation-date]"),
+    );
+    const current =
+      messageElements.find(
+        (element) => element.getBoundingClientRect().bottom > boxTop + 8,
+      ) || messageElements[messageElements.length - 1];
+    const date = current?.getAttribute("data-conversation-date") || "";
+    onFloatingDateChange?.(formatFloatingDate(date));
+    if (floatingDateTimerRef.current) {
+      window.clearTimeout(floatingDateTimerRef.current);
+    }
+    floatingDateTimerRef.current = window.setTimeout(
+      () => onFloatingDateChange?.(""),
+      2600,
+    );
+  };
+
   const handleConversationScroll = (event) => {
     const scrollBox = event.currentTarget;
     const currentRange = visibleRangeRef.current;
+    updateFloatingDate(scrollBox);
 
     if (
       scrollBox.scrollTop <= CONVERSATION_SCROLL_EDGE_THRESHOLD &&
@@ -240,6 +345,28 @@ export function ConversationPage({
         start: Math.max(0, current.start - CONVERSATION_RECENT_RENDER_LIMIT),
         end: current.end,
       }));
+      return;
+    }
+
+    if (
+      scrollBox.scrollTop <= CONVERSATION_SCROLL_EDGE_THRESHOLD &&
+      currentRange.start === 0 &&
+      hasEarlierDate &&
+      !earlierDateLoading &&
+      renderedMessages.length > 0
+    ) {
+      topScrollAdjustmentRef.current = {
+        date: page.date,
+        threadId: selectedThreadId,
+        scrollHeight: scrollBox.scrollHeight,
+        scrollTop: scrollBox.scrollTop,
+      };
+      pendingEarlierAnchorRef.current = {
+        messageId: renderedMessages[0].id,
+        messageCount: visibleMessages.length,
+        renderedCount: renderedMessages.length,
+      };
+      onLoadEarlier?.();
       return;
     }
 
@@ -265,42 +392,62 @@ export function ConversationPage({
   return (
     <PageCard
       page={page}
-      motionKey={`${page.id}-conversation-${page.date}-${selectedThreadId}`}
-      className="relative flex h-full min-h-0 flex-col overflow-hidden border bg-[#f7f5ee] p-5"
+      motionKey={`conversation-${selectedThreadId}`}
+      className="relative flex h-full min-h-0 flex-col overflow-hidden bg-white"
     >
-      <div className="relative z-10 shrink-0">
-        <CalendarStrip
-          page={page}
-          onOpenDatePicker={onOpenDatePicker}
-          onMonthSelect={onMonthSelect}
-        />
-      </div>
       {page.hasEntry ? (
         <CardScrollArea
           id="conversation-message-scroll"
-          className="z-10 -mx-2 pt-1 pb-3"
+          className="z-10 px-3 pb-6 pt-5"
           onScroll={handleConversationScroll}
+          style={{
+            backgroundColor: threadProfile?.background || "#fbfbfa",
+            backgroundImage: threadProfile?.backgroundImage
+              ? `linear-gradient(rgba(255,255,255,.22), rgba(255,255,255,.22)), url(${threadProfile.backgroundImage})`
+              : "none",
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+            backgroundAttachment: "local",
+          }}
         >
-          {renderedMessages.map((message) => {
+          {renderedMessages.map((message, localIndex) => {
+            const globalIndex = clampedVisibleRange.start + localIndex;
+            const date = getMessageDate(message);
+            const previousDate =
+              globalIndex > 0 ? getMessageDate(visibleMessages[globalIndex - 1]) : "";
+            const showDateDivider = Boolean(date && date !== previousDate);
             const active =
               highlightResult?.mode === "Conversation" &&
               highlightResult?.targetId === message.id &&
               highlightResult?.threadId === selectedThreadId;
             return (
-              <div
-                id={`hit-message-${message.id}`}
-                key={message.id}
-                className="relative mb-3.5 border-l-2 pl-1 transition"
-                style={{
-                  borderLeftColor: active ? page.color : "transparent",
-                  background: active ? `${page.color}12` : "transparent",
-                }}
-              >
-                <ChatBubble
-                  message={message}
-                  page={page}
-                  messages={visibleMessages}
-                />
+              <div key={message.id}>
+                {showDateDivider && (
+                  <div
+                    id={`conversation-date-${date}`}
+                    className="my-5 text-center font-sans text-[11px] font-medium tracking-[0.04em] text-black/28"
+                  >
+                    {formatDateDivider(date)}
+                  </div>
+                )}
+                <div
+                  id={`hit-message-${message.id}`}
+                  data-conversation-date={date}
+                  className="relative mb-4 border-l-2 pl-1 transition"
+                  style={{
+                    borderLeftColor: active ? page.color : "transparent",
+                    background: active ? `${page.color}12` : "transparent",
+                  }}
+                >
+                  <ChatBubble
+                    message={message}
+                    page={page}
+                    messages={visibleMessages}
+                    userProfile={userProfile}
+                    threadProfile={threadProfile}
+                    onEditThread={onEditThread}
+                  />
+                </div>
               </div>
             );
           })}
