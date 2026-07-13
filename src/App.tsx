@@ -57,6 +57,8 @@ import { ConversationPage } from "./components/conversation/ConversationPage";
 import { ConversationListPage } from "./components/conversation/ConversationListPage";
 import { ConversationHeader } from "./components/conversation/ConversationHeader";
 import { ConversationPlaceholderPage } from "./components/conversation/ConversationPlaceholderPage";
+import { ConversationSearchPage } from "./components/conversation/ConversationSearchPage";
+import { ConversationGlobalSearchPage } from "./components/conversation/ConversationGlobalSearchPage";
 import { ConversationSettingsModal } from "./components/conversation/ConversationSettingsModal";
 import { TimelinePage } from "./components/timeline/TimelinePage";
 import { XiaoyePage } from "./components/xiaoye/XiaoyePage";
@@ -284,6 +286,11 @@ export default function InsDiaryPrototype() {
         .map(toDotDate)
         .sort(),
     [remoteDateIndexState, selectedThreadId],
+  );
+  const allConversationDates = useMemo(
+    () =>
+      (remoteDateIndexState?.conversations ?? []).map(toDotDate).sort(),
+    [remoteDateIndexState],
   );
   const loadedSelectedThreadDates = useMemo(
     () =>
@@ -1297,17 +1304,20 @@ export default function InsDiaryPrototype() {
     setConversationView("chat");
   };
 
-  const loadConversationThreadDate = async (dateText) => {
+  const loadConversationThreadDate = async (
+    dateText,
+    threadId = selectedThreadId,
+  ) => {
     const date = toDotDate(dateText);
     const alreadyLoaded =
-      remoteConversationsState[date]?.[selectedThreadId] ||
-      remoteSearchCacheState.conversations[date]?.[selectedThreadId];
+      remoteConversationsState[date]?.[threadId] ||
+      remoteSearchCacheState.conversations[date]?.[threadId];
     if (alreadyLoaded || conversationDateLoading) return;
 
     setConversationDateLoading(true);
     try {
       const records = await fetchConversations(date, {
-        threadId: selectedThreadId,
+        threadId,
       });
       const grouped = groupConversationRecordsByThread(records);
       setRemoteSearchCacheState((current) => ({
@@ -1339,6 +1349,41 @@ export default function InsDiaryPrototype() {
     await loadConversationThreadDate(date);
   };
 
+  const handleSelectConversationSearchResult = async (record) => {
+    const date = toDotDate(record?.conversationDate || record?.timestamp?.slice(0, 10));
+    await loadConversationThreadDate(date);
+    setSelectedDate(date);
+    setConversationJumpDate(null);
+    setHighlightResult({
+      mode: "Conversation",
+      threadId: selectedThreadId,
+      date,
+      targetId: record.id,
+    });
+    setConversationView("chat");
+  };
+
+  const handleSelectGlobalConversationSearchResult = async (record) => {
+    const threadId = String(record?.threadId || "");
+    if (!threadId) return;
+    const date = toDotDate(
+      record?.conversationDate || record?.timestamp?.slice(0, 10),
+    );
+    threadSelectionTouchedRef.current = true;
+    setSelectedThreadId(threadId);
+    await loadConversationThreadDate(date, threadId);
+    setSelectedDate(date);
+    setConversationJumpDate(null);
+    setHighlightResult({
+      mode: "Conversation",
+      threadId,
+      date,
+      targetId: record.id,
+    });
+    setConversationPlaceholder(null);
+    setConversationView("chat");
+  };
+
   const hasEarlierConversationDate =
     loadedSelectedThreadDates.length > 0 &&
     selectedThreadDates.indexOf(loadedSelectedThreadDates[0]) > 0;
@@ -1363,12 +1408,7 @@ export default function InsDiaryPrototype() {
                   threadProfile={threadProfiles[selectedThreadId]}
                   onBack={() => setConversationView("list")}
                   onEditThread={() => setConversationSettingsMode("thread")}
-                  onOpenSearch={() =>
-                    setConversationPlaceholder({
-                      title: "搜索当前聊天",
-                      description: "当前线程搜索入口已经接好，搜索界面将在后续设计。",
-                    })
-                  }
+                  onOpenSearch={() => setConversationView("search")}
                   floatingDate={conversationFloatingDate}
                   onOpenDatePicker={() => setDatePickerOpen(true)}
                 />
@@ -1460,12 +1500,10 @@ export default function InsDiaryPrototype() {
                 moments={conversationMoments}
                 onBack={() => setActiveSection("Timeline")}
                 onEditProfile={() => setConversationSettingsMode("user")}
-                onOpenSearch={() =>
-                  setConversationPlaceholder({
-                    title: "搜索全部对话",
-                    description: "这里只会搜索线程聊天记录；具体搜索界面将在后续设计。",
-                  })
-                }
+                onOpenSearch={() => {
+                  setConversationPlaceholder(null);
+                  setConversationView("global-search");
+                }}
                 onOpenMenu={() =>
                   setConversationPlaceholder({
                     title: "对话设置",
@@ -1485,6 +1523,26 @@ export default function InsDiaryPrototype() {
                   })
                 }
                 onSelectThread={openConversationThread}
+              />
+            ) : conversationView === "global-search" ? (
+              <ConversationGlobalSearchPage
+                page={page}
+                conversationDates={allConversationDates}
+                userProfile={userProfile}
+                threadProfiles={threadProfiles}
+                onBack={() => setConversationView("list")}
+                onSelectResult={handleSelectGlobalConversationSearchResult}
+              />
+            ) : conversationView === "search" ? (
+              <ConversationSearchPage
+                page={page}
+                threadId={selectedThreadId}
+                threadDates={selectedThreadDates}
+                userProfile={userProfile}
+                threadProfile={threadProfiles[selectedThreadId]}
+                onBack={() => setConversationView("chat")}
+                onEditThread={() => setConversationSettingsMode("thread")}
+                onSelectResult={handleSelectConversationSearchResult}
               />
             ) : (
               <ConversationPage

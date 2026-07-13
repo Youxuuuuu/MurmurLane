@@ -650,6 +650,74 @@ app.get("/api/conversations", async (request, response, next) => {
   }
 });
 
+app.get("/api/conversations/search", async (request, response, next) => {
+  try {
+    const threadId =
+      typeof request.query.threadId === "string"
+        ? request.query.threadId.trim()
+        : "";
+    const query =
+      typeof request.query.q === "string" ? request.query.q.trim() : "";
+    const requestedDate =
+      typeof request.query.date === "string" ? request.query.date.trim() : "";
+    const requestedMonth =
+      typeof request.query.month === "string" ? request.query.month.trim() : "";
+    const requestedLimit = getOptionalLimitQuery(request.query.limit, response);
+
+    if (request.query.limit != null && requestedLimit == null) {
+      return;
+    }
+    const limit = requestedLimit ?? 120;
+    if (!query) {
+      response.json([]);
+      return;
+    }
+    if (requestedDate && !/^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) {
+      response.status(400).json({ error: "Invalid date. Expected YYYY-MM-DD." });
+      return;
+    }
+    if (requestedMonth && !/^\d{4}-\d{2}$/.test(requestedMonth)) {
+      response.status(400).json({ error: "Invalid month. Expected YYYY-MM." });
+      return;
+    }
+
+    const normalizedQuery = query.toLocaleLowerCase();
+    const fileNames = (await listDataFileNames("conversations"))
+      .filter((fileName) => /^\d{4}-\d{2}-\d{2}\.jsonl$/i.test(fileName))
+      .filter((fileName) => !requestedDate || fileName.startsWith(`${requestedDate}.`))
+      .filter((fileName) => !requestedMonth || fileName.startsWith(`${requestedMonth}-`))
+      .sort()
+      .reverse();
+    const matches: Array<ConversationRecord & { conversationDate: string }> = [];
+
+    for (const fileName of fileNames) {
+      const date = fileName.slice(0, 10);
+      const result = await readJsonLinesFile<ConversationRecord>(
+        resolveDataPath("conversations", fileName),
+      );
+      const records = result.records
+        .filter((record) => !threadId || record.threadId === threadId)
+        .filter((record) =>
+          JSON.stringify(record).toLocaleLowerCase().includes(normalizedQuery),
+        )
+        .reverse();
+
+      for (const record of records) {
+        matches.push({
+          ...record,
+          conversationDate: date.replace(/-/g, "."),
+        });
+        if (matches.length >= limit) break;
+      }
+      if (matches.length >= limit) break;
+    }
+
+    response.json(matches);
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get("/api/moments", async (request, response, next) => {
   try {
     const requestedDays = Number(request.query.days ?? 3);

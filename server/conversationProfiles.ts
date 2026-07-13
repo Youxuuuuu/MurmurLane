@@ -9,6 +9,9 @@ export interface StoredConversationProfile {
   background?: string;
   avatarFile?: string;
   backgroundImageFile?: string;
+  backgroundPositionX?: number;
+  backgroundPositionY?: number;
+  thinkingFace?: string;
   threadId?: string;
   updatedAt?: string;
 }
@@ -20,6 +23,9 @@ export interface ConversationProfilePayload {
   background?: unknown;
   avatar?: unknown;
   backgroundImage?: unknown;
+  backgroundPositionX?: unknown;
+  backgroundPositionY?: unknown;
+  thinkingFace?: unknown;
 }
 
 const profileRoot = () => resolveDataPath("MLane", "profiles");
@@ -79,6 +85,9 @@ function toClientProfile(profile: StoredConversationProfile, directoryPath: stri
       profile.backgroundImageFile,
       profile.updatedAt,
     ),
+    backgroundPositionX: profile.backgroundPositionX ?? 50,
+    backgroundPositionY: profile.backgroundPositionY ?? 50,
+    thinkingFace: profile.thinkingFace || ">ᴗo ಣ >",
     threadId: profile.threadId,
     updatedAt: profile.updatedAt,
   };
@@ -108,6 +117,11 @@ async function writeDataImage(
 function textValue(value: unknown, fallback: string, maxLength: number) {
   const text = typeof value === "string" ? value.trim() : "";
   return (text || fallback).slice(0, maxLength);
+}
+
+function percentageValue(value: unknown, fallback = 50) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0, Math.min(100, number)) : fallback;
 }
 
 export async function readConversationProfiles() {
@@ -156,14 +170,15 @@ export async function writeConversationProfile({
   const avatarFile =
     (await writeDataImage(directoryPath, "avatar", payload.avatar)) ||
     current?.avatarFile;
-  const backgroundImageFile =
-    scope === "thread"
-      ? (await writeDataImage(
+  const backgroundImageFile = scope === "thread"
+    ? payload.backgroundImage === ""
+      ? undefined
+      : (await writeDataImage(
           directoryPath,
           "background",
           payload.backgroundImage,
         )) || current?.backgroundImageFile
-      : undefined;
+    : undefined;
   const profile: StoredConversationProfile = {
     name: textValue(payload.name, current?.name || "未命名", 80),
     handle: textValue(payload.handle, current?.handle || "@unknown", 80),
@@ -176,6 +191,19 @@ export async function writeConversationProfile({
             120,
           ),
           backgroundImageFile,
+          backgroundPositionX: percentageValue(
+            payload.backgroundPositionX,
+            current?.backgroundPositionX ?? 50,
+          ),
+          backgroundPositionY: percentageValue(
+            payload.backgroundPositionY,
+            current?.backgroundPositionY ?? 50,
+          ),
+          thinkingFace: textValue(
+            payload.thinkingFace,
+            current?.thinkingFace || ">ᴗo ಣ >",
+            40,
+          ),
           threadId,
         }
       : {}),

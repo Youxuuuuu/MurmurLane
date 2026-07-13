@@ -8,6 +8,7 @@ import type {
   EditableMemoryDocumentApiRequest,
   EditableMemoryDocumentApiResponse,
   FetchConversationsOptions,
+  SearchConversationOptions,
   FetchTimelineOptions,
   MemoryApiResponse,
   ReminderHistoryApiResponse,
@@ -110,6 +111,22 @@ export function fetchConversations(
   });
 
   return requestJson<ConversationsResponse>(`/api/conversations?${query}`);
+}
+
+export function searchConversation(
+  options: SearchConversationOptions,
+): Promise<ConversationsResponse> {
+  const query = buildQuery({
+    threadId: options.threadId,
+    q: options.query,
+    month: options.month ? normalizeDate(options.month).slice(0, 7) : undefined,
+    date: options.date ? normalizeDate(options.date) : undefined,
+    limit: options.limit,
+  });
+
+  return requestJson<ConversationsResponse>(`/api/conversations/search?${query}`, {
+    signal: options.signal,
+  });
 }
 
 export function fetchConversationMoments(

@@ -1,19 +1,20 @@
 // @ts-nocheck
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { shouldHideConversationRecord } from "../../lib/conversation";
+import { getConversationVisualKind, shouldHideConversationRecord } from "../../lib/conversation";
 import { CardScrollArea } from "../layout/CardScrollArea";
 import { PageCard } from "../layout/PageCard";
 import { ChatBubble } from "./ChatBubble";
 import { ConversationEmptyState } from "./ConversationEmptyState";
+import {
+  getConversationMessageDate as getMessageDate,
+  groupConversationDisplayRecords,
+  messageMatchesConversationDisplayTarget,
+} from "../../lib/conversationDisplayGroups";
 
 const CONVERSATION_RECENT_RENDER_LIMIT = 200;
 const CONVERSATION_HIT_CONTEXT_LIMIT = 80;
 const CONVERSATION_SCROLL_EDGE_THRESHOLD = 80;
 const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-function getMessageDate(message) {
-  return String(message?.conversationDate || "").replace(/-/g, ".");
-}
 
 function formatDateDivider(dateText) {
   const [year, month, day] = String(dateText).split(".").map(Number);
@@ -42,8 +43,10 @@ export function ConversationPage({
 }) {
   const visibleMessages = useMemo(
     () =>
-      page.messages.filter(
-        (message) => !shouldHideConversationRecord(message),
+      groupConversationDisplayRecords(
+        page.messages.filter(
+          (message) => !shouldHideConversationRecord(message),
+        ),
       ),
     [page.messages],
   );
@@ -68,7 +71,11 @@ export function ConversationPage({
   const hitIndex = useMemo(() => {
     if (!hasConversationHit) return -1;
     return visibleMessages.findIndex(
-      (message) => message.id === highlightResult.targetId,
+      (message) =>
+        messageMatchesConversationDisplayTarget(
+          message,
+          highlightResult.targetId,
+        ),
     );
   }, [hasConversationHit, visibleMessages, highlightResult?.targetId]);
   const clampedVisibleRange = useMemo(() => {
@@ -169,7 +176,7 @@ export function ConversationPage({
             hitIndex + CONVERSATION_HIT_CONTEXT_LIMIT + 1,
           ),
         });
-        pendingHighlightTargetRef.current = highlightResult.targetId;
+        pendingHighlightTargetRef.current = visibleMessages[hitIndex].id;
       }
       return;
     }
@@ -394,6 +401,7 @@ export function ConversationPage({
       page={page}
       motionKey={`conversation-${selectedThreadId}`}
       className="relative flex h-full min-h-0 flex-col overflow-hidden bg-white"
+      showTexture={false}
     >
       {page.hasEntry ? (
         <CardScrollArea
@@ -405,20 +413,52 @@ export function ConversationPage({
             backgroundImage: threadProfile?.backgroundImage
               ? `linear-gradient(rgba(255,255,255,.22), rgba(255,255,255,.22)), url(${threadProfile.backgroundImage})`
               : "none",
-            backgroundSize: "cover",
-            backgroundPosition: "center",
-            backgroundAttachment: "local",
+            backgroundSize: "100% 100%, cover",
+            backgroundPosition: `center, ${threadProfile?.backgroundPositionX ?? 50}% ${threadProfile?.backgroundPositionY ?? 50}%`,
+            backgroundRepeat: "no-repeat, no-repeat",
+            backgroundAttachment: "scroll",
           }}
         >
           {renderedMessages.map((message, localIndex) => {
             const globalIndex = clampedVisibleRange.start + localIndex;
+            const visualKind = getConversationVisualKind(message);
+            const nextMessage = visibleMessages[globalIndex + 1];
+            const nextIsAssistantText =
+              nextMessage &&
+              getConversationVisualKind(nextMessage) === "assistant" &&
+              getMessageDate(nextMessage) === getMessageDate(message) &&
+              (!message.turnId ||
+                !nextMessage.turnId ||
+                message.turnId === nextMessage.turnId);
+            if (visualKind === "thinking" && nextIsAssistantText) {
+              return null;
+            }
+            const previousMessage = visibleMessages[globalIndex - 1];
+            const attachedThinking =
+              visualKind === "assistant" &&
+              previousMessage &&
+              getConversationVisualKind(previousMessage) === "thinking" &&
+              getMessageDate(previousMessage) === getMessageDate(message) &&
+              (!message.turnId ||
+                !previousMessage.turnId ||
+                message.turnId === previousMessage.turnId)
+                ? previousMessage
+                : null;
+            const dateAnchorIndex = attachedThinking
+              ? globalIndex - 1
+              : globalIndex;
             const date = getMessageDate(message);
             const previousDate =
-              globalIndex > 0 ? getMessageDate(visibleMessages[globalIndex - 1]) : "";
+              dateAnchorIndex > 0
+                ? getMessageDate(visibleMessages[dateAnchorIndex - 1])
+                : "";
             const showDateDivider = Boolean(date && date !== previousDate);
             const active =
               highlightResult?.mode === "Conversation" &&
-              highlightResult?.targetId === message.id &&
+              messageMatchesConversationDisplayTarget(
+                message,
+                highlightResult?.targetId,
+              ) &&
               highlightResult?.threadId === selectedThreadId;
             return (
               <div key={message.id}>
@@ -446,6 +486,7 @@ export function ConversationPage({
                     userProfile={userProfile}
                     threadProfile={threadProfile}
                     onEditThread={onEditThread}
+                    thinkingMessage={attachedThinking}
                   />
                 </div>
               </div>

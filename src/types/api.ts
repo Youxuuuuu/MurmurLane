@@ -29,6 +29,15 @@ export interface FetchConversationsOptions {
   limit?: number;
 }
 
+export interface SearchConversationOptions {
+  threadId?: string;
+  query: string;
+  month?: string;
+  date?: string;
+  limit?: number;
+  signal?: AbortSignal;
+}
+
 export interface FetchTimelineOptions {
   date?: string;
   month?: string;
@@ -64,6 +73,9 @@ export interface ConversationProfileApiData {
   avatar: string;
   background?: string;
   backgroundImage?: string;
+  backgroundPositionX?: number;
+  backgroundPositionY?: number;
+  thinkingFace?: string;
   threadId?: string;
   updatedAt?: string;
 }

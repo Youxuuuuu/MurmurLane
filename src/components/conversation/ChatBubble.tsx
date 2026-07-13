@@ -1,17 +1,20 @@
 import { useState } from "react";
 import {
   getConversationDisplayText,
+  getConversationMediaItems,
   getConversationMediaSrc,
   getConversationPrimaryMediaItem,
   getConversationQuoteText,
   getConversationVisualKind,
   getOperationDisplayPaths,
   buildCloudMusicCardData,
+  isImageLikeMedia,
 } from "../../lib/conversation";
 import { formatConversationTime } from "../../lib/conversationPageData";
 import { TinyIcon } from "../common/TinyIcon";
 import { MusicShareCard } from "./MusicShareCard";
 import { ConversationAvatar } from "./ConversationAvatar";
+import { ConversationPhotoGallery } from "./PhotoStack";
 
 export function BubbleRow({
   message,
@@ -22,33 +25,45 @@ export function BubbleRow({
   onAvatarClick = undefined,
 }) {
   const fromRight = side === "right";
+  if (fromRight) {
+    return (
+      <div className="flex flex-col items-end">
+        <div className="flex items-start justify-end gap-2">
+          <MessageTime message={message} align="right" read />
+          <ConversationAvatar src={avatar} name={name || "我"} size="sm" />
+        </div>
+        <div className="mt-1 min-w-0 text-right">{children}</div>
+      </div>
+    );
+  }
+
   return (
-    <div
-      className={`flex items-start gap-2 ${fromRight ? "justify-end" : "justify-start"}`}
-    >
-      {!fromRight && (
-        <button type="button" onClick={onAvatarClick} className="mt-0.5 shrink-0">
+    <div className="flex items-start justify-start gap-2">
+      <div className="flex shrink-0 flex-col items-center">
+        <button type="button" onClick={onAvatarClick} className="shrink-0">
           <ConversationAvatar src={avatar} name={name || "对方"} size="sm" />
         </button>
-      )}
-      <div className={`min-w-0 ${fromRight ? "text-right" : "text-left"}`}>
-        <MessageTime message={message} align={fromRight ? "right" : "left"} read={fromRight} />
-        {children}
+        <MessageTime message={message} align="center" />
       </div>
-      {fromRight && (
-        <ConversationAvatar src={avatar} name={name || "我"} size="sm" />
-      )}
+      <div className="min-w-0 pt-0.5 text-left">{children}</div>
     </div>
   );
 }
 
 export function MessageTime({ message, align = "left", read = false }) {
+  const time = formatConversationTime(message.timestamp);
   return (
     <div
-      className={`mb-1 font-sans text-[9px] tracking-[0.06em] text-black/25 ${align === "right" ? "text-right" : "text-left"}`}
+      className={`font-sans text-[9px] leading-[1.35] tracking-[0.06em] text-black/25 ${align === "right" ? "pt-0.5 text-right" : align === "center" ? "mt-1 text-center" : "text-left"}`} style={{ fontWeight: "bold" }}
     >
-      {read && <span>Read · ✓✓ </span>}
-      {formatConversationTime(message.timestamp)}
+      {read ? (
+        <>
+          <div>Read · ✓✓</div>
+          <div className="mt-0.5">{time}</div>
+        </>
+      ) : (
+        time
+      )}
     </div>
   );
 }
@@ -61,6 +76,29 @@ function splitBubbleText(text) {
   return parts.length ? parts : [""];
 }
 
+function ThinkingPanel({ message, face = ">ᴗo ಣ >", standalone = false }) {
+  const [open, setOpen] = useState(false);
+  const text = getConversationDisplayText(message);
+
+  return (
+    <div className={standalone ? "max-w-[min(86vw,520px)] px-3 py-2" : "mb-2"}>
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="flex items-center gap-1.5 font-mono text-[10px] leading-none tracking-[0.08em] text-black/34"
+      >
+        <span>{face}</span>
+        <span className="text-[11px]">{open ? "⌄" : "›"}</span>
+      </button>
+      {open && (
+        <div className="mt-2 whitespace-pre-line font-serif text-[10px] leading-[1.5] text-black/45">
+          {text}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ChatBubble({
   message,
   page,
@@ -68,15 +106,16 @@ export function ChatBubble({
   userProfile,
   threadProfile,
   onEditThread,
+  thinkingMessage = null,
 }) {
   const visualKind = getConversationVisualKind(message);
   const displayText = getConversationDisplayText(message);
   const fromUser = message.type === "user";
   const quoteText = getConversationQuoteText(message);
   const primaryMediaItem = getConversationPrimaryMediaItem(message);
+  const imageItems = getConversationMediaItems(message).filter(isImageLikeMedia);
   const operationPaths = getOperationDisplayPaths(message);
   const [actionOpen, setActionOpen] = useState(false);
-  const [thinkingOpen, setThinkingOpen] = useState(false);
   const [mediaFailed, setMediaFailed] = useState(false);
 
   if (visualKind === "hidden") {
@@ -146,22 +185,11 @@ export function ChatBubble({
   if (visualKind === "thinking") {
     return (
       <div className="flex justify-start">
-        <div className="max-w-[min(86vw,520px)] bg-transparent px-3 py-2 text-left">
-          <button
-            type="button"
-            onClick={() => setThinkingOpen((value) => !value)}
-            className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-black/35"
-          >
-            <span className="h-1.5 w-1.5 rounded-full bg-black/30" />
-            Thinking
-            <span className="ml-1 text-[12px]">{thinkingOpen ? "⌄" : "›"}</span>
-          </button>
-          {thinkingOpen && (
-            <div className="mt-2 whitespace-pre-line font-serif text-[11px] leading-[1.55] text-black/52">
-              {displayText}
-            </div>
-          )}
-        </div>
+        <ThinkingPanel
+          message={message}
+          face={threadProfile?.thinkingFace}
+          standalone
+        />
       </div>
     );
   }
@@ -238,6 +266,28 @@ export function ChatBubble({
   }
 
   if (visualKind === "image" || visualKind === "sticker") {
+    if (visualKind === "image" && imageItems.length > 0) {
+      return (
+        <BubbleRow
+          message={message}
+          side={fromUser ? "right" : "left"}
+          avatar={fromUser ? userProfile?.avatar : threadProfile?.avatar}
+          name={fromUser ? userProfile?.name : threadProfile?.name}
+          onAvatarClick={fromUser ? undefined : onEditThread}
+        >
+          <div
+            className={`max-w-[min(92vw,360px)] ${fromUser ? "mr-8 sm:mr-12" : "ml-4 sm:ml-6"}`}
+          >
+            <ConversationPhotoGallery
+              items={imageItems}
+              page={page}
+              controlSide={fromUser ? "left" : "right"}
+            />
+          </div>
+        </BubbleRow>
+      );
+    }
+
     const mediaItem = primaryMediaItem;
     const mediaSrc = getConversationMediaSrc(mediaItem);
     const mediaLabel =
@@ -298,10 +348,16 @@ export function ChatBubble({
       onAvatarClick={fromUser ? undefined : onEditThread}
     >
       <div className={`flex max-w-[min(78vw,360px)] flex-col gap-2 ${fromUser ? "items-end" : "items-start"}`}>
+        {!fromUser && thinkingMessage && (
+          <ThinkingPanel
+            message={thinkingMessage}
+            face={threadProfile?.thinkingFace}
+          />
+        )}
         {splitBubbleText(displayText).map((part, index) => (
           <div
             key={`${message.id}-part-${index}`}
-            className={`${fromUser ? "border border-black/[0.06] bg-[#f3f3f2] text-black/78" : "border bg-white/88 text-black/72"} w-fit max-w-full rounded-[7px] px-3 py-2 text-left font-sans text-[14px] leading-[1.55] shadow-[0_1px_0_rgba(0,0,0,.02)]`}
+            className={`${fromUser ? "border border-black/[0.06] bg-[#f3f3f2] text-black/78" : "border bg-white/[0.73] text-black/72"} w-fit max-w-full rounded-[7px] px-3 py-2 text-left font-sans text-[14px] leading-[1.55] shadow-[0_1px_0_rgba(0,0,0,.02)]`}
             style={{ borderColor: fromUser ? "rgba(0,0,0,.06)" : page.line }}
           >
             {part}

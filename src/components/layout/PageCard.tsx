@@ -7,6 +7,7 @@ export function PageCard({
   sectionRef = null,
   className,
   children,
+  showTexture = true,
   ...motionProps
 }) {
   return (
@@ -20,7 +21,7 @@ export function PageCard({
       className={className}
       style={{ background: page.paper, borderColor: "transparent" }}
     >
-      <PaperTexture mode={page.texture} />
+      {showTexture && <PaperTexture mode={page.texture} />}
       {children}
     </motion.section>
   );

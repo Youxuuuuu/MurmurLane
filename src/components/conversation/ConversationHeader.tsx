@@ -33,7 +33,10 @@ export function ConversationHeader({
   onOpenDatePicker: () => void;
 }) {
   return (
-    <header className="relative z-30 shrink-0 bg-transparent px-3 pb-3 pt-2">
+    <header
+      className="relative z-30 shrink-0 px-3 pb-3 pt-2"
+      style={{ backgroundColor: threadProfile.background || "transparent" }}
+    >
       <div className="grid grid-cols-[38px_minmax(0,1fr)_38px] items-center">
         <button
           type="button"

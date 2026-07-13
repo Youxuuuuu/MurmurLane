@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "server": "tsx server/index.ts",
-    "dev:all": "concurrently \"npm run dev\" \"npm run server\"",
+    "server:dev": "tsx watch server/index.ts",
+    "dev:all": "concurrently \"npm run dev\" \"npm run server:dev\"",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "serve:prod": "npm run build && npm run server",

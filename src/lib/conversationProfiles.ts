@@ -15,6 +15,9 @@ export type ConversationIdentity = {
 export type ConversationThreadProfile = ConversationIdentity & {
   background: string;
   backgroundImage: string;
+  backgroundPositionX: number;
+  backgroundPositionY: number;
+  thinkingFace: string;
 };
 
 const USER_PROFILE_KEY = "murmurlane.conversation.user-profile.v1";
@@ -48,6 +51,9 @@ export function createDefaultThreadProfile(
     avatar: "",
     background: "#fbfbfa",
     backgroundImage: "",
+    backgroundPositionX: 50,
+    backgroundPositionY: 50,
+    thinkingFace: ">ᴗo ಣ >",
   };
 }
 
