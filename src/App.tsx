@@ -1,6 +1,6 @@
 // @ts-nocheck
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { AnimatePresence } from "framer-motion";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, MotionConfig } from "framer-motion";
 import {
   fetchEditableMemoryDocument,
   fetchConversations,
@@ -31,6 +31,7 @@ import {
   toDotDate,
 } from "./lib/date";
 import { scrollHitIntoView } from "./lib/dom";
+import { useStableViewport } from "./lib/useStableViewport";
 import {
   buildConversationThreadPage,
   defaultConversationThreadId,
@@ -162,6 +163,7 @@ const archiveSubjectItems = [
 ];
 
 export default function InsDiaryPrototype() {
+  useStableViewport();
   const [selectedStyleId, setSelectedStyleId] = useState("cafe");
   const [selectedDate, setSelectedDate] = useState(() => getTodayDateText());
   const [datePickerOpen, setDatePickerOpen] = useState(false);
@@ -601,76 +603,6 @@ export default function InsDiaryPrototype() {
     }, 220);
     return () => window.clearTimeout(timer);
   }, [searchQuery, conversationView]);
-
-  useLayoutEffect(() => {
-    if (typeof window === "undefined") return;
-
-    let stableHeight = Math.max(
-      window.innerHeight || 0,
-      window.visualViewport?.height || 0,
-    );
-    const resetDocumentScroll = () => {
-      document.documentElement.scrollTop = 0;
-      document.body.scrollTop = 0;
-
-      if (window.scrollX !== 0 || window.scrollY !== 0) {
-        window.scrollTo(0, 0);
-      }
-    };
-
-    const applyStableViewport = () => {
-      const visualViewport = window.visualViewport;
-      const currentLayoutHeight = window.innerHeight || 0;
-      const currentVisualHeight = visualViewport?.height || 0;
-      const currentVisualOffsetTop = visualViewport?.offsetTop || 0;
-      const candidateHeight = Math.max(currentLayoutHeight, currentVisualHeight);
-      const nextKeyboardInset = Math.max(
-        0,
-        stableHeight - currentVisualHeight - currentVisualOffsetTop,
-      );
-      const keyboardIsOpen = nextKeyboardInset > 80;
-
-      if (!keyboardIsOpen || candidateHeight > stableHeight) {
-        stableHeight = candidateHeight;
-      }
-      const keyboardInset = Math.max(
-        0,
-        stableHeight - currentVisualHeight - currentVisualOffsetTop,
-      );
-
-      document.documentElement.style.setProperty(
-        "--app-stable-height",
-        `${Math.round(stableHeight)}px`,
-      );
-      document.documentElement.style.setProperty(
-        "--app-keyboard-inset",
-        `${Math.round(keyboardInset)}px`,
-      );
-      document.documentElement.style.setProperty(
-        "--app-keyboard-center-offset",
-        `${Math.round(keyboardInset / 2)}px`,
-      );
-
-      window.requestAnimationFrame(resetDocumentScroll);
-    };
-
-    applyStableViewport();
-    window.addEventListener("resize", applyStableViewport);
-    window.addEventListener("blur", resetDocumentScroll);
-    window.addEventListener("focusout", resetDocumentScroll);
-    document.addEventListener("visibilitychange", resetDocumentScroll);
-    window.visualViewport?.addEventListener("scroll", applyStableViewport);
-    window.visualViewport?.addEventListener("resize", applyStableViewport);
-
-    return () => {
-      window.removeEventListener("resize", applyStableViewport);
-      window.removeEventListener("blur", resetDocumentScroll);
-      window.removeEventListener("focusout", resetDocumentScroll);
-      document.removeEventListener("visibilitychange", resetDocumentScroll);
-      window.visualViewport?.removeEventListener("scroll", applyStableViewport);
-      window.visualViewport?.removeEventListener("resize", applyStableViewport);
-    };
-  }, []);
 
   const remoteData = useMemo(
     () => ({
@@ -1853,7 +1785,8 @@ export default function InsDiaryPrototype() {
   };
 
   return (
-    <AppShell
+    <MotionConfig reducedMotion="user">
+      <AppShell
       edgeToEdge={activeSection === "Conversation"}
       viewport={
         <PageViewport
@@ -2168,7 +2101,8 @@ export default function InsDiaryPrototype() {
           </AnimatePresence>
         </>
       }
-    />
+      />
+    </MotionConfig>
   );
 }
 

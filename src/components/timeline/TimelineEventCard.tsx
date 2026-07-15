@@ -19,7 +19,6 @@ export function TimelineEventCard({
   onSelectEvent,
 }) {
   const {
-    normalizedEvent,
     category,
     subcategoryLabel,
     eventNodeLabel,

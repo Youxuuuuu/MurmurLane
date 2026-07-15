@@ -1,21 +1,22 @@
 import { createPortal } from "react-dom";
 import { useEffect, useRef, useState } from "react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import type { ConversationMediaItem } from "../../types/conversation";
 import { getConversationMediaSrc } from "../../lib/conversation";
 import { TinyIcon } from "../common/TinyIcon";
+import { useModalDialog } from "../common/useModalDialog";
 
-const STACK_WIDTH = 142;
-const STACK_HEIGHT = 190;
-const PEEK = 15;
-const PEEK_STEP = 12;
+const STACK_WIDTH = 124;
+const STACK_HEIGHT = 152;
+const PEEK = 12;
+const PEEK_STEP = 10;
 const ROTATION_STEP = 2.2;
 const SCALE_STEP = 0.06;
 const STACK_TRANSITION =
-  "transform 320ms cubic-bezier(.2,.7,.3,1), opacity 300ms ease";
+  "transform 240ms cubic-bezier(.23,1,.32,1), opacity 180ms ease";
 const PHOTO_GROUP_TRANSITION = {
-  duration: 0.34,
-  ease: [0.22, 0.8, 0.2, 1] as const,
+  duration: 0.16,
+  ease: [0.23, 1, 0.32, 1] as const,
 };
 
 function clamp(value: number, min: number, max: number) {
@@ -182,7 +183,7 @@ function PhotoControl({
       type="button"
       aria-label={ariaLabel || label}
       data-photo-control="true"
-      className="inline-flex min-h-8 items-center whitespace-nowrap rounded-full border-0 px-3 py-2 font-mono text-[9px] font-semibold leading-none tracking-[0.08em] transition-[background-color,color,transform] duration-200 hover:-translate-y-px hover:bg-black/[0.1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/15"
+      className="inline-flex min-h-8 items-center whitespace-nowrap rounded-[7px] border-0 px-2.5 py-1.5 font-mono text-[9px] font-semibold leading-none tracking-[0.08em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9a8064]/55"
       style={getPhotoControlStyle(page)}
       onPointerDown={(event) => {
         // Do not let the collapsed stack capture the expand/collapse button.
@@ -225,6 +226,7 @@ function PhotoViewer({
 }) {
   const startX = useRef<number | null>(null);
   const active = entries[index] || entries[0];
+  const dialogProps = useModalDialog<HTMLDivElement>(onClose);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -241,9 +243,8 @@ function PhotoViewer({
 
   return createPortal(
     <div
+      {...dialogProps}
       className="fixed inset-0 z-[100] bg-black/[0.9] p-4 text-white"
-      role="dialog"
-      aria-modal="true"
       aria-label="图片预览"
       style={{ touchAction: "pan-y" }}
     >
@@ -273,7 +274,7 @@ function PhotoViewer({
           type="button"
           aria-label="关闭图片预览"
           onClick={onClose}
-          className="absolute right-0 top-0 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white/[0.14] text-2xl leading-none text-white/90 transition hover:bg-white/[0.24]"
+          className="absolute right-0 top-0 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-white/[0.14] text-2xl leading-none text-white/90 transition hover:bg-white/[0.24]"
         >
           ×
         </button>
@@ -282,7 +283,7 @@ function PhotoViewer({
             type="button"
             aria-label="上一张图片"
             onClick={() => onChange(index - 1)}
-            className="absolute left-0 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.14] text-2xl text-white/90 transition hover:bg-white/[0.24]"
+            className="absolute left-0 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-white/[0.14] text-2xl text-white/90 transition hover:bg-white/[0.24]"
           >
             ‹
           </button>
@@ -292,7 +293,7 @@ function PhotoViewer({
             type="button"
             aria-label="下一张图片"
             onClick={() => onChange(index + 1)}
-            className="absolute right-0 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.14] text-2xl text-white/90 transition hover:bg-white/[0.24]"
+            className="absolute right-0 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-white/[0.14] text-2xl text-white/90 transition hover:bg-white/[0.24]"
           >
             ›
           </button>
@@ -366,6 +367,7 @@ function PhotoStackCollection({
   const currentIndexRef = useRef(0);
   const cardShellRefs = useRef<Array<HTMLDivElement | null>>([]);
   const cardRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const shouldReduceMotion = useReducedMotion();
 
   const applyStackStyles = (
     gesture: { direction: number; progress: number } | null,
@@ -434,8 +436,15 @@ function PhotoStackCollection({
       window.cancelAnimationFrame(animationFrameRef.current);
     }
 
+    if (shouldReduceMotion) {
+      currentIndexRef.current = nextIndex;
+      applyStackStyles(null, false, nextIndex);
+      setCurrentIndex(nextIndex);
+      return;
+    }
+
     animationDirectionRef.current = direction;
-    const duration = Math.max(140, (1 - fromProgress) * 340);
+    const duration = Math.max(120, (1 - fromProgress) * 260);
     const startedAt = performance.now();
 
     const step = (now: number) => {
@@ -569,7 +578,7 @@ function PhotoStackCollection({
     <motion.div
       layout
       transition={PHOTO_GROUP_TRANSITION}
-      className={`flex shrink-0 ${expanded ? "pt-[118px]" : "self-center"}`}
+      className={`flex shrink-0 ${expanded ? "pt-1" : "self-center"}`}
     >
       <PhotoControl
         page={page}
@@ -625,7 +634,7 @@ function PhotoStackCollection({
     >
       {entries.map((entry, index) => {
         const stackStyle = getRestingStyle(index, currentIndex, entries.length);
-        const layoutDuration = 0.45 + index * 0.09;
+        const layoutDuration = Math.min(0.28, 0.2 + index * 0.03);
 
         return (
           <motion.div
@@ -656,8 +665,8 @@ function PhotoStackCollection({
               type="button"
               className={
                 expanded
-                  ? "block max-w-[220px] overflow-hidden rounded-[6px] bg-black/5 text-left outline-none focus-visible:ring-2 focus-visible:ring-black/20"
-                  : "flex h-full w-full items-center justify-center overflow-hidden rounded-[14px] bg-transparent shadow-[0_3px_14px_rgba(0,0,0,.14)]"
+                  ? "block max-w-[200px] overflow-hidden rounded-[6px] bg-black/5 text-left outline-none focus-visible:ring-2 focus-visible:ring-[#9a8064]/55"
+                  : "flex h-full w-full items-center justify-center overflow-hidden rounded-[9px] bg-transparent shadow-[0_2px_10px_rgba(0,0,0,.12)]"
               }
               style={{
                 transform: collapsed
@@ -684,7 +693,7 @@ function PhotoStackCollection({
                 <img
                   className={
                     expanded
-                      ? "block max-h-[280px] max-w-[220px] object-contain"
+                      ? "block max-h-[220px] max-w-[200px] object-contain"
                       : "pointer-events-none h-full w-full scale-[1.04] object-cover"
                   }
                   src={entry.src}
@@ -768,14 +777,14 @@ export function ConversationPhotoGallery({
       ) : (
         <button
           type="button"
-          className="block max-w-[220px] overflow-hidden rounded-[6px] bg-black/5 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-black/20"
+          className="block max-w-[200px] overflow-hidden rounded-[6px] bg-black/5 text-left outline-none focus-visible:ring-2 focus-visible:ring-[#9a8064]/55"
           title={entries[0].label}
           aria-label={`查看${entries[0].label}`}
           onClick={() => setViewerIndex(0)}
         >
           {entries[0].src && !brokenKeys.has(entries[0].key) ? (
             <img
-              className="block max-h-[280px] max-w-[220px] object-contain"
+              className="block max-h-[220px] max-w-[200px] object-contain"
               src={entries[0].src}
               alt={entries[0].label}
               loading="lazy"

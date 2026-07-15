@@ -1,5 +1,4 @@
-import React, { useLayoutEffect, useMemo, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { PaperTexture } from "../common/PaperTexture";
 import {
   formatDiaryDate,
@@ -11,6 +10,7 @@ import {
 } from "../../lib/date";
 import { hasConversationForDate } from "../../lib/conversationPageData";
 import { hasCalendarMarkForPage } from "../../lib/memoryPageData";
+import { useModalDialog } from "../common/useModalDialog";
 import {
   getTimelineDay,
   hasRemoteDateIndexMark,
@@ -63,13 +63,11 @@ export function DatePickerModal({
     setIsYearPickerOpen(false);
     onClose();
   };
+  const dialogProps = useModalDialog(handleClose);
 
   return (
-    <motion.div
-      className={`absolute inset-0 z-50 flex items-end bg-black/[0.18] ${isConversation ? "px-0 pb-0" : "px-4 pb-[calc(18px+env(safe-area-inset-bottom))]"}`}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
+    <div
+      className={`absolute inset-0 z-50 flex items-end overscroll-contain bg-black/[0.18] ${isConversation ? "px-0 pb-0" : "px-4 pb-[calc(18px+env(safe-area-inset-bottom))]"}`}
     >
       <button
         className="absolute inset-0"
@@ -77,11 +75,10 @@ export function DatePickerModal({
         aria-label="关闭日期选择"
         onClick={handleClose}
       />
-      <motion.section
-        className={`relative w-full p-5 text-black/70 ${isConversation ? "rounded-t-[24px] border-0 bg-white pb-[calc(24px+env(safe-area-inset-bottom))] font-sans shadow-[0_-12px_35px_rgba(0,0,0,.08)]" : "border bg-[#f3efe6]"}`}
-        initial={{ y: 28, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        exit={{ y: 24, opacity: 0 }}
+      <section
+        {...dialogProps}
+        aria-label={isConversation ? "跳转到对话日期" : "选择日期"}
+        className={`relative w-full p-5 text-black/70 ${isConversation ? "rounded-t-[16px] border-0 bg-white pb-[calc(24px+env(safe-area-inset-bottom))] font-sans shadow-[0_-4px_8px_rgba(0,0,0,.08)]" : "border bg-[#f3efe6]"}`}
         style={{ borderColor: page.line }}
       >
         {!isConversation && <PaperTexture mode={page.texture} />}
@@ -98,7 +95,7 @@ export function DatePickerModal({
               style={{ color: page.color }}
             >
               <button
-                className="p-0 font-serif text-[28px] leading-none tracking-[0.08em]"
+                className="min-h-11 min-w-11 p-0 font-serif text-[28px] leading-none tracking-[0.08em]"
                 style={{
                   background: "transparent",
                   border: "none",
@@ -111,20 +108,16 @@ export function DatePickerModal({
               </button>
               <span>.{pad2(view.month)}</span>
             </div>
-            <AnimatePresence>
-              {isYearPickerOpen && (
-                <motion.div
+            {isYearPickerOpen && (
+                <div
                   ref={yearPickerRef}
-                  className="year-picker-scroll absolute left-1/2 top-[52px] z-20 max-h-[168px] w-[124px] -translate-x-1/2 overflow-y-auto border p-2 shadow-[0_10px_24px_rgba(120,90,70,.12)]"
+                  className="year-picker-scroll absolute left-1/2 top-[52px] z-20 max-h-[168px] w-[124px] -translate-x-1/2 overflow-y-auto border p-2 shadow-[0_4px_8px_rgba(120,90,70,.12)]"
                   style={{
                     borderColor: `${page.color}38`,
                     background: "rgba(255,252,246,.96)",
                     borderRadius: 14,
                     scrollBehavior: "auto",
                   }}
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -4 }}
                 >
                   {yearOptions.map((year) => {
                     const active = year === view.year;
@@ -133,7 +126,7 @@ export function DatePickerModal({
                       <button
                         key={year}
                         ref={active ? activeYearRef : null}
-                        className="flex min-h-8 w-full items-center justify-between px-2 text-[12px] leading-none"
+                        className="flex min-h-11 w-full items-center justify-between px-2 text-[12px] leading-none"
                         style={{
                           color: active ? page.color : "#76685f",
                           background: active
@@ -155,12 +148,11 @@ export function DatePickerModal({
                       </button>
                     );
                   })}
-                </motion.div>
+                </div>
               )}
-            </AnimatePresence>
           </div>
           <button
-            className="font-mono text-[11px] uppercase tracking-[0.18em] text-black/45"
+            className="min-h-11 px-2 font-mono text-[11px] uppercase tracking-[0.18em] text-black/45"
             type="button"
             onClick={handleClose}
           >
@@ -169,7 +161,7 @@ export function DatePickerModal({
         </div>
         <div className="relative mb-4 flex items-center justify-between font-mono text-[11px] tracking-[0.16em] text-black/50">
           <button
-            className="px-1 py-2"
+            className="min-h-11 px-2 py-2"
             type="button"
             onClick={() => moveMonth(-1)}
           >
@@ -177,7 +169,7 @@ export function DatePickerModal({
           </button>
           <div>{pad2(view.month)} / 12</div>
           <button
-            className="px-1 py-2"
+            className="min-h-11 px-2 py-2"
             type="button"
             onClick={() => moveMonth(1)}
           >
@@ -209,7 +201,7 @@ export function DatePickerModal({
             return (
               <button
                 key={dateText}
-                className="relative mx-auto flex h-9 w-9 items-center justify-center text-[12px]"
+                className="relative mx-auto flex h-11 w-11 items-center justify-center text-[12px]"
                 style={{
                   color: selected
                     ? "#fff"
@@ -238,7 +230,7 @@ export function DatePickerModal({
             );
           })}
         </div>
-      </motion.section>
-    </motion.div>
+      </section>
+    </div>
   );
 }

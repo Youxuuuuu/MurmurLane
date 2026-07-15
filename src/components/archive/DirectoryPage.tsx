@@ -232,7 +232,7 @@ export function DirectoryPage({
               onClick={handleStartEditing}
               disabled={editDisabled}
             >
-              {isEditorLoading ? "loading..." : editLabel}
+              {isEditorLoading ? "loading…" : editLabel}
             </button>
             <button
               className="border px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em]"
@@ -264,7 +264,7 @@ export function DirectoryPage({
           onClick={handleStartEditing}
           disabled={editDisabled}
         >
-          {isEditorLoading ? "loading..." : editLabel}
+          {isEditorLoading ? "loading…" : editLabel}
         </button>
         {!canEdit && editHint ? (
           <p className="max-w-[200px] text-right text-[10px] leading-4 text-black/[0.42]">

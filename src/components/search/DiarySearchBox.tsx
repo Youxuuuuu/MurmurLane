@@ -126,6 +126,8 @@ export function DiarySearchBox({
     <div
       ref={searchBoxRef}
       className="relative z-50 w-[116px] font-mono sm:w-[136px]"
+      role="search"
+      aria-label="全局内容搜索"
     >
       <div className="flex items-stretch gap-1">
         <button
@@ -136,6 +138,9 @@ export function DiarySearchBox({
             background: searchFilterOpen ? `${page.color}10` : "rgba(255,255,255,.3)",
           }}
           type="button"
+          aria-expanded={searchFilterOpen}
+          aria-controls="diary-search-panel"
+          aria-pressed={searchFilterOpen}
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => {
             setSearchFilterOpen((current) => !current);
@@ -145,13 +150,17 @@ export function DiarySearchBox({
           筛选
         </button>
         <input
-          className="min-w-0 flex-1 border bg-white/25 px-2.5 py-2 text-[9px] uppercase leading-none tracking-[0.08em] text-black/55 outline-none placeholder:text-black/[0.28]"
+          className="min-w-0 flex-1 border bg-white/25 px-2.5 py-2 text-[12px] leading-none text-black/65 outline-none placeholder:text-[9px] placeholder:uppercase placeholder:tracking-[0.08em] placeholder:text-black/[0.42]"
           style={{
             borderColor: focused ? page.color : page.line,
             background: focused ? "rgba(255,255,255,.42)" : "rgba(255,255,255,.25)",
           }}
           value={inputQuery}
-          placeholder="SEARCH"
+          type="search"
+          name="global-search"
+          autoComplete="off"
+          aria-label="搜索回忆、时间轴和对话"
+          placeholder="SEARCH…"
           onChange={(event) => {
             setInputQuery(event.target.value);
             setFocused(true);
@@ -170,11 +179,13 @@ export function DiarySearchBox({
       <AnimatePresence>
         {showPanel && (
           <motion.div
+            id="diary-search-panel"
             className="absolute right-0 top-[calc(100%+6px)] w-[236px] max-w-[calc(100vw-32px)] border bg-[#f4f0e8] p-2 sm:w-[248px]"
             style={{ borderColor: page.line }}
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}
           >
             <PaperTexture mode={page.texture} />
             <div className="relative">
@@ -280,7 +291,7 @@ export function DiarySearchBox({
               ) : null}
               {showResultPanel ? (
                 pendingSearch ? (
-                  <div className="px-2 py-3 text-[10px] text-black/[0.38]">
+                  <div className="px-2 py-3 text-[10px] text-black/[0.48]" role="status" aria-live="polite">
                     正在整理搜索范围…
                   </div>
                 ) : (
@@ -327,7 +338,7 @@ export function DiarySearchBox({
                           </button>
                         ))
                       ) : (
-                        <div className="px-2 py-3 text-[10px] text-black/[0.38]">
+                        <div className="px-2 py-3 text-[10px] text-black/[0.48]" role="status">
                           没有搜到内容碎片
                         </div>
                       )}

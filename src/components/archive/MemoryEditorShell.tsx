@@ -35,6 +35,8 @@ export function MemoryEditorShell({
             <textarea
               className="block min-h-[440px] w-full resize-none border bg-white/55 px-4 py-4 font-mono text-[12px] leading-[1.8] text-black/[0.72] outline-none"
               style={{ borderColor: page.line }}
+              name="memory-document"
+              aria-label="编辑回忆文档"
               value={draftContent}
               onChange={(event) => onDraftContentChange(event.target.value)}
               spellCheck={false}
@@ -48,13 +50,13 @@ export function MemoryEditorShell({
           }}
         >
           {error ? (
-            <p className="mb-2 text-[11px] leading-5 text-[#a2594b]">
+            <p className="mb-2 text-[11px] leading-5 text-[#a2594b]" role="alert">
               {error}
             </p>
           ) : null}
           <div className="flex items-center justify-end gap-2">
             <button
-              className="border px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-black/[0.52]"
+              className="min-h-11 border px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-black/[0.52]"
               style={{ borderColor: page.line }}
               type="button"
               onClick={onCancel}
@@ -63,13 +65,13 @@ export function MemoryEditorShell({
               cancel
             </button>
             <button
-              className="border px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em]"
+              className="min-h-11 border px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em]"
               style={{ borderColor: page.color, color: page.color }}
               type="button"
               onClick={onSave}
               disabled={isSaving}
             >
-              {isSaving ? "saving..." : "save"}
+              {isSaving ? "saving…" : "save"}
             </button>
           </div>
         </div>

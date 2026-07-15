@@ -35,7 +35,7 @@ export function MessageNotificationBanner({
           key={notification.threadId}
           type="button"
           aria-live="polite"
-          className="fixed left-3 right-3 top-[calc(env(safe-area-inset-top)+10px)] z-[210] mx-auto flex max-w-[420px] items-center gap-3 rounded-[18px] border border-black/[0.07] bg-white/95 px-3 py-2.5 text-left font-sans shadow-[0_12px_36px_rgba(40,48,58,.16)] backdrop-blur-xl"
+          className="fixed left-3 right-3 top-[calc(env(safe-area-inset-top)+10px)] z-[210] mx-auto flex min-h-11 max-w-[420px] items-center gap-3 rounded-[16px] border border-black/[0.07] bg-white/95 px-3 py-2.5 text-left font-sans shadow-[0_4px_8px_rgba(40,48,58,.14)] backdrop-blur"
           initial={{ opacity: 0, y: -22, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: -14, scale: 0.985 }}

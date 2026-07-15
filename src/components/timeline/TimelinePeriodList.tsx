@@ -36,7 +36,7 @@ export function TimelinePeriodList({ page, onSelectEvent }) {
             <button
               key={event.id}
               type="button"
-              className="w-full rounded-[20px] bg-white/50 px-4 py-4 text-left shadow-[0_10px_26px_rgba(0,0,0,.035)] transition active:scale-[0.99]"
+              className="w-full rounded-[16px] bg-white/50 px-4 py-4 text-left shadow-[0_4px_8px_rgba(0,0,0,.035)] transition active:scale-[0.99]"
               onClick={() => onSelectEvent(event)}
             >
               <div className="flex gap-3">

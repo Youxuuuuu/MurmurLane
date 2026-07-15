@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ConversationMoment } from "../../types/api";
 import type {
-  ConversationIdentity,
   ConversationThreadProfile,
 } from "../../lib/conversationProfiles";
 import { formatConversationTime } from "../../lib/conversationPageData";
 import { ConversationAvatar } from "./ConversationAvatar";
 import { ConversationNavBar } from "./ConversationNavBar";
+import { useModalDialog } from "../common/useModalDialog";
 
 function MenuIcon() {
   return (
@@ -27,6 +26,53 @@ function SettingsIcon() {
   );
 }
 
+function GroupNameDialog({ value, onChange, onSave, onClose }) {
+  const dialogProps = useModalDialog<HTMLFormElement>(onClose);
+
+  return (
+    <div className="fixed inset-0 z-[210] flex items-center justify-center overscroll-contain bg-black/25 px-3 py-[calc(16px+env(safe-area-inset-top))]">
+      <button
+        type="button"
+        className="absolute inset-0"
+        aria-label="取消修改分组"
+        onClick={onClose}
+      />
+      <form
+        {...dialogProps}
+        aria-labelledby="group-name-dialog-title"
+        className="relative z-10 w-full max-w-[390px] rounded-[16px] bg-white p-4 shadow-[0_4px_8px_rgba(0,0,0,.16)]"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void onSave();
+        }}
+      >
+        <h2 id="group-name-dialog-title" className="text-[14px] font-semibold text-black/[0.72]">
+          修改分组名称
+        </h2>
+        <label className="mt-3 block text-[11px] font-semibold text-black/[0.48]">
+          分组名称
+          <input
+            value={value}
+            name="group-name"
+            autoComplete="off"
+            onChange={(event) => onChange(event.target.value)}
+            className="mt-1 h-11 w-full rounded-[10px] border border-black/10 bg-[#f4f5f7] px-3 text-[13px] outline-none focus:border-[#9a8064]/55"
+            maxLength={40}
+          />
+        </label>
+          <div className="mt-4 flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="min-h-9 rounded-full px-4 py-1.5 text-[11px] text-black/[0.55]">
+            取消
+          </button>
+          <button type="submit" className="min-h-9 rounded-full bg-[#53677e] px-4 py-1.5 text-[11px] font-semibold text-white">
+            保存
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function formatThreadDate(summary) {
   const timestamp = summary.latestRecord?.timestamp;
   const today = new Date();
@@ -36,11 +82,19 @@ function formatThreadDate(summary) {
     if (date.toDateString() === today.toDateString()) {
       return formatConversationTime(timestamp);
     }
-    return `${date.getMonth() + 1}/${date.getDate()}`;
+    return new Intl.DateTimeFormat("zh-CN", {
+      month: "numeric",
+      day: "numeric",
+    }).format(date);
   }
 
   const match = String(summary.latestDate || "").match(/\.(\d{2})\.(\d{2})$/);
-  return match ? `${Number(match[1])}/${Number(match[2])}` : "";
+  return match
+    ? new Intl.DateTimeFormat("zh-CN", {
+        month: "numeric",
+        day: "numeric",
+      }).format(new Date(2000, Number(match[1]) - 1, Number(match[2])))
+    : "";
 }
 
 export function ConversationListPage({
@@ -282,13 +336,13 @@ export function ConversationListPage({
         />
 
         <div className="mt-3 grid grid-cols-[108px_1fr] items-center gap-5">
-          <button type="button" onClick={onEditProfile} className="justify-self-center">
+          <button type="button" onClick={onEditProfile} className="justify-self-center" aria-label="编辑个人头像和资料">
             <ConversationAvatar src={userProfile.avatar} name={userProfile.name} size="xl" />
           </button>
           <div className="grid grid-cols-3 gap-2 text-center">
-            <div><b className="block text-[18px]">{threadSummaries.length}</b><span className="text-[11px]">则对话</span></div>
-            <div><b className="block text-[18px]">{totalMessages}</b><span className="text-[11px]">条讯息</span></div>
-            <div><b className="block text-[18px]">{Math.max(1, threadSummaries.length)}</b><span className="text-[11px]">聊天中</span></div>
+            <div><b className="block text-[18px] font-bold tabular-nums">{threadSummaries.length}</b><span className="text-[11px] font-semibold">则对话</span></div>
+            <div><b className="block text-[18px] font-bold tabular-nums">{totalMessages}</b><span className="text-[11px] font-semibold">条讯息</span></div>
+            <div><b className="block text-[18px] font-bold tabular-nums">{Math.max(1, threadSummaries.length)}</b><span className="text-[11px] font-semibold">聊天中</span></div>
           </div>
         </div>
 
@@ -296,13 +350,13 @@ export function ConversationListPage({
           <button type="button" onClick={onEditProfile} className="max-w-[78%] truncate rounded-full border border-black/10 px-3 py-1.5 text-[11px] font-semibold">
             ▷ {userProfile.signature}
           </button>
-          <button type="button" onClick={onEditProfile} className="rounded-full border border-black/10 px-3 py-1.5 text-[11px] text-black/[0.48]">＋ 新增</button>
+          <button type="button" onClick={onEditProfile} className="rounded-full border border-black/10 px-3 py-1.5 text-[11px] font-semibold text-black/[0.48]">＋ 新增</button>
         </div>
 
         <div className="mt-3 grid grid-cols-[1fr_1fr_44px] gap-2">
           <button type="button" onClick={onEditProfile} className="rounded-[7px] bg-[#f2f3f5] py-2.5 text-[12px] font-semibold">编辑个人档案</button>
           <button type="button" onClick={onOpenSearch} className="rounded-[7px] bg-[#f2f3f5] py-2.5 text-[12px] font-semibold">搜索聊天</button>
-          <button type="button" onClick={onOpenMenu} className="flex items-center justify-center rounded-[7px] bg-[#f2f3f5] text-black/75"><SettingsIcon /></button>
+          <button type="button" onClick={onOpenMenu} className="flex min-h-11 items-center justify-center rounded-[7px] bg-[#f2f3f5] text-black/75" aria-label="打开对话设置"><SettingsIcon /></button>
         </div>
       </header>
 
@@ -310,14 +364,14 @@ export function ConversationListPage({
         <div className="flex min-w-max gap-3">
           <button type="button" onClick={onAddMoment} className="flex w-[72px] flex-col items-center gap-1.5">
             <span className="flex h-[66px] w-[66px] items-center justify-center rounded-full border-2 border-black/10 text-[38px] font-light">＋</span>
-            <span className="text-[10px] text-black/45">新瞬间</span>
+            <span className="text-[10px] font-medium text-black/45">新瞬间</span>
           </button>
           {moments.map((moment) => (
             <button key={moment.id} type="button" onClick={() => onOpenMoment(moment)} className="flex w-[72px] flex-col items-center gap-1.5">
               <span className="h-[66px] w-[66px] overflow-hidden rounded-full border-[3px] border-white shadow-[0_0_0_2px_#dedfe1]">
-                <img className="h-full w-full object-cover" src={moment.src} alt={moment.fileName} />
+                <img className="h-full w-full object-cover" src={moment.src} alt={moment.fileName} width="66" height="66" loading="lazy" />
               </span>
-              <span className="max-w-full truncate text-[10px] text-black/45">{moment.date.slice(5)}</span>
+              <span className="max-w-full truncate text-[10px] font-medium text-black/45">{moment.date.slice(5)}</span>
             </button>
           ))}
         </div>
@@ -332,33 +386,9 @@ export function ConversationListPage({
           const collapsed = collapsedGroups.has(group);
           const activeDropTarget = draggingThreadId && dragTargetGroup === group;
           return (
-            <section key={group} className="mb-4">
+            <section key={group} className="mb-3">
               <div
                 data-thread-group={group}
-                role="button"
-                tabIndex={0}
-                onClick={() => {
-                  if (draggingThreadRef.current) {
-                    void moveDraggingThreadToGroup(group);
-                    return;
-                  }
-                  setCollapsedGroups((current) => {
-                    const next = new Set(current);
-                    if (next.has(group)) next.delete(group);
-                    else next.add(group);
-                    return next;
-                  });
-                }}
-                onKeyDown={(event) => {
-                  if (event.key !== "Enter" && event.key !== " ") return;
-                  event.preventDefault();
-                  setCollapsedGroups((current) => {
-                    const next = new Set(current);
-                    if (next.has(group)) next.delete(group);
-                    else next.add(group);
-                    return next;
-                  });
-                }}
                 onPointerMove={(event) => {
                   if (!draggingGroupRef.current) return;
                   event.preventDefault();
@@ -377,10 +407,28 @@ export function ConversationListPage({
                   else if (event.clientY > rect.bottom - 72) scrollBox.scrollBy({ top: 18 });
                 }}
                 onPointerUp={() => void finishGroupDrag()}
-                className={`mb-2 flex w-full items-center justify-between rounded-[14px] px-2 py-1.5 transition-colors ${
+                className={`relative mb-1 flex min-h-9 w-full items-center justify-between rounded-[10px] px-2 py-0.5 ${
                   activeDropTarget || groupDragTarget === group ? "bg-[#dfe7f0]" : "bg-transparent"
                 }`}
               >
+                <button
+                  type="button"
+                  aria-expanded={!collapsed}
+                  aria-label={`${collapsed ? "展开" : "收起"}${group}分组，共 ${summaries.length} 个对话`}
+                  className="absolute inset-0 z-0 rounded-[10px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9a8064]/55"
+                  onClick={() => {
+                    if (draggingThreadRef.current) {
+                      void moveDraggingThreadToGroup(group);
+                      return;
+                    }
+                    setCollapsedGroups((current) => {
+                      const next = new Set(current);
+                      if (next.has(group)) next.delete(group);
+                      else next.add(group);
+                      return next;
+                    });
+                  }}
+                />
                 <button
                   type="button"
                   onClick={(event) => {
@@ -411,12 +459,13 @@ export function ConversationListPage({
                       setGroupDragTarget(group);
                     }, 460);
                   }}
-                  className="max-w-[70%] truncate px-1 text-left text-[14px] font-semibold text-black/[0.48] [touch-action:none]"
+                  className="relative z-10 max-w-[70%] truncate px-1 py-1 text-left text-[12px] font-semibold text-black/[0.48] [touch-action:none]"
                 >
                   {group}
                 </button>
-                <span className="min-w-0 flex-1" aria-hidden="true" />
-                <span className="mr-2 text-[11px] text-black/[0.28]">{summaries.length}</span>
+                <span className="relative z-10 pointer-events-none ml-auto mr-1 text-[10px] font-semibold text-black/[0.32]">
+                  {summaries.length}
+                </span>
               </div>
               {!collapsed && (
                 <div className="overflow-hidden rounded-[18px] bg-white shadow-[0_8px_24px_rgba(60,70,80,.05)]">
@@ -495,19 +544,19 @@ export function ConversationListPage({
                       >
                         <ConversationAvatar src={profile.avatar} name={profile.name} size="md" />
                         <span className="min-w-0">
-                          <b className="flex items-center gap-1 truncate text-[16px] font-semibold text-black/[0.68]">
+                          <b className="flex items-center gap-1 truncate text-[16px] font-bold text-black/[0.68]">
                             {profile.pinned ? <span className="text-[10px] text-[#75879b]">置顶</span> : null}
                             <span className="truncate">{profile.name}</span>
                           </b>
-                          <span className="mt-1 block truncate text-[12px] text-black/[0.38]">{summary.snippet || "[新对话]"}</span>
+                          <span className="mt-1 block truncate text-[12px] font-normal text-black/[0.38]">{summary.snippet || "[新对话]"}</span>
                         </span>
                         <span className="flex min-h-[42px] flex-col items-end justify-between self-stretch py-0.5 text-right">
-                          <span className="text-[11px] font-medium text-[#a9afba]">
+                          <span className="text-[11px] font-semibold text-[#a9afba]">
                             {formatThreadDate(summary)}
                           </span>
                           {unreadCount > 0 ? (
                             <span
-                              className="inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-[#d27679] px-1.5 text-[10px] font-semibold leading-none text-white"
+                              className="inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-[#d27679] px-1.5 text-[10px] font-bold leading-none text-white"
                               aria-label={`${unreadCount} 条未读消息`}
                             >
                               {unreadCount > 99 ? "99+" : unreadCount}
@@ -523,7 +572,7 @@ export function ConversationListPage({
           );
         })}
         {draggingThreadId ? (
-          <div className="sticky bottom-3 rounded-full bg-[#53677e] px-4 py-2 text-center text-[11px] text-white shadow-lg">
+          <div className="sticky bottom-3 rounded-full bg-[#53677e] px-4 py-2 text-center text-[11px] font-semibold text-white shadow-lg">
             拖到或轻点分组标题
           </div>
         ) : null}
@@ -532,31 +581,12 @@ export function ConversationListPage({
         )}
       </div>
       {editingGroup ? (
-        <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/25 px-3 py-[calc(16px+env(safe-area-inset-top))]">
-          <button
-            type="button"
-            className="absolute inset-0"
-            aria-label="取消修改分组"
-            onClick={() => setEditingGroup("")}
-          />
-          <section className="relative z-10 w-full max-w-[390px] rounded-[20px] bg-white p-4 shadow-2xl">
-            <h2 className="text-[16px] font-semibold text-black/[0.72]">修改分组名称</h2>
-            <input
-              autoFocus
-              value={groupDraft}
-              onChange={(event) => setGroupDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") void saveGroupName();
-              }}
-              className="mt-3 h-11 w-full rounded-[10px] border border-black/10 bg-[#f4f5f7] px-3 text-[14px] outline-none focus:border-[#8da0b5]"
-              maxLength={40}
-            />
-            <div className="mt-4 flex justify-end gap-2">
-              <button type="button" onClick={() => setEditingGroup("")} className="rounded-full px-4 py-2 text-[12px] text-black/[0.45]">取消</button>
-              <button type="button" onClick={() => void saveGroupName()} className="rounded-full bg-[#53677e] px-4 py-2 text-[12px] font-semibold text-white">保存</button>
-            </div>
-          </section>
-        </div>
+        <GroupNameDialog
+          value={groupDraft}
+          onChange={setGroupDraft}
+          onSave={saveGroupName}
+          onClose={() => setEditingGroup("")}
+        />
       ) : null}
     </section>
   );

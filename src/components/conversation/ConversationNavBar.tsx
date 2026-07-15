@@ -43,9 +43,9 @@ export function ConversationNavBar({
         disabled={!onTitleClick}
         className="min-w-0 text-center font-sans disabled:cursor-default"
       >
-        <div className="truncate text-[15px] font-semibold text-black/[0.72]">{title}</div>
+        <div className="truncate text-[15px] font-bold text-black/[0.72]">{title}</div>
         {subtitle ? (
-          <div className="mt-0.5 truncate text-[10px] text-black/[0.35]">{subtitle}</div>
+          <div className="mt-0.5 truncate text-[10px] font-medium text-black/[0.35]">{subtitle}</div>
         ) : null}
       </button>
       <div className="flex h-11 items-center justify-end">{trailing}</div>

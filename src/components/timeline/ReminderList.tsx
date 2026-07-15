@@ -26,7 +26,7 @@ export function ReminderList({ page }) {
             return (
               <div
                 key={entry.reminder.id}
-                className="rounded-[18px] bg-white/[0.48] px-3 py-3 shadow-[0_10px_24px_rgba(0,0,0,.035)]"
+                className="rounded-[16px] bg-white/[0.48] px-3 py-3 shadow-[0_4px_8px_rgba(0,0,0,.035)]"
               >
                 <div className="flex items-start gap-3">
                   <span

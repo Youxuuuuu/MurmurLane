@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { resolveDataPath } from "./fileLoaders.js";
 
@@ -157,21 +157,24 @@ export async function readConversationProfiles() {
 
   let entries;
   try {
-    const { readdir } = await import("node:fs/promises");
     entries = await readdir(threadsRoot, { withFileTypes: true });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     entries = [];
   }
 
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    const directoryPath = path.join(threadsRoot, entry.name);
-    const profile = await readStoredProfile(directoryPath);
-    if (profile?.threadId) {
-      threads[profile.threadId] = toClientProfile(profile, directoryPath);
-    }
-  }
+  const storedThreads = await Promise.all(
+    entries.filter((entry) => entry.isDirectory()).map(async (entry) => {
+      const directoryPath = path.join(threadsRoot, entry.name);
+      const profile = await readStoredProfile(directoryPath);
+      return profile?.threadId
+        ? ([profile.threadId, toClientProfile(profile, directoryPath)] as const)
+        : null;
+    }),
+  );
+  storedThreads.forEach((entry) => {
+    if (entry) threads[entry[0]] = entry[1];
+  });
 
   return {
     root: profileRoot(),

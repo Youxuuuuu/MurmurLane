@@ -520,7 +520,7 @@ export function ConversationPage({
                 {showDateDivider && (
                   <div
                     id={`conversation-date-${date}`}
-                    className="my-5 text-center font-sans text-[11px] font-medium tracking-[0.04em] text-black/[0.28]"
+                    className="my-5 text-center font-sans text-[11px] font-semibold tracking-[0.04em] text-black/[0.28]"
                   >
                     {formatDateDivider(date)}
                   </div>
@@ -551,7 +551,7 @@ export function ConversationPage({
           {newMessageCount > 0 && (
             <button
               type="button"
-              className="absolute bottom-4 left-1/2 z-30 -translate-x-1/2 rounded-full border border-black/[0.08] bg-white/95 px-4 py-2 font-sans text-[12px] text-black/[0.68] shadow-[0_8px_24px_rgba(0,0,0,.14)] backdrop-blur"
+              className="absolute bottom-4 left-1/2 z-30 -translate-x-1/2 rounded-full border border-black/[0.08] bg-white/95 px-4 py-2 font-sans text-[12px] font-semibold text-black/[0.68] shadow-[0_8px_24px_rgba(0,0,0,.14)] backdrop-blur"
               onClick={handleShowNewMessages}
             >
               {newMessageCount} 条新消息

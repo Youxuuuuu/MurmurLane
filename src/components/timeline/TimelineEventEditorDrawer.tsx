@@ -6,6 +6,7 @@ import {
   patchTimelineEvent,
 } from "../../data/api";
 import { PaperTexture } from "../common/PaperTexture";
+import { useModalDialog } from "../common/useModalDialog";
 
 const TIMELINE_EDIT_OFFSET = "+08:00";
 const TIME_WHEEL_GESTURE_STEP = 18;
@@ -147,9 +148,10 @@ function PickerCardShell({
   maxHeightClassName,
   ariaLabel,
 }) {
+  const dialogProps = useModalDialog(onClose);
   return (
     <motion.div
-      className="fixed inset-0 z-[140] flex items-center justify-center bg-black/10 px-4 py-6"
+      className="fixed inset-0 z-[140] flex items-center justify-center overscroll-contain bg-black/10 px-4 py-6"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -162,6 +164,8 @@ function PickerCardShell({
         onClick={onClose}
       />
       <motion.section
+        {...dialogProps}
+        aria-label={title}
         className={`relative flex min-h-0 w-full flex-col overflow-hidden border px-4 py-4 text-black/[0.72] shadow-[0_10px_26px_rgba(65,56,43,0.08)] ${maxWidthClassName} ${maxHeightClassName}`}
         initial={{ scale: 0.97, opacity: 0, y: 6 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
@@ -487,6 +491,7 @@ export function TimelineEventEditorDrawer({
   onEventSaved,
   onEventDeleted,
 }) {
+  const dialogProps = useModalDialog(onClose);
   const [formState, setFormState] = useState(() =>
     eventToFormState(event, page.date),
   );
@@ -620,6 +625,7 @@ export function TimelineEventEditorDrawer({
   };
 
   const handleDelete = async () => {
+    if (!window.confirm(`确定删除“${event.title}”吗？此操作无法撤销。`)) return;
     try {
       setIsDeleting(true);
       setError("");
@@ -640,7 +646,7 @@ export function TimelineEventEditorDrawer({
   return (
     <>
       <motion.div
-        className="fixed inset-0 z-[120] flex items-center justify-center bg-black/[0.18] px-4 py-[calc(20px+env(safe-area-inset-top))]"
+        className="fixed inset-0 z-[120] flex items-center justify-center overscroll-contain bg-black/[0.18] px-4 py-[calc(20px+env(safe-area-inset-top))]"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -653,6 +659,8 @@ export function TimelineEventEditorDrawer({
           onClick={onClose}
         />
         <motion.section
+          {...dialogProps}
+          aria-labelledby="timeline-event-editor-title"
           className="relative flex max-h-[calc(var(--app-stable-height,100svh)-40px)] w-full max-w-[392px] min-h-0 flex-col overflow-hidden border bg-[#f6f0e6] p-5 text-black/[0.72]"
           initial={{ scale: 0.96, opacity: 0, y: 8 }}
           animate={{ scale: 1, opacity: 1, y: 0 }}
@@ -667,6 +675,7 @@ export function TimelineEventEditorDrawer({
                   {isRefreshing ? "timeline event · refreshing" : "timeline event"}
                 </div>
                 <h3
+                  id="timeline-event-editor-title"
                   className="mt-1 font-serif text-[22px] leading-tight"
                   style={{ color: page.color }}
                 >
@@ -840,7 +849,7 @@ export function TimelineEventEditorDrawer({
                   onClick={handleDelete}
                   disabled={isSaving || isDeleting}
                 >
-                  {isDeleting ? "deleting..." : "delete"}
+                  {isDeleting ? "deleting…" : "delete"}
                 </button>
                 <div className="flex items-center gap-2">
                   <button
@@ -859,7 +868,7 @@ export function TimelineEventEditorDrawer({
                     onClick={handleSave}
                     disabled={isSaving || isDeleting}
                   >
-                    {isSaving ? "saving..." : "save"}
+                    {isSaving ? "saving…" : "save"}
                   </button>
                 </div>
               </div>

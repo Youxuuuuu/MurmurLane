@@ -11,7 +11,6 @@ import type { RemoteData } from "../types/api";
 import type {
   DatedMemoryEntries,
   MemoryEntry,
-  MemoryMode,
   XiaoyeMode,
 } from "../types/memory";
 import { buildContentPath, getDateParts, toDotDate, toHyphenDate } from "./date";

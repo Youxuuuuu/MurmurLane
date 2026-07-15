@@ -58,7 +58,7 @@ export function ConversationHeader({
       <div className="mt-2 flex items-center gap-3 px-3">
         <ConversationAvatar src={userProfile.avatar} name={userProfile.name} size="lg" />
         <span className="text-[17px] text-[#dfeef1]" aria-hidden="true">♥</span>
-        <button type="button" onClick={onEditThread} className="shrink-0">
+        <button type="button" onClick={onEditThread} className="shrink-0" aria-label={`编辑${threadProfile.name}的聊天资料`}>
           <ConversationAvatar
             src={threadProfile.avatar}
             name={threadProfile.name}
@@ -70,10 +70,10 @@ export function ConversationHeader({
           onClick={onEditThread}
           className="min-w-0 flex-1 text-left font-sans"
         >
-          <div className="truncate text-[23px] font-semibold leading-none text-black/45">
+          <div className="truncate text-[23px] font-bold leading-none text-black/45">
             {threadProfile.name}
           </div>
-          <div className="mt-1 truncate text-[12px] tracking-[0.05em] text-black/[0.32]">
+          <div className="mt-1 truncate text-[12px] font-semibold tracking-[0.05em] text-black/[0.32]">
             {threadProfile.handle} &gt;
           </div>
         </button>

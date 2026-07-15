@@ -109,11 +109,12 @@ export function ConversationGlobalSearchPage({
             <span className="sr-only">搜索全部聊天记录</span>
             <input
               type="search"
+              name="conversation-global-search"
+              autoComplete="off"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              autoFocus
-              placeholder="搜索全部聊天记录"
-              className="h-11 w-full bg-transparent px-4 text-[13px] text-black/[0.72] outline-none placeholder:text-black/[0.28]"
+              placeholder="搜索全部聊天记录…"
+              className="h-11 w-full bg-transparent px-4 text-[13px] text-black/[0.72] outline-none placeholder:text-black/[0.42]"
             />
           </label>
           <button

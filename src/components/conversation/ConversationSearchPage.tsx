@@ -86,7 +86,7 @@ export function ConversationSearchPage({
         />
 
         <div className="mt-4 flex items-center gap-3">
-          <button type="button" onClick={onEditThread} className="shrink-0">
+          <button type="button" onClick={onEditThread} className="shrink-0" aria-label={`编辑${threadProfile.name}的聊天资料`}>
             <ConversationAvatar
               src={threadProfile.avatar}
               name={threadProfile.name}
@@ -98,11 +98,12 @@ export function ConversationSearchPage({
               <span className="sr-only">搜索当前聊天记录</span>
               <input
                 type="search"
+                name="conversation-thread-search"
+                autoComplete="off"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                autoFocus
-                placeholder="搜索当前聊天记录"
-                className="h-11 w-full bg-transparent px-4 text-[13px] text-black/[0.72] outline-none placeholder:text-black/[0.28]"
+                placeholder="搜索当前聊天记录…"
+                className="h-11 w-full bg-transparent px-4 text-[13px] text-black/[0.72] outline-none placeholder:text-black/[0.42]"
               />
             </label>
             <button

@@ -4,13 +4,22 @@ import type {
   ConversationThreadProfile,
 } from "../../lib/conversationProfiles";
 import { ConversationAvatar } from "./ConversationAvatar";
+import { useModalDialog } from "../common/useModalDialog";
 
 const backgrounds = ["#fbfbfa", "#f7f3ee", "#eef2f3", "#f4eef2", "#eef1e9"];
 
-function readImage(file: File, onLoad: (value: string) => void) {
-  if (file.size > 2 * 1024 * 1024) return;
+function readImage(
+  file: File,
+  onLoad: (value: string) => void,
+  onError: (message: string) => void,
+) {
+  if (file.size > 2 * 1024 * 1024) {
+    onError("图片超过 2 MB，请压缩后重试。");
+    return;
+  }
   const reader = new FileReader();
   reader.onload = () => onLoad(String(reader.result || ""));
+  reader.onerror = () => onError("图片读取失败，请重新选择。");
   reader.readAsDataURL(file);
 }
 
@@ -43,16 +52,21 @@ export function ConversationSettingsModal({
 
   const update = (changes: Record<string, string | number | boolean>) =>
     setDraft((current) => ({ ...current, ...changes }));
+  const dialogProps = useModalDialog(onClose);
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-end justify-center bg-black/25 px-3 py-4 sm:items-center">
+    <div className="fixed inset-0 z-[200] flex items-end justify-center overscroll-contain bg-black/25 px-3 py-4 sm:items-center">
       <button className="absolute inset-0" type="button" onClick={onClose} aria-label="关闭" />
-      <section className="diary-scroll relative z-10 max-h-[90dvh] w-full max-w-[420px] overflow-y-auto rounded-[22px] bg-white px-5 pb-5 pt-4 font-sans shadow-2xl">
+      <section
+        {...dialogProps}
+        aria-labelledby="conversation-settings-title"
+        className="diary-scroll relative z-10 max-h-[90dvh] w-full max-w-[420px] overflow-y-auto rounded-[16px] bg-white px-5 pb-5 pt-4 font-sans shadow-[0_8px_24px_rgba(0,0,0,.14)]"
+      >
         <div className="flex items-center justify-between">
-          <h2 className="text-[17px] font-semibold text-black/80">
+          <h2 id="conversation-settings-title" className="text-[17px] font-semibold text-black/80">
             {isThread ? "聊天设置" : "编辑个人档案"}
           </h2>
-          <button type="button" onClick={onClose} className="text-[24px] text-black/35" aria-label="关闭">×</button>
+          <button type="button" onClick={onClose} className="flex h-11 w-11 items-center justify-center text-[24px] text-black/45" aria-label="关闭">×</button>
         </div>
 
         <div className="mt-4 flex flex-col items-center">
@@ -69,8 +83,11 @@ export function ConversationSettingsModal({
             accept="image/*"
             onChange={(event) => {
               const file = event.target.files?.[0];
-              if (file) readImage(file, (avatar) => update({ avatar }));
+              if (file) {
+                readImage(file, (avatar) => update({ avatar }), setSaveError);
+              }
             }}
+            aria-label="选择头像图片"
           />
         </div>
 
@@ -84,7 +101,9 @@ export function ConversationSettingsModal({
             <label key={key} className="block text-[11px] font-semibold text-black/[0.38]">
               {label}
               <input
-                className="mt-1 w-full rounded-[8px] border border-black/10 bg-[#f7f7f6] px-3 py-2.5 text-[13px] font-normal text-black/[0.72] outline-none focus:border-black/[0.25]"
+                className="mt-1 w-full rounded-[8px] border border-black/10 bg-[#f7f7f6] px-3 py-2.5 text-[13px] font-normal text-black/[0.72] outline-none focus:border-[#9a8064]/55"
+                name={key}
+                autoComplete="off"
                 value={String(draft[key as keyof typeof draft] || "")}
                 onChange={(event) => update({ [key]: event.target.value })}
               />
@@ -95,9 +114,11 @@ export function ConversationSettingsModal({
               <label className="block text-[11px] font-semibold text-black/[0.38]">
                 聊天分组
                 <input
-                  className="mt-1 w-full rounded-[8px] border border-black/10 bg-[#f7f7f6] px-3 py-2.5 text-[13px] font-normal text-black/[0.72] outline-none focus:border-black/[0.25]"
+                  className="mt-1 w-full rounded-[8px] border border-black/10 bg-[#f7f7f6] px-3 py-2.5 text-[13px] font-normal text-black/[0.72] outline-none focus:border-[#9a8064]/55"
+                  name="group"
+                  autoComplete="off"
                   value={(draft as ConversationThreadProfile).group || ""}
-                  placeholder="留空时归入最近聊天"
+                  placeholder="留空时归入最近聊天…"
                   onChange={(event) => update({ group: event.target.value })}
                 />
               </label>
@@ -205,12 +226,15 @@ export function ConversationSettingsModal({
                 onChange={(event) => {
                   const file = event.target.files?.[0];
                   if (file) {
-                    readImage(file, (backgroundImage) =>
-                      update({
-                        backgroundImage,
-                        backgroundPositionX: 50,
-                        backgroundPositionY: 50,
-                      }),
+                    readImage(
+                      file,
+                      (backgroundImage) =>
+                        update({
+                          backgroundImage,
+                          backgroundPositionX: 50,
+                          backgroundPositionY: 50,
+                        }),
+                      setSaveError,
                     );
                   }
                   event.target.value = "";
@@ -234,6 +258,7 @@ export function ConversationSettingsModal({
                   <label className="grid grid-cols-[44px_minmax(0,1fr)_32px] items-center gap-2 text-[10px] text-black/50">
                     <span>左右</span>
                     <input
+                      name="backgroundPositionX"
                       type="range"
                       min="0"
                       max="100"
@@ -248,6 +273,7 @@ export function ConversationSettingsModal({
                   <label className="grid grid-cols-[44px_minmax(0,1fr)_32px] items-center gap-2 text-[10px] text-black/50">
                     <span>上下</span>
                     <input
+                      name="backgroundPositionY"
                       type="range"
                       min="0"
                       max="100"
@@ -292,7 +318,11 @@ export function ConversationSettingsModal({
         >
           {saving ? "保存中…" : "保存"}
         </button>
-        {saveError && <p className="mt-2 text-center text-[10px] text-red-500/75">{saveError}</p>}
+        {saveError && (
+          <p className="mt-2 text-center text-[11px] text-[#a2594b]" role="alert">
+            {saveError}
+          </p>
+        )}
         <p className="mt-2 text-center text-[9px] text-black/25">图片不超过 2 MB，资料保存在 MurmurLane 本地数据目录</p>
       </section>
     </div>

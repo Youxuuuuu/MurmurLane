@@ -6,6 +6,7 @@ export function BottomNav({ activeSection, onSelectSection, page }) {
   ];
   return (
     <nav
+      aria-label="主要页面"
       className="absolute inset-x-0 bottom-0 z-30 border-t bg-[#eeeae1]/95 px-3 py-3 pb-[calc(12px+env(safe-area-inset-bottom))] backdrop-blur"
       style={{
         borderColor: page.line,
@@ -17,7 +18,8 @@ export function BottomNav({ activeSection, onSelectSection, page }) {
           <button
             key={item.id}
             type="button"
-            className="border px-2 py-2"
+            className="min-h-11 border px-2 py-2"
+            aria-current={activeSection === item.id ? "page" : undefined}
             style={{
               color: activeSection === item.id ? page.color : "rgba(0,0,0,.45)",
               borderColor: activeSection === item.id ? page.color : page.line,

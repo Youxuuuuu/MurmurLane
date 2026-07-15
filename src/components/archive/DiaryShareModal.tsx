@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { toPng } from "html-to-image";
 import { toHyphenDate } from "../../lib/date";
 import { PaperTexture } from "../common/PaperTexture";
+import { useModalDialog } from "../common/useModalDialog";
 
 export function normalizeSelectedShareText(text) {
   return String(text ?? "")
@@ -20,7 +20,7 @@ export function trimShareText(text, maxLength) {
 
   if (value.length <= maxLength) return value;
 
-  return `${value.slice(0, maxLength).trim()}...`;
+  return `${value.slice(0, maxLength).trim()}…`;
 }
 
 export function getDiaryShareExcerpt(page, selectedText = "") {
@@ -39,7 +39,7 @@ export function getDiaryShareExcerpt(page, selectedText = "") {
   const firstBlock = text.split(dividerBreak)[0]?.trim() || page.excerpt || "";
 
   return firstBlock.length > 170
-    ? `${firstBlock.slice(0, 170).trim()}...`
+    ? `${firstBlock.slice(0, 170).trim()}…`
     : firstBlock;
 }
 
@@ -89,7 +89,7 @@ export function getShareExportFileName(page, template) {
 }
 
 export function getShareButtonLabel(saveStatus) {
-  if (saveStatus === "saving") return "saving...";
+  if (saveStatus === "saving") return "saving…";
   if (saveStatus === "saved") return "saved";
   if (saveStatus === "error") return "retry";
   return "save image";
@@ -127,6 +127,7 @@ export function DiaryShareModal({ page, onClose, selectedText = "" }) {
   const shareModeLabel = page.mode === "Letters" ? "letter" : "diary";
   const shareBackgroundColor =
     shareTemplateBackgrounds[shareTemplate] ?? shareTemplateBackgrounds.tag;
+  const dialogProps = useModalDialog(onClose);
 
     useEffect(() => {
     const viewport = previewViewportRef.current;
@@ -168,6 +169,7 @@ export function DiaryShareModal({ page, onClose, selectedText = "" }) {
     setSaveMessage("");
 
     try {
+      const { toPng } = await import("html-to-image");
       const pixelRatio =
         window.devicePixelRatio >= 3
           ? 3
@@ -219,7 +221,7 @@ export function DiaryShareModal({ page, onClose, selectedText = "" }) {
 
   return (
     <motion.div
-      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/[0.24] px-5 py-[calc(20px+env(safe-area-inset-top))]"
+      className="fixed inset-0 z-[70] flex items-center justify-center overscroll-contain bg-black/[0.24] px-5 py-[calc(20px+env(safe-area-inset-top))]"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -231,7 +233,9 @@ export function DiaryShareModal({ page, onClose, selectedText = "" }) {
         onClick={onClose}
       />
       <motion.section
-        className="share-scroll relative max-h-[82dvh] w-full max-w-[342px] overflow-y-auto border bg-[#f3eee4] p-4 shadow-[0_24px_80px_rgba(64,44,26,.22)]"
+        {...dialogProps}
+        aria-label="分享预览"
+        className="share-scroll relative max-h-[82dvh] w-full max-w-[342px] overflow-y-auto border bg-[#f3eee4] p-4 shadow-[0_4px_8px_rgba(64,44,26,.16)]"
         initial={{ y: 14, opacity: 0, scale: 0.96 }}
         animate={{ y: 0, opacity: 1, scale: 1 }}
         exit={{ y: 10, opacity: 0, scale: 0.97 }}
@@ -243,7 +247,7 @@ export function DiaryShareModal({ page, onClose, selectedText = "" }) {
             share {shareModeLabel}
           </div>
           <button
-            className="font-mono text-[10px] uppercase tracking-[0.16em] text-black/45"
+            className="min-h-11 px-2 font-mono text-[10px] uppercase tracking-[0.16em] text-black/45"
             type="button"
             onClick={onClose}
           >
@@ -258,7 +262,7 @@ export function DiaryShareModal({ page, onClose, selectedText = "" }) {
           ].map((item) => (
             <button
               key={item.id}
-              className="px-2 py-2"
+              className="min-h-11 px-2 py-2"
               type="button"
               style={{
                 color:
@@ -430,7 +434,11 @@ export function DiaryShareModal({ page, onClose, selectedText = "" }) {
           </button>
         </div>
         {saveMessage && (
-          <div className="relative mt-3 text-center font-serif text-[11px] text-black/45">
+          <div
+            className="relative mt-3 text-center font-serif text-[11px] text-[#8f4f43]"
+            role="status"
+            aria-live="polite"
+          >
             {saveMessage}
           </div>
         )}

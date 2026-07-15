@@ -54,7 +54,7 @@ export function MessageTime({ message, align = "left", read = false }) {
   const time = formatConversationTime(message.timestamp);
   return (
     <div
-      className={`font-sans text-[9px] leading-[1.35] tracking-[0.06em] text-black/25 ${align === "right" ? "pt-0.5 text-right" : align === "center" ? "mt-1 text-center" : "text-left"}`} style={{ fontWeight: "bold" }}
+      className={`font-sans text-[9px] font-bold leading-[1.35] tracking-[0.06em] text-black/25 ${align === "right" ? "pt-0.5 text-right" : align === "center" ? "mt-1 text-center" : "text-left"}`}
     >
       {read ? (
         <>
@@ -85,13 +85,13 @@ function ThinkingPanel({ message, face = ">ᴗo ಣ >", standalone = false }) {
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="flex items-center gap-1.5 font-mono text-[10px] leading-none tracking-[0.08em] text-black/[0.34]"
+        className="flex items-center gap-1.5 font-mono text-[10px] font-semibold leading-none tracking-[0.08em] text-black/[0.34]"
       >
         <span>{face}</span>
         <span className="text-[11px]">{open ? "⌄" : "›"}</span>
       </button>
       {open && (
-        <div className="mt-2 whitespace-pre-line font-serif text-[10px] leading-[1.5] text-black/45">
+        <div className="mt-2 whitespace-pre-line font-serif text-[10px] font-normal leading-[1.5] text-black/45">
           {text}
         </div>
       )}
@@ -207,7 +207,7 @@ export function ChatBubble({
             {splitBubbleText(displayText).map((part, index) => (
               <div
                 key={`${message.id}-quote-part-${index}`}
-                className="inline-block rounded-[7px] border border-black/[0.06] bg-[#f3f3f2] px-3 py-2 text-left font-sans text-[14px] leading-[1.55] text-black/[0.78]"
+                className="inline-block rounded-[7px] border border-black/[0.06] bg-[#f3f3f2] px-3 py-2 text-left font-sans text-[14px] font-normal leading-[1.55] text-black/[0.78]"
               >
                 {part}
               </div>
@@ -357,7 +357,7 @@ export function ChatBubble({
         {splitBubbleText(displayText).map((part, index) => (
           <div
             key={`${message.id}-part-${index}`}
-            className={`${fromUser ? "border border-black/[0.06] bg-[#f3f3f2] text-black/[0.78]" : "border bg-white/[0.73] text-black/[0.72]"} w-fit max-w-full rounded-[7px] px-3 py-2 text-left font-sans text-[14px] leading-[1.55] shadow-[0_1px_0_rgba(0,0,0,.02)]`}
+            className={`${fromUser ? "border border-black/[0.06] bg-[#f3f3f2] text-black/[0.78]" : "border bg-white/[0.73] text-black/[0.72]"} w-fit max-w-full rounded-[7px] px-3 py-2 text-left font-sans text-[14px] font-normal leading-[1.55] shadow-[0_1px_0_rgba(0,0,0,.02)]`}
             style={{ borderColor: fromUser ? "rgba(0,0,0,.06)" : page.line }}
           >
             {part}

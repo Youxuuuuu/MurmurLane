@@ -6,6 +6,7 @@ import {
   toMinutes,
 } from "../../lib/timeline";
 import { PaperTexture } from "../common/PaperTexture";
+import { useModalDialog } from "../common/useModalDialog";
 
 export function TimelineDetailModal({
   event,
@@ -16,7 +17,6 @@ export function TimelineDetailModal({
   editHint = "",
 }) {
   const {
-    normalizedEvent,
     category,
     categoryLabel,
     subcategoryLabel,
@@ -30,9 +30,10 @@ export function TimelineDetailModal({
   ]
     .filter(Boolean)
     .join(" · ");
+  const dialogProps = useModalDialog(onClose);
   return (
     <motion.div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/[0.18] px-5 py-[calc(20px+env(safe-area-inset-top))]"
+      className="fixed inset-0 z-50 flex items-center justify-center overscroll-contain bg-black/[0.18] px-5 py-[calc(20px+env(safe-area-inset-top))]"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -44,6 +45,8 @@ export function TimelineDetailModal({
         onClick={onClose}
       />
       <motion.section
+        {...dialogProps}
+        aria-labelledby="timeline-detail-title"
         className="relative flex max-h-[72dvh] w-full max-w-[342px] min-h-0 flex-col overflow-hidden border bg-[#f6f0e6] p-5 text-black/[0.72]"
         initial={{ scale: 0.96, opacity: 0, y: 8 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
@@ -61,6 +64,7 @@ export function TimelineDetailModal({
                 timeline detail
               </div>
               <h3
+                id="timeline-detail-title"
                 className="mt-1 font-serif text-[23px] leading-tight"
                 style={{ color: category.color }}
               >
@@ -68,7 +72,7 @@ export function TimelineDetailModal({
               </h3>
             </div>
             <button
-              className="font-mono text-[10px] uppercase tracking-[0.16em] text-black/45"
+              className="min-h-11 px-2 font-mono text-[10px] uppercase tracking-[0.16em] text-black/45"
               type="button"
               onClick={onClose}
             >
@@ -106,7 +110,7 @@ export function TimelineDetailModal({
             ) : null}
             <div className="flex items-center justify-end gap-2">
               <button
-                className="border px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-black/[0.52]"
+                className="min-h-11 border px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-black/[0.52]"
                 style={{ borderColor: page.line }}
                 type="button"
                 onClick={onClose}
@@ -114,7 +118,7 @@ export function TimelineDetailModal({
                 close
               </button>
               <button
-                className="border px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] disabled:opacity-45"
+                className="min-h-11 border px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] disabled:opacity-45"
                 style={{ borderColor: category.color, color: category.color }}
                 type="button"
                 onClick={onEdit}

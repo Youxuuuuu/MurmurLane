@@ -7,6 +7,7 @@ export function SegmentSwitch({
 }) {
   return (
     <div
+      role="group"
       className={`grid min-w-0 overflow-hidden border font-mono text-[9px] uppercase tracking-[0.08em] ${className}`}
       style={{
         gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))`,
@@ -22,7 +23,8 @@ export function SegmentSwitch({
           <button
             key={item.id}
             type="button"
-            className="min-w-0 px-3 py-1.5 text-center transition-colors"
+            className="min-h-8 min-w-0 px-3 py-1.5 text-center"
+            aria-pressed={active}
             style={{
               color: active ? page.color : "rgba(0,0,0,.55)",
               background: active ? `${page.color}14` : "transparent",

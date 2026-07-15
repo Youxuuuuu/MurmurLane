@@ -99,12 +99,12 @@ export function ConversationSearchResultList({
         return (
           <div key={`${date}-${record.id || index}`}>
             {date && date !== previousDate && (
-              <div className="mb-4 mt-6 text-center text-[11px] font-medium tracking-[0.04em] text-black/[0.28]">
+              <div className="mb-4 mt-6 text-center text-[11px] font-semibold tracking-[0.04em] text-black/[0.28]">
                 {formatDate(date)}
               </div>
             )}
             {showThreadLabel && (
-              <div className="mb-1 ml-12 text-[10px] font-medium text-black/30">
+              <div className="mb-1 ml-12 text-[10px] font-semibold text-black/30">
                 {threadProfile.name}
               </div>
             )}

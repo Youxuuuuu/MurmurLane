@@ -15,6 +15,7 @@ export function ConversationAvatar({
     lg: "h-16 w-16 text-[18px]",
     xl: "h-24 w-24 text-[24px]",
   }[size];
+  const sizePixels = { sm: 36, md: 48, lg: 64, xl: 96 }[size];
 
   return (
     <span
@@ -22,7 +23,13 @@ export function ConversationAvatar({
       aria-label={name}
     >
       {src ? (
-        <img className="h-full w-full object-cover" src={src} alt={name} />
+        <img
+          className="h-full w-full object-cover"
+          src={src}
+          alt={name}
+          width={sizePixels}
+          height={sizePixels}
+        />
       ) : (
         <span>{String(name || "?").slice(0, 1).toUpperCase()}</span>
       )}

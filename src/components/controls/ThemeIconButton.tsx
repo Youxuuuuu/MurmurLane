@@ -11,7 +11,7 @@ export function ThemeIconButton({
   return (
     <button
       type="button"
-      className={`flex h-5 w-5 items-center justify-center border border-transparent transition-colors sm:h-5 sm:w-5 ${
+      className={`relative flex h-5 w-5 items-center justify-center border border-transparent transition-colors after:absolute after:-inset-2 after:content-[''] sm:h-5 sm:w-5 ${
         selected ? "" : "text-[#8A8580] hover:text-[#6f6a60]"
       }`}
       style={{
