@@ -3,6 +3,7 @@ import { config as loadDotenv } from "dotenv";
 import { readdir, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
+import { createLiveUpdateHub } from "./liveUpdates.js";
 import {
   readConversationProfiles,
   writeConversationProfile,
@@ -53,6 +54,7 @@ const port = Number(process.env.PORT || process.env.API_PORT || 8787);
 const distDir = path.resolve(process.cwd(), "dist");
 const distIndexPath = path.join(distDir, "index.html");
 const hasBuiltClient = existsSync(distIndexPath);
+const liveUpdateHub = createLiveUpdateHub(getCyberbossDataRoot());
 const allowedMediaExtensions = new Set([
   ".png",
   ".jpg",
@@ -144,6 +146,10 @@ app.use((request, response, next) => {
   }
 
   next();
+});
+
+app.get("/api/events", (_request, response) => {
+  liveUpdateHub.subscribe(response);
 });
 
 function isIsoDate(value: unknown): value is string {
@@ -1501,7 +1507,7 @@ if (hasBuiltClient) {
   });
 }
 
-app.listen(port, host, () => {
+const server = app.listen(port, host, () => {
   console.log(
     `[cyberboss-api] listening on http://${host}:${port} (data root: ${getCyberbossDataRoot()})`,
   );
@@ -1511,4 +1517,14 @@ app.listen(port, host, () => {
       `[murmur-lane] serving built client from ${distDir}`,
     );
   }
+
+  liveUpdateHub.start();
 });
+
+const closeServer = () => {
+  liveUpdateHub.close();
+  server.close();
+};
+
+process.once("SIGINT", closeServer);
+process.once("SIGTERM", closeServer);

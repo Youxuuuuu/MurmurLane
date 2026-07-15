@@ -153,7 +153,7 @@ function PickerCardShell({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      style={{ transform: "translateY(var(--app-keyboard-center-offset, 0px))" }}
+      style={{ transform: "translateY(calc(var(--app-keyboard-center-offset, 0px) * -1))" }}
     >
       <button
         className="absolute inset-0"
@@ -162,7 +162,7 @@ function PickerCardShell({
         onClick={onClose}
       />
       <motion.section
-        className={`relative flex min-h-0 w-full flex-col overflow-hidden border px-4 py-4 text-black/72 shadow-[0_10px_26px_rgba(65,56,43,0.08)] ${maxWidthClassName} ${maxHeightClassName}`}
+        className={`relative flex min-h-0 w-full flex-col overflow-hidden border px-4 py-4 text-black/[0.72] shadow-[0_10px_26px_rgba(65,56,43,0.08)] ${maxWidthClassName} ${maxHeightClassName}`}
         initial={{ scale: 0.97, opacity: 0, y: 6 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
         exit={{ scale: 0.98, opacity: 0, y: 4 }}
@@ -174,7 +174,7 @@ function PickerCardShell({
         <PaperTexture mode={page.texture} />
         <div className="relative flex min-h-0 flex-1 flex-col">
           <div className="mb-3 border-b pb-3" style={{ borderBottomColor: page.line }}>
-            <div className="font-mono text-[9px] uppercase tracking-[0.16em] text-black/38">
+            <div className="font-mono text-[9px] uppercase tracking-[0.16em] text-black/[0.38]">
               {kicker}
             </div>
             <h3
@@ -259,7 +259,7 @@ function ScrollWheelPickerColumn({
 
   return (
     <section className="flex w-[92px] flex-col items-center">
-      <div className="mb-3 w-full text-center font-mono text-[9px] uppercase tracking-[0.16em] text-black/38">
+      <div className="mb-3 w-full text-center font-mono text-[9px] uppercase tracking-[0.16em] text-black/[0.38]">
         {label}
       </div>
       <div
@@ -321,7 +321,7 @@ function PickerField({
         disabled={disabled}
       >
         <span className="truncate">{value}</span>
-        <span className="pl-3 text-[10px] text-black/38">v</span>
+        <span className="pl-3 text-[10px] text-black/[0.38]">v</span>
       </button>
     </label>
   );
@@ -348,7 +348,7 @@ function PaperChoicePickerModal({
       footer={
         <div className="flex justify-end">
           <button
-            className="border px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-black/52"
+            className="border px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-black/[0.52]"
             style={{ borderColor: page.line }}
             type="button"
             onClick={onClose}
@@ -361,7 +361,7 @@ function PaperChoicePickerModal({
       <div className="diary-scroll min-h-0 flex-1 overflow-y-auto">
         {noneLabel ? (
           <button
-            className="flex w-full items-center justify-between border-b px-1 py-2.5 text-left text-[12px] text-black/62"
+            className="flex w-full items-center justify-between border-b px-1 py-2.5 text-left text-[12px] text-black/[0.62]"
             style={{ borderBottomColor: page.line }}
             type="button"
             onClick={() => {
@@ -431,7 +431,7 @@ function PaperTimePickerModal({
       footer={
         <div className="flex items-center justify-end gap-2">
           <button
-            className="border px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-black/52"
+            className="border px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-black/[0.52]"
             style={{ borderColor: page.line }}
             type="button"
             onClick={onClose}
@@ -490,6 +490,7 @@ export function TimelineEventEditorDrawer({
   const [formState, setFormState] = useState(() =>
     eventToFormState(event, page.date),
   );
+  const formDirtyRef = useRef(false);
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -509,9 +510,10 @@ export function TimelineEventEditorDrawer({
   );
 
   useEffect(() => {
+    formDirtyRef.current = false;
     setFormState(eventToFormState(event, page.date));
     setError("");
-  }, [event, page.date]);
+  }, [event.id, page.date]);
 
   useEffect(() => {
     let cancelled = false;
@@ -521,7 +523,7 @@ export function TimelineEventEditorDrawer({
         setIsRefreshing(true);
         const result = await fetchTimelineEvent(page.date, event.id);
 
-        if (!cancelled && result?.found && result.event) {
+        if (!cancelled && !formDirtyRef.current && result?.found && result.event) {
           setFormState(eventToFormState(result.event, page.date));
         }
       } catch {
@@ -539,6 +541,11 @@ export function TimelineEventEditorDrawer({
       cancelled = true;
     };
   }, [event.id, page.date]);
+
+  const updateFormState = (updater) => {
+    formDirtyRef.current = true;
+    setFormState(updater);
+  };
 
   useEffect(() => {
     if (
@@ -633,11 +640,11 @@ export function TimelineEventEditorDrawer({
   return (
     <>
       <motion.div
-        className="fixed inset-0 z-[120] flex items-center justify-center bg-black/18 px-4 py-[calc(20px+env(safe-area-inset-top))]"
+        className="fixed inset-0 z-[120] flex items-center justify-center bg-black/[0.18] px-4 py-[calc(20px+env(safe-area-inset-top))]"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        style={{ transform: "translateY(var(--app-keyboard-center-offset, 0px))" }}
+        style={{ transform: "translateY(calc(var(--app-keyboard-center-offset, 0px) * -1))" }}
       >
         <button
           className="absolute inset-0"
@@ -646,7 +653,7 @@ export function TimelineEventEditorDrawer({
           onClick={onClose}
         />
         <motion.section
-          className="relative flex max-h-[calc(var(--app-stable-height,100svh)-40px)] w-full max-w-[392px] min-h-0 flex-col overflow-hidden border bg-[#f6f0e6] p-5 text-black/72"
+          className="relative flex max-h-[calc(var(--app-stable-height,100svh)-40px)] w-full max-w-[392px] min-h-0 flex-col overflow-hidden border bg-[#f6f0e6] p-5 text-black/[0.72]"
           initial={{ scale: 0.96, opacity: 0, y: 8 }}
           animate={{ scale: 1, opacity: 1, y: 0 }}
           exit={{ scale: 0.97, opacity: 0, y: 6 }}
@@ -656,7 +663,7 @@ export function TimelineEventEditorDrawer({
           <div className="relative flex min-h-0 flex-1 flex-col">
             <div className="mb-4 flex items-start justify-between gap-3 border-b pb-3">
               <div>
-                <div className="font-mono text-[9px] uppercase tracking-[0.16em] text-black/38">
+                <div className="font-mono text-[9px] uppercase tracking-[0.16em] text-black/[0.38]">
                   {isRefreshing ? "timeline event · refreshing" : "timeline event"}
                 </div>
                 <h3
@@ -699,7 +706,7 @@ export function TimelineEventEditorDrawer({
                     style={{ borderColor: page.line }}
                     value={formState.title}
                     onChange={(event) =>
-                      setFormState((current) => ({
+                      updateFormState((current) => ({
                         ...current,
                         title: event.target.value,
                       }))
@@ -715,7 +722,7 @@ export function TimelineEventEditorDrawer({
                     style={{ borderColor: page.line }}
                     value={formState.note}
                     onChange={(event) =>
-                      setFormState((current) => ({
+                      updateFormState((current) => ({
                         ...current,
                         note: event.target.value,
                       }))
@@ -788,7 +795,7 @@ export function TimelineEventEditorDrawer({
                       step="0.05"
                       value={formState.confidence}
                       onChange={(event) =>
-                        setFormState((current) => ({
+                        updateFormState((current) => ({
                           ...current,
                           confidence: event.target.value,
                         }))
@@ -805,7 +812,7 @@ export function TimelineEventEditorDrawer({
                     style={{ borderColor: page.line }}
                     value={formState.tagsText}
                     onChange={(event) =>
-                      setFormState((current) => ({
+                      updateFormState((current) => ({
                         ...current,
                         tagsText: event.target.value,
                       }))
@@ -837,7 +844,7 @@ export function TimelineEventEditorDrawer({
                 </button>
                 <div className="flex items-center gap-2">
                   <button
-                    className="border px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-black/52"
+                    className="border px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-black/[0.52]"
                     style={{ borderColor: page.line }}
                     type="button"
                     onClick={onClose}
@@ -869,7 +876,7 @@ export function TimelineEventEditorDrawer({
           value={formState[choicePickerState.field]}
           noneLabel={choicePickerState.noneLabel}
           onSelect={(nextValue) => {
-            setFormState((current) => {
+            updateFormState((current) => {
               if (choicePickerState.field === "categoryId") {
                 const nextCategory = taxonomyOptions.categories.find(
                   (category) => category.id === nextValue,
@@ -907,7 +914,7 @@ export function TimelineEventEditorDrawer({
           title={timePickerField === "startTime" ? "选择开始时间" : "选择结束时间"}
           value={formState[timePickerField]}
           onSelect={(nextValue) =>
-            setFormState((current) => ({
+            updateFormState((current) => ({
               ...current,
               [timePickerField]: nextValue,
             }))

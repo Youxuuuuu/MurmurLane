@@ -73,10 +73,7 @@ function getSendFileGroupKey(message: ConversationRecord) {
 
 function getMediaIdentity(item: ConversationMediaItem) {
   return [
-    item?.filePath,
     item?.path,
-    item?.localPath,
-    item?.savedPath,
     item?.relativePath,
     item?.url,
     item?.fileName,

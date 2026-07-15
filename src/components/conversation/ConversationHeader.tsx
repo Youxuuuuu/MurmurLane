@@ -3,14 +3,14 @@ import type {
   ConversationThreadProfile,
 } from "../../lib/conversationProfiles";
 import { ConversationAvatar } from "./ConversationAvatar";
+import { ConversationNavBar } from "./ConversationNavBar";
 
 function SearchDotsIcon() {
   return (
-    <svg viewBox="0 0 36 36" className="h-8 w-8" fill="none" aria-hidden="true">
-      <circle cx="18" cy="18" r="14" stroke="currentColor" strokeWidth="1.8" />
-      <circle cx="13" cy="18" r="1.4" fill="currentColor" />
-      <circle cx="18" cy="18" r="1.4" fill="currentColor" />
-      <circle cx="23" cy="18" r="1.4" fill="currentColor" />
+    <svg viewBox="0 0 28 28" className="h-7 w-7" fill="none" aria-hidden="true">
+      <circle cx="7" cy="14" r="1.5" fill="currentColor" />
+      <circle cx="14" cy="14" r="1.5" fill="currentColor" />
+      <circle cx="21" cy="14" r="1.5" fill="currentColor" />
     </svg>
   );
 }
@@ -37,42 +37,23 @@ export function ConversationHeader({
       className="relative z-30 shrink-0 px-3 pb-3 pt-2"
       style={{ backgroundColor: threadProfile.background || "transparent" }}
     >
-      <div className="grid grid-cols-[38px_minmax(0,1fr)_38px] items-center">
-        <button
-          type="button"
-          onClick={onBack}
-          className="flex h-9 w-9 items-center justify-center text-black/75"
-          aria-label="返回对话列表"
-        >
-          <span className="text-[30px] font-light leading-none">‹</span>
-        </button>
-        {floatingDate ? (
+      <ConversationNavBar
+        title={floatingDate || threadProfile.name}
+        subtitle={floatingDate ? "SELECT DATE" : threadProfile.handle}
+        onBack={onBack}
+        backLabel="返回对话列表"
+        onTitleClick={floatingDate ? onOpenDatePicker : undefined}
+        trailing={
           <button
             type="button"
-            onClick={onOpenDatePicker}
-            className="min-w-0 truncate text-center font-sans text-[13px] font-semibold text-black/55"
+            onClick={onOpenSearch}
+            className="flex h-11 w-11 items-center justify-end text-black/70"
+            aria-label="搜索当前聊天"
           >
-            {floatingDate}
+            <SearchDotsIcon />
           </button>
-        ) : (
-          <div className="min-w-0 text-center font-sans">
-            <div className="truncate text-[14px] font-semibold text-black/72">
-              {threadProfile.name}
-            </div>
-            <div className="truncate text-[10px] tracking-[0.04em] text-black/35">
-              {threadProfile.handle}
-            </div>
-          </div>
-        )}
-        <button
-          type="button"
-          onClick={onOpenSearch}
-          className="flex h-9 w-9 items-center justify-center text-black/75"
-          aria-label="搜索当前聊天"
-        >
-          <SearchDotsIcon />
-        </button>
-      </div>
+        }
+      />
 
       <div className="mt-2 flex items-center gap-3 px-3">
         <ConversationAvatar src={userProfile.avatar} name={userProfile.name} size="lg" />
@@ -92,7 +73,7 @@ export function ConversationHeader({
           <div className="truncate text-[23px] font-semibold leading-none text-black/45">
             {threadProfile.name}
           </div>
-          <div className="mt-1 truncate text-[12px] tracking-[0.05em] text-black/32">
+          <div className="mt-1 truncate text-[12px] tracking-[0.05em] text-black/[0.32]">
             {threadProfile.handle} &gt;
           </div>
         </button>

@@ -66,7 +66,7 @@ export function DatePickerModal({
 
   return (
     <motion.div
-      className={`absolute inset-0 z-50 flex items-end bg-black/18 ${isConversation ? "px-0 pb-0" : "px-4 pb-[calc(18px+env(safe-area-inset-bottom))]"}`}
+      className={`absolute inset-0 z-50 flex items-end bg-black/[0.18] ${isConversation ? "px-0 pb-0" : "px-4 pb-[calc(18px+env(safe-area-inset-bottom))]"}`}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -90,7 +90,7 @@ export function DatePickerModal({
           style={{ borderBottomColor: page.color }}
         >
           <div className="relative">
-            <div className="font-mono text-[9px] uppercase tracking-[0.22em] text-black/38">
+            <div className="font-mono text-[9px] uppercase tracking-[0.22em] text-black/[0.38]">
               {isConversation ? "jump to date" : "select date"}
             </div>
             <div
@@ -186,7 +186,7 @@ export function DatePickerModal({
         </div>
         <div className="relative grid grid-cols-7 gap-y-3 pb-2 text-center font-mono">
           {["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"].map((label) => (
-            <div key={label} className="text-[8px] text-black/32">
+            <div key={label} className="text-[8px] text-black/[0.32]">
               {label}
             </div>
           ))}

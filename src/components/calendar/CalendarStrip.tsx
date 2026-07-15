@@ -19,7 +19,7 @@ export function CalendarStrip({
     >
       {showCurrentDate && (
         <div className="mb-2">
-          <div className="text-[9px] uppercase leading-none tracking-[0.08em] text-black/38">
+          <div className="text-[9px] uppercase leading-none tracking-[0.08em] text-black/[0.38]">
             current date
           </div>
           <button

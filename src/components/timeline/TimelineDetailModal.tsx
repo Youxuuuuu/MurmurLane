@@ -32,7 +32,7 @@ export function TimelineDetailModal({
     .join(" · ");
   return (
     <motion.div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/18 px-5 py-[calc(20px+env(safe-area-inset-top))]"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/[0.18] px-5 py-[calc(20px+env(safe-area-inset-top))]"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -44,7 +44,7 @@ export function TimelineDetailModal({
         onClick={onClose}
       />
       <motion.section
-        className="relative flex max-h-[72dvh] w-full max-w-[342px] min-h-0 flex-col overflow-hidden border bg-[#f6f0e6] p-5 text-black/72"
+        className="relative flex max-h-[72dvh] w-full max-w-[342px] min-h-0 flex-col overflow-hidden border bg-[#f6f0e6] p-5 text-black/[0.72]"
         initial={{ scale: 0.96, opacity: 0, y: 8 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
         exit={{ scale: 0.97, opacity: 0, y: 6 }}
@@ -57,7 +57,7 @@ export function TimelineDetailModal({
             style={{ borderBottomColor: category.color }}
           >
             <div>
-              <div className="font-mono text-[9px] uppercase tracking-[0.16em] text-black/38">
+              <div className="font-mono text-[9px] uppercase tracking-[0.16em] text-black/[0.38]">
                 timeline detail
               </div>
               <h3
@@ -76,12 +76,12 @@ export function TimelineDetailModal({
             </button>
           </div>
           <div className="diary-scroll min-h-0 flex-1 space-y-3 overflow-y-auto pr-1 text-[12px] leading-6">
-            <div className="font-mono text-[11px] tracking-[0.1em] text-black/46">
+            <div className="font-mono text-[11px] tracking-[0.1em] text-black/[0.46]">
               {minutesToClock(toMinutes(event.startAt))} →{" "}
               {minutesToClock(toMinutes(event.endAt))} · {duration}分钟
             </div>
             {categoryDetailLabel && (
-              <div className="font-mono text-[10px] tracking-[0.1em] text-black/42">
+              <div className="font-mono text-[10px] tracking-[0.1em] text-black/[0.42]">
                 {categoryDetailLabel}
               </div>
             )}
@@ -100,13 +100,13 @@ export function TimelineDetailModal({
           </div>
           <div className="mt-4 shrink-0 border-t pt-3">
             {!canEdit && editHint ? (
-              <p className="mb-2 text-[11px] leading-5 text-black/42">
+              <p className="mb-2 text-[11px] leading-5 text-black/[0.42]">
                 {editHint}
               </p>
             ) : null}
             <div className="flex items-center justify-end gap-2">
               <button
-                className="border px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-black/52"
+                className="border px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-black/[0.52]"
                 style={{ borderColor: page.line }}
                 type="button"
                 onClick={onClose}

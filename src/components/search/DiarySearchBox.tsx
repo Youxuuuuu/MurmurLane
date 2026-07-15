@@ -106,6 +106,7 @@ export function DiarySearchBox({
       conversationThreadScope,
       selectedThreadId,
       selectedDate,
+      searchRemoteData,
       searchDataVersion,
     ],
   );
@@ -128,7 +129,7 @@ export function DiarySearchBox({
     >
       <div className="flex items-stretch gap-1">
         <button
-          className="shrink-0 border bg-white/30 px-2 text-[8px] uppercase tracking-[0.12em] text-black/55 transition hover:bg-white/45"
+          className="shrink-0 border bg-white/30 px-2 text-[8px] uppercase tracking-[0.12em] text-black/55 transition hover:bg-white/[0.45]"
           style={{
             borderColor: searchFilterOpen ? page.color : page.line,
             color: searchFilterOpen ? page.color : "rgba(0,0,0,.55)",
@@ -144,7 +145,7 @@ export function DiarySearchBox({
           筛选
         </button>
         <input
-          className="min-w-0 flex-1 border bg-white/25 px-2.5 py-2 text-[9px] uppercase leading-none tracking-[0.08em] text-black/55 outline-none placeholder:text-black/28"
+          className="min-w-0 flex-1 border bg-white/25 px-2.5 py-2 text-[9px] uppercase leading-none tracking-[0.08em] text-black/55 outline-none placeholder:text-black/[0.28]"
           style={{
             borderColor: focused ? page.color : page.line,
             background: focused ? "rgba(255,255,255,.42)" : "rgba(255,255,255,.25)",
@@ -279,12 +280,12 @@ export function DiarySearchBox({
               ) : null}
               {showResultPanel ? (
                 pendingSearch ? (
-                  <div className="px-2 py-3 text-[10px] text-black/38">
+                  <div className="px-2 py-3 text-[10px] text-black/[0.38]">
                     正在整理搜索范围…
                   </div>
                 ) : (
                   <div>
-                    <div className="mb-2 px-1 text-[9px] text-black/48">
+                    <div className="mb-2 px-1 text-[9px] text-black/[0.48]">
                       <span className="font-mono uppercase tracking-[0.08em]">
                         “{searchQuery.trim()}”
                       </span>{" "}
@@ -316,7 +317,7 @@ export function DiarySearchBox({
                             <div className="mt-1 font-mono text-[8px] uppercase tracking-[0.1em] text-black/35">
                               {result.fieldLabel}
                             </div>
-                            <div className="mt-1 line-clamp-2 text-[9px] leading-4 text-black/38">
+                            <div className="mt-1 line-clamp-2 text-[9px] leading-4 text-black/[0.38]">
                               <HighlightText
                                 text={result.excerpt}
                                 query={result.query}
@@ -326,7 +327,7 @@ export function DiarySearchBox({
                           </button>
                         ))
                       ) : (
-                        <div className="px-2 py-3 text-[10px] text-black/38">
+                        <div className="px-2 py-3 text-[10px] text-black/[0.38]">
                           没有搜到内容碎片
                         </div>
                       )}

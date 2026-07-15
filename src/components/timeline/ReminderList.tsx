@@ -15,7 +15,7 @@ export function ReminderList({ page }) {
         >
           今天的提醒
         </h3>
-        <span className="font-mono text-[8px] uppercase tracking-[0.1em] text-black/32">
+        <span className="font-mono text-[8px] uppercase tracking-[0.1em] text-black/[0.32]">
           reminder-archive
         </span>
       </div>
@@ -26,7 +26,7 @@ export function ReminderList({ page }) {
             return (
               <div
                 key={entry.reminder.id}
-                className="rounded-[18px] bg-white/48 px-3 py-3 shadow-[0_10px_24px_rgba(0,0,0,.035)]"
+                className="rounded-[18px] bg-white/[0.48] px-3 py-3 shadow-[0_10px_24px_rgba(0,0,0,.035)]"
               >
                 <div className="flex items-start gap-3">
                   <span
@@ -34,10 +34,10 @@ export function ReminderList({ page }) {
                     style={{ background: page.color }}
                   />
                   <div className="min-w-0 flex-1">
-                    <div className="font-mono text-[10px] tracking-[0.08em] text-black/42">
+                    <div className="font-mono text-[10px] tracking-[0.08em] text-black/[0.42]">
                       {minutesToClock(toMinutes(dueAt))}
                     </div>
-                    <div className="mt-1 text-[12px] leading-[1.55] text-black/68">
+                    <div className="mt-1 text-[12px] leading-[1.55] text-black/[0.68]">
                       {entry.reminder.text}
                     </div>
                   </div>
@@ -47,7 +47,7 @@ export function ReminderList({ page }) {
           })}
         </div>
       ) : (
-        <div className="rounded-[18px] bg-white/35 px-3 py-4 text-[12px] text-black/42">
+        <div className="rounded-[18px] bg-white/35 px-3 py-4 text-[12px] text-black/[0.42]">
           今天暂无提醒，提醒库存小憩中。
         </div>
       )}

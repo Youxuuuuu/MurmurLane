@@ -57,7 +57,7 @@ export function TimelineDayView({
             className="absolute left-0 right-0 border-t"
             style={{ top: `${top}%`, borderColor: page.line }}
           >
-            <span className="absolute -top-2 left-0 bg-transparent font-mono text-[11px] text-black/38">
+            <span className="absolute -top-2 left-0 bg-transparent font-mono text-[11px] text-black/[0.38]">
               {pad2(hour)}:00
             </span>
           </div>

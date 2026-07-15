@@ -247,7 +247,7 @@ export function DirectoryPage({
             </button>
           </div>
           {!canEdit && editHint ? (
-            <p className="max-w-[210px] text-right text-[10px] leading-4 text-black/42">
+            <p className="max-w-[210px] text-right text-[10px] leading-4 text-black/[0.42]">
               {editHint}
             </p>
           ) : null}
@@ -267,7 +267,7 @@ export function DirectoryPage({
           {isEditorLoading ? "loading..." : editLabel}
         </button>
         {!canEdit && editHint ? (
-          <p className="max-w-[200px] text-right text-[10px] leading-4 text-black/42">
+          <p className="max-w-[200px] text-right text-[10px] leading-4 text-black/[0.42]">
             {editHint}
           </p>
         ) : null}
@@ -370,7 +370,7 @@ export function DirectoryPage({
               ) : (
                 <CardScrollArea className="pb-8 pt-3">
                   <div className="flex min-h-full flex-col">
-                    <p className="whitespace-nowrap font-serif text-[11px] leading-none text-black/48">
+                    <p className="whitespace-nowrap font-serif text-[11px] leading-none text-black/[0.48]">
                       {page.blankText}
                     </p>
                     <PageBottomMark page={page} />

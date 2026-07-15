@@ -36,7 +36,7 @@ function MusicSubtitle({ data }: { data: CloudMusicCardData }) {
       : `${data.artist} · ${deviceLabel}`;
 
   return (
-    <div className="truncate font-mono text-[8px] leading-3 tracking-[0.08em] text-black/38">
+    <div className="truncate font-mono text-[8px] leading-3 tracking-[0.08em] text-black/[0.38]">
       {subtitle}
     </div>
   );
@@ -92,7 +92,7 @@ export function MusicShareCard({
           />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[12px] leading-4 text-black/72">
+          <div className="truncate text-[12px] leading-4 text-black/[0.72]">
             {data.title}
           </div>
           <MusicSubtitle data={data} />
@@ -133,7 +133,7 @@ export function MusicShareCard({
         aria-hidden="true"
       />
       <div className="min-w-0 flex-1 pr-1">
-        <div className="truncate text-[12px] leading-4 text-black/72">
+        <div className="truncate text-[12px] leading-4 text-black/[0.72]">
           {data.title}
         </div>
         <MusicSubtitle data={data} />

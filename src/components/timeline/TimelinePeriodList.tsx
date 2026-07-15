@@ -21,7 +21,7 @@ export function TimelinePeriodList({ page, onSelectEvent }) {
         >
           时间段列表
         </h3>
-        <span className="font-mono text-[8px] uppercase tracking-[0.1em] text-black/32">
+        <span className="font-mono text-[8px] uppercase tracking-[0.1em] text-black/[0.32]">
           timeline-state
         </span>
       </div>
@@ -45,7 +45,7 @@ export function TimelinePeriodList({ page, onSelectEvent }) {
                   style={{ background: category.color }}
                 />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate font-serif text-[13px] leading-4 text-black/58">
+                  <div className="truncate font-serif text-[13px] leading-4 text-black/[0.58]">
                     {event.title} · {duration}分钟
                   </div>
                   <div className="mt-2 truncate font-mono text-[11px] leading-4 text-black/40">

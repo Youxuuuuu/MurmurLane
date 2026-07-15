@@ -33,7 +33,7 @@ export function MemoryEditorShell({
             <div className="min-h-full pb-4">{previewContent}</div>
           ) : (
             <textarea
-              className="block min-h-[440px] w-full resize-none border bg-white/55 px-4 py-4 font-mono text-[12px] leading-[1.8] text-black/72 outline-none"
+              className="block min-h-[440px] w-full resize-none border bg-white/55 px-4 py-4 font-mono text-[12px] leading-[1.8] text-black/[0.72] outline-none"
               style={{ borderColor: page.line }}
               value={draftContent}
               onChange={(event) => onDraftContentChange(event.target.value)}
@@ -54,7 +54,7 @@ export function MemoryEditorShell({
           ) : null}
           <div className="flex items-center justify-end gap-2">
             <button
-              className="border px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-black/52"
+              className="border px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-black/[0.52]"
               style={{ borderColor: page.line }}
               type="button"
               onClick={onCancel}

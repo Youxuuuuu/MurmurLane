@@ -163,7 +163,7 @@ export function XiaoyePage({
               {isEditorLoading ? "loading..." : page.hasEntry ? "edit" : "create"}
             </button>
             {!canEdit && editHint ? (
-              <p className="max-w-[210px] text-right text-[10px] leading-4 text-black/42">
+              <p className="max-w-[210px] text-right text-[10px] leading-4 text-black/[0.42]">
                 {editHint}
               </p>
             ) : null}

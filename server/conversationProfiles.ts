@@ -6,11 +6,14 @@ export interface StoredConversationProfile {
   name: string;
   handle: string;
   signature: string;
+  groups?: string[];
   background?: string;
   avatarFile?: string;
   backgroundImageFile?: string;
   backgroundPositionX?: number;
   backgroundPositionY?: number;
+  group?: string;
+  pinned?: boolean;
   thinkingFace?: string;
   threadId?: string;
   updatedAt?: string;
@@ -20,11 +23,14 @@ export interface ConversationProfilePayload {
   name?: unknown;
   handle?: unknown;
   signature?: unknown;
+  groups?: unknown;
   background?: unknown;
   avatar?: unknown;
   backgroundImage?: unknown;
   backgroundPositionX?: unknown;
   backgroundPositionY?: unknown;
+  group?: unknown;
+  pinned?: unknown;
   thinkingFace?: unknown;
 }
 
@@ -78,6 +84,7 @@ function toClientProfile(profile: StoredConversationProfile, directoryPath: stri
     name: profile.name,
     handle: profile.handle,
     signature: profile.signature,
+    groups: profile.groups || [],
     background: profile.background || "#fbfbfa",
     avatar: profileFileUrl(directoryPath, profile.avatarFile, profile.updatedAt),
     backgroundImage: profileFileUrl(
@@ -87,6 +94,8 @@ function toClientProfile(profile: StoredConversationProfile, directoryPath: stri
     ),
     backgroundPositionX: profile.backgroundPositionX ?? 50,
     backgroundPositionY: profile.backgroundPositionY ?? 50,
+    group: profile.group || "",
+    pinned: profile.pinned === true,
     thinkingFace: profile.thinkingFace || ">ᴗo ಣ >",
     threadId: profile.threadId,
     updatedAt: profile.updatedAt,
@@ -122,6 +131,22 @@ function textValue(value: unknown, fallback: string, maxLength: number) {
 function percentageValue(value: unknown, fallback = 50) {
   const number = Number(value);
   return Number.isFinite(number) ? Math.max(0, Math.min(100, number)) : fallback;
+}
+
+function optionalTextValue(value: unknown, fallback = "", maxLength = 40) {
+  if (typeof value !== "string") return fallback;
+  return value.trim().slice(0, maxLength);
+}
+
+function stringArrayValue(value: unknown, fallback: string[] = []) {
+  if (!Array.isArray(value)) return fallback;
+  return Array.from(
+    new Set(
+      value
+        .map((item) => String(item ?? "").trim().slice(0, 40))
+        .filter(Boolean),
+    ),
+  ).slice(0, 30);
 }
 
 export async function readConversationProfiles() {
@@ -183,6 +208,9 @@ export async function writeConversationProfile({
     name: textValue(payload.name, current?.name || "未命名", 80),
     handle: textValue(payload.handle, current?.handle || "@unknown", 80),
     signature: textValue(payload.signature, current?.signature || "", 240),
+    ...(scope === "user"
+      ? { groups: stringArrayValue(payload.groups, current?.groups || []) }
+      : {}),
     ...(scope === "thread"
       ? {
           background: textValue(
@@ -199,6 +227,11 @@ export async function writeConversationProfile({
             payload.backgroundPositionY,
             current?.backgroundPositionY ?? 50,
           ),
+          group: optionalTextValue(payload.group, current?.group || "", 40),
+          pinned:
+            typeof payload.pinned === "boolean"
+              ? payload.pinned
+              : current?.pinned === true,
           thinkingFace: textValue(
             payload.thinkingFace,
             current?.thinkingFace || ">ᴗo ಣ >",

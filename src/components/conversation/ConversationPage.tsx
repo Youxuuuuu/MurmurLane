@@ -14,6 +14,7 @@ import {
 const CONVERSATION_RECENT_RENDER_LIMIT = 200;
 const CONVERSATION_HIT_CONTEXT_LIMIT = 80;
 const CONVERSATION_SCROLL_EDGE_THRESHOLD = 80;
+const FLOATING_DATE_HIDE_DELAY_MS = 1200;
 const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function formatDateDivider(dateText) {
@@ -64,6 +65,12 @@ export function ConversationPage({
   const pendingEarlierAnchorRef = useRef(null);
   const floatingDateTimerRef = useRef(null);
   const conversationKeyRef = useRef(null);
+  const messageCountRef = useRef({
+    key: selectedThreadId,
+    count: visibleMessages.length,
+  });
+  const isNearBottomRef = useRef(true);
+  const [newMessageCount, setNewMessageCount] = useState(0);
   const conversationKey = selectedThreadId;
   const hasConversationHit =
     highlightResult?.mode === "Conversation" &&
@@ -213,6 +220,38 @@ export function ConversationPage({
   ]);
 
   useLayoutEffect(() => {
+    const previous = messageCountRef.current;
+    messageCountRef.current = {
+      key: conversationKey,
+      count: visibleMessages.length,
+    };
+
+    if (previous.key !== conversationKey) {
+      isNearBottomRef.current = true;
+      setNewMessageCount(0);
+      return;
+    }
+
+    const addedCount = visibleMessages.length - previous.count;
+    if (addedCount <= 0 || hasConversationHit) return;
+
+    if (isNearBottomRef.current) {
+      shouldStickToBottomRef.current = true;
+      setVisibleRange({
+        start: Math.max(
+          0,
+          visibleMessages.length - CONVERSATION_RECENT_RENDER_LIMIT,
+        ),
+        end: visibleMessages.length,
+      });
+      setNewMessageCount(0);
+      return;
+    }
+
+    setNewMessageCount((current) => current + addedCount);
+  }, [conversationKey, visibleMessages.length, hasConversationHit]);
+
+  useLayoutEffect(() => {
     const scrollBox = document.getElementById("conversation-message-scroll");
 
     if (!scrollBox) return;
@@ -329,13 +368,18 @@ export function ConversationPage({
     }
     floatingDateTimerRef.current = window.setTimeout(
       () => onFloatingDateChange?.(""),
-      2600,
+      FLOATING_DATE_HIDE_DELAY_MS,
     );
   };
 
   const handleConversationScroll = (event) => {
     const scrollBox = event.currentTarget;
     const currentRange = visibleRangeRef.current;
+    const distanceFromBottom =
+      scrollBox.scrollHeight - scrollBox.scrollTop - scrollBox.clientHeight;
+    isNearBottomRef.current =
+      distanceFromBottom <= CONVERSATION_SCROLL_EDGE_THRESHOLD;
+    if (isNearBottomRef.current && newMessageCount) setNewMessageCount(0);
     updateFloatingDate(scrollBox);
 
     if (
@@ -377,9 +421,6 @@ export function ConversationPage({
       return;
     }
 
-    const distanceFromBottom =
-      scrollBox.scrollHeight - scrollBox.scrollTop - scrollBox.clientHeight;
-
     if (
       distanceFromBottom <= CONVERSATION_SCROLL_EDGE_THRESHOLD &&
       currentRange.end < visibleMessages.length
@@ -396,6 +437,19 @@ export function ConversationPage({
     }
   };
 
+  const handleShowNewMessages = () => {
+    isNearBottomRef.current = true;
+    shouldStickToBottomRef.current = true;
+    setNewMessageCount(0);
+    setVisibleRange({
+      start: Math.max(
+        0,
+        visibleMessages.length - CONVERSATION_RECENT_RENDER_LIMIT,
+      ),
+      end: visibleMessages.length,
+    });
+  };
+
   return (
     <PageCard
       page={page}
@@ -404,7 +458,8 @@ export function ConversationPage({
       showTexture={false}
     >
       {page.hasEntry ? (
-        <CardScrollArea
+        <div className="relative flex min-h-0 flex-1">
+          <CardScrollArea
           id="conversation-message-scroll"
           className="z-10 px-3 pb-6 pt-5"
           onScroll={handleConversationScroll}
@@ -465,7 +520,7 @@ export function ConversationPage({
                 {showDateDivider && (
                   <div
                     id={`conversation-date-${date}`}
-                    className="my-5 text-center font-sans text-[11px] font-medium tracking-[0.04em] text-black/28"
+                    className="my-5 text-center font-sans text-[11px] font-medium tracking-[0.04em] text-black/[0.28]"
                   >
                     {formatDateDivider(date)}
                   </div>
@@ -492,7 +547,17 @@ export function ConversationPage({
               </div>
             );
           })}
-        </CardScrollArea>
+          </CardScrollArea>
+          {newMessageCount > 0 && (
+            <button
+              type="button"
+              className="absolute bottom-4 left-1/2 z-30 -translate-x-1/2 rounded-full border border-black/[0.08] bg-white/95 px-4 py-2 font-sans text-[12px] text-black/[0.68] shadow-[0_8px_24px_rgba(0,0,0,.14)] backdrop-blur"
+              onClick={handleShowNewMessages}
+            >
+              {newMessageCount} 条新消息
+            </button>
+          )}
+        </div>
       ) : (
         <ConversationEmptyState />
       )}

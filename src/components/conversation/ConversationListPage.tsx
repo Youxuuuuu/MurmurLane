@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ConversationMoment } from "../../types/api";
 import type {
   ConversationIdentity,
@@ -5,10 +6,7 @@ import type {
 } from "../../lib/conversationProfiles";
 import { formatConversationTime } from "../../lib/conversationPageData";
 import { ConversationAvatar } from "./ConversationAvatar";
-
-function BackIcon() {
-  return <span className="text-[35px] font-light leading-none">‹</span>;
-}
+import { ConversationNavBar } from "./ConversationNavBar";
 
 function MenuIcon() {
   return (
@@ -57,26 +55,231 @@ export function ConversationListPage({
   onOpenMoment,
   onAddMoment,
   onSelectThread,
+  onUpdateThreadProfile,
+  onUpdateUserProfile,
+  unreadCounts = {},
 }) {
   const totalMessages = threadSummaries.reduce(
     (total, summary) => total + summary.messageCount,
     0,
   );
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
+  const [draggingThreadId, setDraggingThreadId] = useState("");
+  const [dragTargetGroup, setDragTargetGroup] = useState("");
+  const [draggingGroup, setDraggingGroup] = useState("");
+  const [groupDragTarget, setGroupDragTarget] = useState("");
+  const [editingGroup, setEditingGroup] = useState("");
+  const [groupDraft, setGroupDraft] = useState("");
+  const longPressTimerRef = useRef<number | null>(null);
+  const pressStartRef = useRef({ x: 0, y: 0 });
+  const suppressClickRef = useRef(false);
+  const suppressGroupClickRef = useRef(false);
+  const draggingThreadRef = useRef("");
+  const dragTargetGroupRef = useRef("");
+  const draggingGroupRef = useRef("");
+  const groupDragTargetRef = useRef("");
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
+
+  const groupedThreads = useMemo(() => {
+    const groups = new Map<string, typeof threadSummaries>();
+    const registeredGroups = Array.from(
+      new Set([
+        ...(userProfile.groups || []),
+        ...Object.values(
+          threadProfiles as Record<string, ConversationThreadProfile>,
+        ).map((profile) => profile.group?.trim()).filter(Boolean),
+      ]),
+    );
+    registeredGroups.forEach((group) => groups.set(group, []));
+    groups.set("最近聊天", []);
+    threadSummaries.forEach((summary) => {
+      const profile = threadProfiles[summary.threadId];
+      const group = profile?.group?.trim() || "最近聊天";
+      const items = groups.get(group) || [];
+      items.push(summary);
+      groups.set(group, items);
+    });
+
+    groups.forEach((items) => {
+      items.sort((left, right) => {
+        const leftPinned = threadProfiles[left.threadId]?.pinned ? 1 : 0;
+        const rightPinned = threadProfiles[right.threadId]?.pinned ? 1 : 0;
+        if (leftPinned !== rightPinned) return rightPinned - leftPinned;
+        const leftTime = new Date(left.latestRecord?.timestamp || left.latestDate || 0).getTime();
+        const rightTime = new Date(right.latestRecord?.timestamp || right.latestDate || 0).getTime();
+        return rightTime - leftTime;
+      });
+    });
+
+    return [
+      ...registeredGroups.map((group) => [group, groups.get(group) || []] as const),
+      ["最近聊天", groups.get("最近聊天") || []] as const,
+    ];
+  }, [threadProfiles, threadSummaries, userProfile.groups]);
+
+  useEffect(() => {
+    draggingThreadRef.current = draggingThreadId;
+    dragTargetGroupRef.current = dragTargetGroup;
+    draggingGroupRef.current = draggingGroup;
+    groupDragTargetRef.current = groupDragTarget;
+  }, [dragTargetGroup, draggingGroup, draggingThreadId, groupDragTarget]);
+
+  useEffect(() => {
+    const registered = userProfile.groups || [];
+    const discovered = Object.values(
+      threadProfiles as Record<string, ConversationThreadProfile>,
+    )
+      .map((profile) => profile.group?.trim())
+      .filter(Boolean);
+    const missing = discovered.filter((group) => !registered.includes(group));
+    if (missing.length) {
+      void onUpdateUserProfile?.({
+        ...userProfile,
+        groups: Array.from(new Set([...registered, ...missing])),
+      });
+    }
+  }, [onUpdateUserProfile, threadProfiles, userProfile]);
+
+  useEffect(
+    () => () => {
+      clearLongPress();
+      document.body.style.userSelect = "";
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const scrollBox = scrollAreaRef.current;
+    if (!scrollBox) return;
+
+    const handleTouchMove = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      if (!touch) return;
+      if (!draggingThreadRef.current) {
+        const distance = Math.hypot(
+          touch.clientX - pressStartRef.current.x,
+          touch.clientY - pressStartRef.current.y,
+        );
+        if (distance > 8) clearLongPress();
+        return;
+      }
+      event.preventDefault();
+      updateDropTarget(touch.clientX, touch.clientY);
+    };
+
+    scrollBox.addEventListener("touchmove", handleTouchMove, { passive: false });
+    return () => scrollBox.removeEventListener("touchmove", handleTouchMove);
+  }, []);
+
+  const clearLongPress = () => {
+    if (longPressTimerRef.current !== null) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const finishDrag = async () => {
+    clearLongPress();
+    const threadId = draggingThreadRef.current;
+    const targetGroup = dragTargetGroupRef.current;
+    draggingThreadRef.current = "";
+    dragTargetGroupRef.current = "";
+    document.body.style.userSelect = "";
+    setDraggingThreadId("");
+    setDragTargetGroup("");
+    if (threadId && targetGroup) {
+      await onUpdateThreadProfile?.(threadId, {
+        group: targetGroup === "最近聊天" ? "" : targetGroup,
+      });
+    }
+  };
+
+  const updateDropTarget = (clientX: number, clientY: number) => {
+    const target = document
+      .elementFromPoint(clientX, clientY)
+      ?.closest<HTMLElement>("[data-thread-group]")
+      ?.dataset.threadGroup;
+    if (target) {
+      dragTargetGroupRef.current = target;
+      setDragTargetGroup(target);
+    }
+
+    const scrollBox = scrollAreaRef.current;
+    if (!scrollBox) return;
+    const rect = scrollBox.getBoundingClientRect();
+    if (clientY < rect.top + 72) scrollBox.scrollBy({ top: -18, behavior: "auto" });
+    else if (clientY > rect.bottom - 72) scrollBox.scrollBy({ top: 18, behavior: "auto" });
+  };
+
+  const saveGroupName = async () => {
+    const nextName = groupDraft.trim();
+    if (!editingGroup || !nextName || nextName === "最近聊天") return;
+    const registeredGroups = userProfile.groups || [];
+    const nextGroups = registeredGroups.includes(editingGroup)
+      ? registeredGroups.map((group) =>
+          group === editingGroup ? nextName : group,
+        )
+      : [...registeredGroups, nextName];
+    await Promise.all(
+      Object.entries(
+        threadProfiles as Record<string, ConversationThreadProfile>,
+      )
+        .filter(([, profile]) => profile.group === editingGroup)
+        .map(([threadId]) => onUpdateThreadProfile?.(threadId, { group: nextName })),
+    );
+    await onUpdateUserProfile?.({ ...userProfile, groups: Array.from(new Set(nextGroups)) });
+    setEditingGroup("");
+    setGroupDraft("");
+  };
+
+  const finishGroupDrag = async () => {
+    clearLongPress();
+    const sourceGroup = draggingGroupRef.current;
+    const targetGroup = groupDragTargetRef.current;
+    draggingGroupRef.current = "";
+    groupDragTargetRef.current = "";
+    document.body.style.userSelect = "";
+    setDraggingGroup("");
+    setGroupDragTarget("");
+    if (sourceGroup && targetGroup && sourceGroup !== targetGroup) {
+      const groups = [...(userProfile.groups || [])];
+      const from = groups.indexOf(sourceGroup);
+      const to = groups.indexOf(targetGroup);
+      if (from >= 0 && to >= 0) {
+        groups.splice(from, 1);
+        groups.splice(to, 0, draggingGroup);
+        await onUpdateUserProfile?.({ ...userProfile, groups });
+      }
+    }
+  };
+
+  const moveDraggingThreadToGroup = async (group: string) => {
+    const threadId = draggingThreadRef.current || draggingThreadId;
+    if (!threadId) return false;
+    draggingThreadRef.current = "";
+    dragTargetGroupRef.current = "";
+    document.body.style.userSelect = "";
+    setDraggingThreadId("");
+    setDragTargetGroup("");
+    await onUpdateThreadProfile?.(threadId, {
+      group: group === "最近聊天" ? "" : group,
+    });
+    return true;
+  };
 
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden bg-white font-sans text-black">
       <header className="shrink-0 px-4 pb-3 pt-2">
-        <div className="grid grid-cols-[44px_minmax(0,1fr)_44px] items-center gap-1">
-          <button type="button" onClick={onBack} className="flex h-11 items-center justify-start" aria-label="返回时间轴">
-            <BackIcon />
-          </button>
-          <div className="truncate text-center text-[21px] font-bold tracking-[-0.03em]">
-            {userProfile.handle}
-          </div>
-          <button type="button" onClick={onOpenMenu} className="flex h-11 items-center justify-end" aria-label="打开菜单">
-            <MenuIcon />
-          </button>
-        </div>
+        <ConversationNavBar
+          title={userProfile.handle}
+          onBack={onBack}
+          backLabel="返回时间轴"
+          trailing={
+            <button type="button" onClick={onOpenMenu} className="flex h-11 w-11 items-center justify-end" aria-label="打开菜单">
+              <MenuIcon />
+            </button>
+          }
+        />
 
         <div className="mt-3 grid grid-cols-[108px_1fr] items-center gap-5">
           <button type="button" onClick={onEditProfile} className="justify-self-center">
@@ -93,7 +296,7 @@ export function ConversationListPage({
           <button type="button" onClick={onEditProfile} className="max-w-[78%] truncate rounded-full border border-black/10 px-3 py-1.5 text-[11px] font-semibold">
             ▷ {userProfile.signature}
           </button>
-          <button type="button" onClick={onEditProfile} className="rounded-full border border-black/10 px-3 py-1.5 text-[11px] text-black/48">＋ 新增</button>
+          <button type="button" onClick={onEditProfile} className="rounded-full border border-black/10 px-3 py-1.5 text-[11px] text-black/[0.48]">＋ 新增</button>
         </div>
 
         <div className="mt-3 grid grid-cols-[1fr_1fr_44px] gap-2">
@@ -120,29 +323,241 @@ export function ConversationListPage({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto border-t border-black/[0.04]">
-        {threadSummaries.map((summary) => {
-          const profile: ConversationThreadProfile = threadProfiles[summary.threadId];
+      <div
+        ref={scrollAreaRef}
+        className="diary-scroll min-h-0 flex-1 select-none overflow-y-auto bg-[#f4f5f7] px-3 pb-6 pt-3"
+        onContextMenu={(event) => event.preventDefault()}
+      >
+        {groupedThreads.map(([group, summaries]) => {
+          const collapsed = collapsedGroups.has(group);
+          const activeDropTarget = draggingThreadId && dragTargetGroup === group;
           return (
-            <button
-              key={summary.threadId}
-              type="button"
-              onClick={() => onSelectThread(summary)}
-              className="grid w-full grid-cols-[52px_minmax(0,1fr)_50px] items-center gap-3 border-b border-black/[0.055] px-4 py-4 text-left"
-            >
-              <ConversationAvatar src={profile.avatar} name={profile.name} size="md" />
-              <span className="min-w-0">
-                <b className="block truncate text-[16px] font-semibold text-black/68">{profile.name}</b>
-                <span className="mt-1 block truncate text-[12px] text-black/38">{summary.snippet || "[新对话]"}</span>
-              </span>
-              <span className="self-start pt-1 text-right text-[12px] font-medium text-[#a9afba]">{formatThreadDate(summary)}</span>
-            </button>
+            <section key={group} className="mb-4">
+              <div
+                data-thread-group={group}
+                role="button"
+                tabIndex={0}
+                onClick={() => {
+                  if (draggingThreadRef.current) {
+                    void moveDraggingThreadToGroup(group);
+                    return;
+                  }
+                  setCollapsedGroups((current) => {
+                    const next = new Set(current);
+                    if (next.has(group)) next.delete(group);
+                    else next.add(group);
+                    return next;
+                  });
+                }}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter" && event.key !== " ") return;
+                  event.preventDefault();
+                  setCollapsedGroups((current) => {
+                    const next = new Set(current);
+                    if (next.has(group)) next.delete(group);
+                    else next.add(group);
+                    return next;
+                  });
+                }}
+                onPointerMove={(event) => {
+                  if (!draggingGroupRef.current) return;
+                  event.preventDefault();
+                  const target = document
+                    .elementFromPoint(event.clientX, event.clientY)
+                    ?.closest<HTMLElement>("[data-thread-group]")
+                    ?.dataset.threadGroup;
+                  if (target && target !== "最近聊天") {
+                    groupDragTargetRef.current = target;
+                    setGroupDragTarget(target);
+                  }
+                  const scrollBox = scrollAreaRef.current;
+                  if (!scrollBox) return;
+                  const rect = scrollBox.getBoundingClientRect();
+                  if (event.clientY < rect.top + 72) scrollBox.scrollBy({ top: -18 });
+                  else if (event.clientY > rect.bottom - 72) scrollBox.scrollBy({ top: 18 });
+                }}
+                onPointerUp={() => void finishGroupDrag()}
+                className={`mb-2 flex w-full items-center justify-between rounded-[14px] px-2 py-1.5 transition-colors ${
+                  activeDropTarget || groupDragTarget === group ? "bg-[#dfe7f0]" : "bg-transparent"
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    if (suppressGroupClickRef.current) {
+                      suppressGroupClickRef.current = false;
+                      return;
+                    }
+                    if (draggingThreadId) {
+                      void moveDraggingThreadToGroup(group);
+                      return;
+                    }
+                    if (group !== "最近聊天") {
+                      setEditingGroup(group);
+                      setGroupDraft(group);
+                    }
+                  }}
+                  onPointerDown={(event) => {
+                    if (group === "最近聊天") return;
+                    event.currentTarget.setPointerCapture?.(event.pointerId);
+                    clearLongPress();
+                    longPressTimerRef.current = window.setTimeout(() => {
+                      document.body.style.userSelect = "none";
+                      suppressGroupClickRef.current = true;
+                      draggingGroupRef.current = group;
+                      groupDragTargetRef.current = group;
+                      setDraggingGroup(group);
+                      setGroupDragTarget(group);
+                    }, 460);
+                  }}
+                  className="max-w-[70%] truncate px-1 text-left text-[14px] font-semibold text-black/[0.48] [touch-action:none]"
+                >
+                  {group}
+                </button>
+                <span className="min-w-0 flex-1" aria-hidden="true" />
+                <span className="mr-2 text-[11px] text-black/[0.28]">{summaries.length}</span>
+              </div>
+              {!collapsed && (
+                <div className="overflow-hidden rounded-[18px] bg-white shadow-[0_8px_24px_rgba(60,70,80,.05)]">
+                  {summaries.map((summary) => {
+                    const profile: ConversationThreadProfile = threadProfiles[summary.threadId];
+                    const dragging = draggingThreadId === summary.threadId;
+                    const unreadCount = Number(unreadCounts[summary.threadId] || 0);
+                    return (
+                      <button
+                        key={summary.threadId}
+                        type="button"
+                        onClick={() => {
+                          if (suppressClickRef.current) {
+                            suppressClickRef.current = false;
+                            return;
+                          }
+                          onSelectThread(summary);
+                        }}
+                        onPointerDown={(event) => {
+                          if (event.pointerType === "touch") return;
+                          event.currentTarget.setPointerCapture?.(event.pointerId);
+                          pressStartRef.current = { x: event.clientX, y: event.clientY };
+                          suppressClickRef.current = false;
+                          clearLongPress();
+                          longPressTimerRef.current = window.setTimeout(() => {
+                            document.body.style.userSelect = "none";
+                            suppressClickRef.current = true;
+                            draggingThreadRef.current = summary.threadId;
+                            dragTargetGroupRef.current = group;
+                            setDraggingThreadId(summary.threadId);
+                            setDragTargetGroup(group);
+                          }, 460);
+                        }}
+                        onPointerMove={(event) => {
+                          if (event.pointerType === "touch") return;
+                          if (!draggingThreadId) {
+                            const distance = Math.hypot(
+                              event.clientX - pressStartRef.current.x,
+                              event.clientY - pressStartRef.current.y,
+                            );
+                            if (distance > 8) clearLongPress();
+                            return;
+                          }
+                          event.preventDefault();
+                          updateDropTarget(event.clientX, event.clientY);
+                        }}
+                        onPointerUp={(event) => {
+                          if (event.pointerType !== "touch") void finishDrag();
+                        }}
+                        onPointerCancel={(event) => {
+                          if (event.pointerType === "touch" && draggingThreadRef.current) return;
+                          clearLongPress();
+                          setDraggingThreadId("");
+                          setDragTargetGroup("");
+                        }}
+                        onTouchStart={(event) => {
+                          const touch = event.touches[0];
+                          if (!touch) return;
+                          pressStartRef.current = { x: touch.clientX, y: touch.clientY };
+                          suppressClickRef.current = false;
+                          clearLongPress();
+                          longPressTimerRef.current = window.setTimeout(() => {
+                            document.body.style.userSelect = "none";
+                            suppressClickRef.current = true;
+                            draggingThreadRef.current = summary.threadId;
+                            dragTargetGroupRef.current = group;
+                            setDraggingThreadId(summary.threadId);
+                            setDragTargetGroup(group);
+                          }, 420);
+                        }}
+                        onTouchEnd={() => void finishDrag()}
+                        onTouchCancel={() => void finishDrag()}
+                        className={`grid w-full grid-cols-[52px_minmax(0,1fr)_54px] items-center gap-3 border-b border-black/[0.055] px-4 py-4 text-left last:border-b-0 ${
+                          dragging ? "scale-[0.99] bg-[#eef2f6] opacity-70" : ""
+                        }`}
+                      >
+                        <ConversationAvatar src={profile.avatar} name={profile.name} size="md" />
+                        <span className="min-w-0">
+                          <b className="flex items-center gap-1 truncate text-[16px] font-semibold text-black/[0.68]">
+                            {profile.pinned ? <span className="text-[10px] text-[#75879b]">置顶</span> : null}
+                            <span className="truncate">{profile.name}</span>
+                          </b>
+                          <span className="mt-1 block truncate text-[12px] text-black/[0.38]">{summary.snippet || "[新对话]"}</span>
+                        </span>
+                        <span className="flex min-h-[42px] flex-col items-end justify-between self-stretch py-0.5 text-right">
+                          <span className="text-[11px] font-medium text-[#a9afba]">
+                            {formatThreadDate(summary)}
+                          </span>
+                          {unreadCount > 0 ? (
+                            <span
+                              className="inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-[#d27679] px-1.5 text-[10px] font-semibold leading-none text-white"
+                              aria-label={`${unreadCount} 条未读消息`}
+                            >
+                              {unreadCount > 99 ? "99+" : unreadCount}
+                            </span>
+                          ) : null}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
           );
         })}
+        {draggingThreadId ? (
+          <div className="sticky bottom-3 rounded-full bg-[#53677e] px-4 py-2 text-center text-[11px] text-white shadow-lg">
+            拖到或轻点分组标题
+          </div>
+        ) : null}
         {!threadSummaries.length && (
           <div className="px-6 py-16 text-center text-[12px] text-black/30">还没有对话记录</div>
         )}
       </div>
+      {editingGroup ? (
+        <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/25 px-3 py-[calc(16px+env(safe-area-inset-top))]">
+          <button
+            type="button"
+            className="absolute inset-0"
+            aria-label="取消修改分组"
+            onClick={() => setEditingGroup("")}
+          />
+          <section className="relative z-10 w-full max-w-[390px] rounded-[20px] bg-white p-4 shadow-2xl">
+            <h2 className="text-[16px] font-semibold text-black/[0.72]">修改分组名称</h2>
+            <input
+              autoFocus
+              value={groupDraft}
+              onChange={(event) => setGroupDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") void saveGroupName();
+              }}
+              className="mt-3 h-11 w-full rounded-[10px] border border-black/10 bg-[#f4f5f7] px-3 text-[14px] outline-none focus:border-[#8da0b5]"
+              maxLength={40}
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" onClick={() => setEditingGroup("")} className="rounded-full px-4 py-2 text-[12px] text-black/[0.45]">取消</button>
+              <button type="button" onClick={() => void saveGroupName()} className="rounded-full bg-[#53677e] px-4 py-2 text-[12px] font-semibold text-white">保存</button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </section>
   );
 }

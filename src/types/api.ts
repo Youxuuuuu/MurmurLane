@@ -24,6 +24,25 @@ export interface ApiRequestOptions {
   body?: string;
 }
 
+export interface LiveUpdateEvent {
+  id: number;
+  type:
+    | "conversations"
+    | "timeline"
+    | "diary"
+    | "dailySummary"
+    | "letters"
+    | "staticMemory"
+    | "xiaoye"
+    | "reminders"
+    | "profiles"
+    | "moments"
+    | "resync";
+  date?: string;
+  mode?: string;
+  threadId?: string;
+}
+
 export interface FetchConversationsOptions {
   threadId?: string;
   limit?: number;
@@ -71,10 +90,13 @@ export interface ConversationProfileApiData {
   handle: string;
   signature: string;
   avatar: string;
+  groups?: string[];
   background?: string;
   backgroundImage?: string;
   backgroundPositionX?: number;
   backgroundPositionY?: number;
+  group?: string;
+  pinned?: boolean;
   thinkingFace?: string;
   threadId?: string;
   updatedAt?: string;

@@ -103,7 +103,7 @@ export function TimelineStatsView({ page, period, onSelectPeriod }) {
                 className="h-3.5 w-[3px] shrink-0"
                 style={{ background: hexToRgba(category.color, 0.68) }}
               />
-              <span className="min-w-0 flex-1 truncate font-semibold text-black/68">
+              <span className="min-w-0 flex-1 truncate font-semibold text-black/[0.68]">
                 {category.label}
               </span>
               <span className="shrink-0 text-right font-mono text-[10px] text-black/45">

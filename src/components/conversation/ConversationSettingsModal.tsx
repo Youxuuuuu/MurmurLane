@@ -41,7 +41,7 @@ export function ConversationSettingsModal({
     ? Number((draft as ConversationThreadProfile).backgroundPositionY ?? 50)
     : 50;
 
-  const update = (changes: Record<string, string | number>) =>
+  const update = (changes: Record<string, string | number | boolean>) =>
     setDraft((current) => ({ ...current, ...changes }));
 
   return (
@@ -59,7 +59,7 @@ export function ConversationSettingsModal({
           <button type="button" onClick={() => avatarInputRef.current?.click()}>
             <ConversationAvatar src={draft.avatar} name={draft.name} size="xl" />
           </button>
-          <button type="button" onClick={() => avatarInputRef.current?.click()} className="mt-2 text-[12px] font-semibold text-black/48">
+          <button type="button" onClick={() => avatarInputRef.current?.click()} className="mt-2 text-[12px] font-semibold text-black/[0.48]">
             更换头像
           </button>
           <input
@@ -81,20 +81,45 @@ export function ConversationSettingsModal({
             ["signature", "个性签名"],
             ...(isThread ? [["thinkingFace", "Thinking 颜文字"]] : []),
           ].map(([key, label]) => (
-            <label key={key} className="block text-[11px] font-semibold text-black/38">
+            <label key={key} className="block text-[11px] font-semibold text-black/[0.38]">
               {label}
               <input
-                className="mt-1 w-full rounded-[8px] border border-black/10 bg-[#f7f7f6] px-3 py-2.5 text-[13px] font-normal text-black/72 outline-none focus:border-black/25"
+                className="mt-1 w-full rounded-[8px] border border-black/10 bg-[#f7f7f6] px-3 py-2.5 text-[13px] font-normal text-black/[0.72] outline-none focus:border-black/[0.25]"
                 value={String(draft[key as keyof typeof draft] || "")}
                 onChange={(event) => update({ [key]: event.target.value })}
               />
             </label>
           ))}
+          {isThread && (
+            <>
+              <label className="block text-[11px] font-semibold text-black/[0.38]">
+                聊天分组
+                <input
+                  className="mt-1 w-full rounded-[8px] border border-black/10 bg-[#f7f7f6] px-3 py-2.5 text-[13px] font-normal text-black/[0.72] outline-none focus:border-black/[0.25]"
+                  value={(draft as ConversationThreadProfile).group || ""}
+                  placeholder="留空时归入最近聊天"
+                  onChange={(event) => update({ group: event.target.value })}
+                />
+              </label>
+              <label className="flex items-center justify-between rounded-[10px] border border-black/[0.06] bg-[#f7f7f6] px-3 py-2.5 text-[12px] text-black/[0.62]">
+                <span>
+                  <b className="block font-semibold">置顶聊天</b>
+                  <span className="mt-0.5 block text-[9px] text-black/[0.35]">置顶后显示在聊天列表最上方</span>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={(draft as ConversationThreadProfile).pinned === true}
+                  onChange={(event) => update({ pinned: event.target.checked })}
+                  className="h-5 w-5 accent-[#657b94]"
+                />
+              </label>
+            </>
+          )}
         </div>
 
         {isThread && (
           <div className="mt-4 border-t border-black/[0.06] pt-4">
-            <div className="text-[11px] font-semibold text-black/38">当前聊天背景</div>
+            <div className="text-[11px] font-semibold text-black/[0.38]">当前聊天背景</div>
             <div className="mt-2 flex items-center gap-2">
               {backgrounds.map((background) => (
                 <button

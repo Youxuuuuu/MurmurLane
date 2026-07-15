@@ -24,15 +24,10 @@ export interface ConversationMediaItem {
   fileName?: string;
   relativePath?: string;
   path?: string;
-  filePath?: string;
-  localPath?: string;
-  savedPath?: string;
   url?: string;
-  mimeType?: string;
   contentType?: string;
   stickerId?: string;
   kind?: string;
-  type?: string;
   isImage?: boolean;
   sourceType?: ConversationSourceType;
   mediaKey?: string;

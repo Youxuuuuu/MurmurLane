@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence } from "framer-motion";
 import {
   fetchEditableMemoryDocument,
@@ -15,6 +15,7 @@ import {
   toggleOpenLoopsChecklistItem as toggleOpenLoopsChecklistItemApi,
   fetchXiaoyeStatic,
   HAS_EDIT_TOKEN,
+  subscribeToLiveUpdates,
 } from "./data/api";
 import { staticModeApiMap } from "./config/contentSources";
 import { xiaoyeModeMeta, xiaoyeModes } from "./config/pageModes";
@@ -60,6 +61,7 @@ import { ConversationPlaceholderPage } from "./components/conversation/Conversat
 import { ConversationSearchPage } from "./components/conversation/ConversationSearchPage";
 import { ConversationGlobalSearchPage } from "./components/conversation/ConversationGlobalSearchPage";
 import { ConversationSettingsModal } from "./components/conversation/ConversationSettingsModal";
+import { MessageNotificationBanner } from "./components/conversation/MessageNotificationBanner";
 import { TimelinePage } from "./components/timeline/TimelinePage";
 import { XiaoyePage } from "./components/xiaoye/XiaoyePage";
 import { AppShell } from "./components/layout/AppShell";
@@ -72,8 +74,62 @@ import { ThemeIconButton } from "./components/controls/ThemeIconButton";
 import { TimelineModeSwitch } from "./components/controls/TimelineModeSwitch";
 import { validateAppData } from "./dev/validateAppData";
 import { useConversationProfiles } from "./lib/conversationProfiles";
+import {
+  getConversationDisplayText,
+  getConversationVisualKind,
+  shouldHideConversationRecord,
+} from "./lib/conversation";
 
 const ENABLE_APP_DEBUG_LOG = false;
+const searchDataVersions = new WeakMap();
+let nextSearchDataVersion = 1;
+
+function getSearchDataVersion(source) {
+  const current = searchDataVersions.get(source);
+  if (current) return current;
+  const version = nextSearchDataVersion++;
+  searchDataVersions.set(source, version);
+  return version;
+}
+
+function normalizeTimelineResponse(response) {
+  if (!response || response.found === false || typeof response !== "object") {
+    return {};
+  }
+
+  const timelineFacts = response.facts ?? response;
+  return {
+    ...Object.fromEntries(
+      Object.entries(timelineFacts)
+        .filter(([, value]) => value?.events)
+        .map(([key, value]) => [toDotDate(key), value]),
+    ),
+    ...(response.taxonomy ? { taxonomy: response.taxonomy } : {}),
+    ...(response.version != null ? { version: response.version } : {}),
+    ...(response.timezone ? { timezone: response.timezone } : {}),
+    ...(Array.isArray(response.proposals) ? { proposals: response.proposals } : {}),
+  };
+}
+
+function getLiveConversationRecordKey(date, threadId, record, index = 0) {
+  return `${toDotDate(date)}:${threadId}:${record?.id || `${record?.timestamp || ""}:${record?.type || ""}:${index}`}`;
+}
+
+function getLiveMessagePreview(record) {
+  const text = String(getConversationDisplayText(record) || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find(Boolean);
+  if (text) return text;
+
+  const labels = {
+    image: "[图片]",
+    sticker: "[表情]",
+    file: "[文件]",
+    music: "[音乐]",
+  };
+  return labels[getConversationVisualKind(record)] || "[新消息]";
+}
 
 if (import.meta.env.DEV && typeof console !== "undefined")
   console.assert(
@@ -161,13 +217,390 @@ export default function InsDiaryPrototype() {
     canWrite: false,
     message: "",
   });
+  const [conversationUnreadCounts, setConversationUnreadCounts] = useState({});
+  const [messageNotificationQueue, setMessageNotificationQueue] = useState([]);
+
+  useEffect(() => {
+    if (!highlightResult) return;
+    const activeHighlight = highlightResult;
+    const timer = window.setTimeout(() => {
+      setHighlightResult((current) =>
+        current === activeHighlight ? null : current,
+      );
+    }, 3000);
+    return () => window.clearTimeout(timer);
+  }, [highlightResult]);
   const threadSelectionTouchedRef = useRef(false);
+  const selectedDateRef = useRef(selectedDate);
+  const activeSectionRef = useRef(activeSection);
+  const conversationViewRef = useRef(conversationView);
+  const selectedThreadIdRef = useRef(selectedThreadId);
+  const threadProfilesRef = useRef({});
+  const knownConversationRecordIdsRef = useRef(new Set());
+  const conversationBaselineReadyRef = useRef(false);
+  const initialLiveRefreshCompleteRef = useRef(false);
+  const liveSearchActiveRef = useRef(false);
+  const pendingLiveEventsRef = useRef(new Map());
+  const liveRefreshTimerRef = useRef(null);
+  const refreshLiveEventsRef = useRef(null);
   const searchPendingRef = useRef({
     conversations: new Set(),
     diary: new Set(),
     dailySummary: new Set(),
     letters: new Set(),
   });
+  const dismissMessageNotification = useCallback(() => {
+    setMessageNotificationQueue((current) => current.slice(1));
+  }, []);
+
+  selectedDateRef.current = selectedDate;
+  activeSectionRef.current = activeSection;
+  conversationViewRef.current = conversationView;
+  selectedThreadIdRef.current = selectedThreadId;
+  liveSearchActiveRef.current =
+    Boolean(String(searchQuery ?? "").trim()) ||
+    conversationView === "search" ||
+    conversationView === "global-search";
+
+  const refreshLiveEvents = useCallback(async (events) => {
+    const canNotifyConversationChanges =
+      conversationBaselineReadyRef.current &&
+      initialLiveRefreshCompleteRef.current;
+    const uniqueEvents = Array.from(
+      new Map(
+        events.map((event) => [
+          `${event.type}:${event.date || ""}:${event.mode || ""}:${event.threadId || ""}`,
+          event,
+        ]),
+      ).values(),
+    );
+    const hasResync = uniqueEvents.some((event) => event.type === "resync");
+    const currentDate = selectedDateRef.current;
+    let resyncDateIndex = null;
+    if (hasResync) {
+      try {
+        resyncDateIndex = await fetchDateIndex();
+        setRemoteDateIndexState(resyncDateIndex);
+      } catch {
+        // Keep current data and retry on the next event/reconnect.
+      }
+    }
+    const resyncConversationDates = resyncDateIndex
+      ? Array.from(
+          new Set([
+            currentDate.replace(/\./g, "-"),
+            ...Object.values(resyncDateIndex.conversationThreads ?? {})
+              .map((dates) => dates?.[dates.length - 1])
+              .filter(Boolean),
+          ]),
+        )
+      : [currentDate];
+    const expandedEventsRaw = hasResync
+      ? [
+          ...resyncConversationDates.map((date) => ({
+            type: "conversations",
+            date,
+          })),
+          { type: "diary", date: currentDate },
+          { type: "dailySummary", date: currentDate },
+          { type: "letters", date: currentDate },
+          { type: "timeline" },
+          { type: "reminders" },
+          { type: "profiles" },
+          { type: "moments" },
+          ...Object.values(staticModeApiMap).map((mode) => ({
+            type: "staticMemory",
+            mode,
+          })),
+          ...xiaoyeModes.map((mode) => ({
+            type: "xiaoye",
+            mode: xiaoyeModeMeta[mode].apiMode,
+          })),
+          ...uniqueEvents.filter((event) => event.type !== "resync"),
+        ]
+      : uniqueEvents;
+    const expandedEvents = Array.from(
+      new Map(
+        expandedEventsRaw.map((event) => [
+          `${event.type}:${event.date || ""}:${event.mode || ""}:${event.threadId || ""}`,
+          event,
+        ]),
+      ).values(),
+    );
+
+    const updateDatedMemory = (type, date, result) => {
+      const dotDate = toDotDate(date);
+      const stateSetter =
+        type === "diary"
+          ? setRemoteDiaryEntriesState
+          : type === "dailySummary"
+            ? setRemoteDailySummaryEntriesState
+            : setRemoteLetterEntriesState;
+      const cacheKey = type;
+
+      stateSetter((current) => {
+        const next = { ...current };
+        if (result?.found === true && result.entry) next[dotDate] = result.entry;
+        else delete next[dotDate];
+        return next;
+      });
+      setRemoteSearchCacheState((current) => {
+        const nextBucket = { ...current[cacheKey] };
+        if (result?.found === true && result.entry) nextBucket[dotDate] = result.entry;
+        else delete nextBucket[dotDate];
+        return { ...current, [cacheKey]: nextBucket };
+      });
+      setRemoteSearchMissingState((current) => {
+        const nextBucket = { ...current[cacheKey] };
+        if (result?.found === false) nextBucket[dotDate] = true;
+        else delete nextBucket[dotDate];
+        return { ...current, [cacheKey]: nextBucket };
+      });
+    };
+
+    const registerIncomingMessages = (date, records) => {
+      const dotDate = toDotDate(date);
+      const incomingByThread = new Map();
+
+      records.forEach((record, index) => {
+        const threadId = String(record?.threadId || "");
+        if (!threadId) return;
+        const recordKey = getLiveConversationRecordKey(
+          dotDate,
+          threadId,
+          record,
+          index,
+        );
+        const alreadyKnown = knownConversationRecordIdsRef.current.has(recordKey);
+        knownConversationRecordIdsRef.current.add(recordKey);
+
+        const visualKind = getConversationVisualKind(record);
+        const incoming =
+          !alreadyKnown &&
+          (record?.type === "assistant" || record?.role === "assistant") &&
+          !shouldHideConversationRecord(record) &&
+          !["thinking", "operation", "hidden"].includes(visualKind);
+        if (!incoming) return;
+
+        const items = incomingByThread.get(threadId) || [];
+        items.push(record);
+        incomingByThread.set(threadId, items);
+      });
+
+      if (!canNotifyConversationChanges || !incomingByThread.size) return;
+
+      incomingByThread.forEach((incomingRecords, threadId) => {
+        const viewingThread =
+          activeSectionRef.current === "Conversation" &&
+          conversationViewRef.current === "chat" &&
+          selectedThreadIdRef.current === threadId;
+        if (viewingThread) return;
+
+        const incomingCount = incomingRecords.length;
+        const latestRecord = incomingRecords[incomingRecords.length - 1];
+        setConversationUnreadCounts((current) => ({
+          ...current,
+          [threadId]: Number(current[threadId] || 0) + incomingCount,
+        }));
+
+        if (activeSectionRef.current === "Conversation") return;
+
+        const profile = threadProfilesRef.current[threadId] || {};
+        setMessageNotificationQueue((current) => {
+          const existingIndex = current.findIndex(
+            (item) => item.threadId === threadId,
+          );
+          const nextNotification = {
+            threadId,
+            date: dotDate,
+            name: profile.name || `对话 ${threadId.slice(0, 6)}`,
+            avatar: profile.avatar || "",
+            message: getLiveMessagePreview(latestRecord),
+            count: incomingCount,
+            version: Date.now(),
+          };
+
+          if (existingIndex < 0) return [...current, nextNotification];
+
+          return current.map((item, index) =>
+            index === existingIndex
+              ? {
+                  ...item,
+                  ...nextNotification,
+                  count: item.count + incomingCount,
+                  version: item.version + 1,
+                }
+              : item,
+          );
+        });
+      });
+    };
+
+    const tasks = expandedEvents.map(async (event) => {
+      if (event.type === "conversations" && event.date) {
+        const dotDate = toDotDate(event.date);
+        const records = await fetchConversations(dotDate);
+        registerIncomingMessages(dotDate, records);
+        const grouped = records.length ? groupConversationRecordsByThread(records) : {};
+        setRemoteConversationsState((current) => ({ ...current, [dotDate]: grouped }));
+        setRemoteSearchCacheState((current) => ({
+          ...current,
+          conversations: { ...current.conversations, [dotDate]: grouped },
+        }));
+        return;
+      }
+
+      if (["diary", "dailySummary", "letters"].includes(event.type) && event.date) {
+        const loader =
+          event.type === "diary"
+            ? fetchMemoryDiary
+            : event.type === "dailySummary"
+              ? fetchMemoryDailySummary
+              : fetchMemoryLetters;
+        updateDatedMemory(event.type, event.date, await loader(event.date));
+        return;
+      }
+
+      if (event.type === "timeline") {
+        const nextTimelineState = normalizeTimelineResponse(await fetchTimeline());
+        setRemoteTimelineStateValue(nextTimelineState);
+        setRemoteSearchCacheState((current) => ({
+          ...current,
+          timeline: nextTimelineState,
+        }));
+        return;
+      }
+
+      if (event.type === "staticMemory" && event.mode) {
+        const normalizedMode = event.mode === "patterrns" ? "patterns" : event.mode;
+        const modeEntry = Object.entries(staticModeApiMap).find(
+          ([, apiMode]) => apiMode === normalizedMode,
+        );
+        if (!modeEntry) return;
+        const result = await fetchMemoryStatic(normalizedMode);
+        const [mode] = modeEntry;
+        setRemoteStaticModeEntriesState((current) => {
+          const next = { ...current };
+          if (result?.found === true && result.entry) next[mode] = result.entry;
+          else delete next[mode];
+          return next;
+        });
+        return;
+      }
+
+      if (event.type === "xiaoye" && event.mode) {
+        const modeEntry = xiaoyeModes.find(
+          (mode) => xiaoyeModeMeta[mode].apiMode === event.mode,
+        );
+        if (!modeEntry) return;
+        const result = await fetchXiaoyeStatic(event.mode);
+        setRemoteXiaoyeEntriesState((current) => {
+          const next = { ...current };
+          if (result?.found === true && result.entry) next[modeEntry] = result.entry;
+          else delete next[modeEntry];
+          return next;
+        });
+        return;
+      }
+
+      if (event.type === "reminders") {
+        const result = await fetchReminderHistory();
+        setRemoteReminderHistoryEntriesState(
+          Array.isArray(result?.entries) ? result.entries : [],
+        );
+        return;
+      }
+
+      if (event.type === "profiles") {
+        window.dispatchEvent(new Event("murmurlane:profiles-changed"));
+        return;
+      }
+
+      if (event.type === "moments") {
+        const result = await fetchConversationMoments(3);
+        setConversationMoments(result.moments ?? []);
+      }
+    });
+
+    await Promise.allSettled(tasks);
+
+    if (
+      !resyncDateIndex &&
+      expandedEvents.some((event) =>
+        ["conversations", "diary", "dailySummary", "letters", "timeline"].includes(
+          event.type,
+        ),
+      )
+    ) {
+      try {
+        setRemoteDateIndexState(await fetchDateIndex());
+      } catch {
+        // A later file event or foreground resync will retry the lightweight index.
+      }
+    }
+    initialLiveRefreshCompleteRef.current = true;
+  }, []);
+
+  refreshLiveEventsRef.current = refreshLiveEvents;
+
+  useEffect(() => {
+    const schedulePendingRefresh = () => {
+      if (liveSearchActiveRef.current || document.hidden) return;
+      if (liveRefreshTimerRef.current) window.clearTimeout(liveRefreshTimerRef.current);
+      liveRefreshTimerRef.current = window.setTimeout(() => {
+        liveRefreshTimerRef.current = null;
+        if (liveSearchActiveRef.current || document.hidden) return;
+        const events = Array.from(pendingLiveEventsRef.current.values());
+        pendingLiveEventsRef.current.clear();
+        if (events.length) refreshLiveEventsRef.current?.(events);
+      }, 220);
+    };
+    const enqueue = (event) => {
+      const key = `${event.type}:${event.date || ""}:${event.mode || ""}:${event.threadId || ""}`;
+      pendingLiveEventsRef.current.set(key, event);
+      schedulePendingRefresh();
+    };
+    let unsubscribe = null;
+    const startSubscription = () => {
+      if (unsubscribe || document.hidden) return;
+      unsubscribe = subscribeToLiveUpdates(enqueue);
+    };
+    const stopSubscription = () => {
+      unsubscribe?.();
+      unsubscribe = null;
+    };
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        stopSubscription();
+        return;
+      }
+      enqueue({ type: "resync", id: Date.now() });
+      startSubscription();
+    };
+
+    startSubscription();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      stopSubscription();
+      if (liveRefreshTimerRef.current) {
+        window.clearTimeout(liveRefreshTimerRef.current);
+        liveRefreshTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (liveSearchActiveRef.current || document.hidden) return;
+    if (!pendingLiveEventsRef.current.size) return;
+    const timer = window.setTimeout(() => {
+      if (liveSearchActiveRef.current || document.hidden) return;
+      const events = Array.from(pendingLiveEventsRef.current.values());
+      pendingLiveEventsRef.current.clear();
+      if (events.length) refreshLiveEventsRef.current?.(events);
+    }, 220);
+    return () => window.clearTimeout(timer);
+  }, [searchQuery, conversationView]);
 
   useLayoutEffect(() => {
     if (typeof window === "undefined") return;
@@ -276,6 +709,30 @@ export default function InsDiaryPrototype() {
     threadProfiles,
     updateThreadProfile,
   } = useConversationProfiles(availableThreadIds);
+  threadProfilesRef.current = threadProfiles;
+
+  useEffect(() => {
+    const rememberEntries = (entries) => {
+      Object.entries(entries ?? {}).forEach(([date, threads]) => {
+        Object.entries(threads ?? {}).forEach(([threadId, records]) => {
+          (records ?? []).forEach((record, index) => {
+            knownConversationRecordIdsRef.current.add(
+              getLiveConversationRecordKey(date, threadId, record, index),
+            );
+          });
+        });
+      });
+    };
+
+    rememberEntries(remoteConversationsState);
+    rememberEntries(remoteSearchCacheState.conversations);
+  }, [remoteConversationsState, remoteSearchCacheState.conversations]);
+
+  useEffect(() => {
+    if (activeSection === "Conversation") {
+      setMessageNotificationQueue([]);
+    }
+  }, [activeSection]);
   const conversationThreadSummaries = useMemo(
     () => getConversationThreadSummaries(availableThreadIds, remoteData),
     [availableThreadIds, remoteData],
@@ -331,6 +788,13 @@ export default function InsDiaryPrototype() {
   const handleSelectThread = (threadId) => {
     threadSelectionTouchedRef.current = true;
     setSelectedThreadId(threadId);
+    setConversationUnreadCounts((current) => {
+      if (!current[threadId]) return current;
+      return { ...current, [threadId]: 0 };
+    });
+    setMessageNotificationQueue((current) =>
+      current.filter((item) => item.threadId !== threadId),
+    );
   };
   useEffect(() => {
     const dotDate = toDotDate(selectedDate);
@@ -610,6 +1074,13 @@ export default function InsDiaryPrototype() {
         Array.isArray(conversationsResult.value) &&
         conversationsResult.value.length
       ) {
+        conversationsResult.value.forEach((record, index) => {
+          const threadId = String(record?.threadId || "");
+          if (!threadId) return;
+          knownConversationRecordIdsRef.current.add(
+            getLiveConversationRecordKey(dotDate, threadId, record, index),
+          );
+        });
         const grouped = groupConversationRecordsByThread(
           conversationsResult.value,
         );
@@ -679,6 +1150,7 @@ export default function InsDiaryPrototype() {
           }));
         }
       });
+      conversationBaselineReadyRef.current = true;
     };
 
     loadDatedData();
@@ -1182,34 +1654,7 @@ export default function InsDiaryPrototype() {
     });
   };
 
-  const searchDataVersion = useMemo(
-    () =>
-      [
-        Object.keys(remoteConversationsState).length,
-        Object.keys(remoteDiaryEntriesState).length,
-        Object.keys(remoteDailySummaryEntriesState).length,
-        Object.keys(remoteLetterEntriesState).length,
-        Object.keys(remoteTimelineStateValue).length,
-        Object.keys(remoteStaticModeEntriesState).length,
-        Object.keys(remoteXiaoyeEntriesState).length,
-        Object.keys(remoteSearchCacheState.conversations).length,
-        Object.keys(remoteSearchCacheState.diary).length,
-        Object.keys(remoteSearchCacheState.dailySummary).length,
-        Object.keys(remoteSearchCacheState.letters).length,
-        Object.keys(remoteSearchCacheState.timeline).length,
-      ].join(":"),
-    [
-      remoteConversationsState,
-      remoteDiaryEntriesState,
-      remoteDailySummaryEntriesState,
-      remoteLetterEntriesState,
-      remoteTimelineStateValue,
-      remoteStaticModeEntriesState,
-      remoteXiaoyeEntriesState,
-      remoteReminderHistoryEntriesState,
-      remoteSearchCacheState,
-    ],
-  );
+  const searchDataVersion = getSearchDataVersion(remoteData);
 
   const styleTheme = useMemo(
     () =>
@@ -1304,6 +1749,15 @@ export default function InsDiaryPrototype() {
     setConversationView("chat");
   };
 
+  const handleOpenMessageNotification = (notification) => {
+    setActiveSection("Conversation");
+    handleSelectThread(notification.threadId);
+    if (notification.date) setSelectedDate(notification.date);
+    setConversationJumpDate(null);
+    setConversationPlaceholder(null);
+    setConversationView("chat");
+  };
+
   const loadConversationThreadDate = async (
     dateText,
     threadId = selectedThreadId,
@@ -1318,6 +1772,11 @@ export default function InsDiaryPrototype() {
     try {
       const records = await fetchConversations(date, {
         threadId,
+      });
+      records.forEach((record, index) => {
+        knownConversationRecordIdsRef.current.add(
+          getLiveConversationRecordKey(date, threadId, record, index),
+        );
       });
       const grouped = groupConversationRecordsByThread(records);
       setRemoteSearchCacheState((current) => ({
@@ -1351,6 +1810,7 @@ export default function InsDiaryPrototype() {
 
   const handleSelectConversationSearchResult = async (record) => {
     const date = toDotDate(record?.conversationDate || record?.timestamp?.slice(0, 10));
+    handleSelectThread(selectedThreadId);
     await loadConversationThreadDate(date);
     setSelectedDate(date);
     setConversationJumpDate(null);
@@ -1369,8 +1829,7 @@ export default function InsDiaryPrototype() {
     const date = toDotDate(
       record?.conversationDate || record?.timestamp?.slice(0, 10),
     );
-    threadSelectionTouchedRef.current = true;
-    setSelectedThreadId(threadId);
+    handleSelectThread(threadId);
     await loadConversationThreadDate(date, threadId);
     setSelectedDate(date);
     setConversationJumpDate(null);
@@ -1497,6 +1956,7 @@ export default function InsDiaryPrototype() {
                 userProfile={userProfile}
                 threadProfiles={threadProfiles}
                 threadSummaries={conversationThreadSummaries}
+                unreadCounts={conversationUnreadCounts}
                 moments={conversationMoments}
                 onBack={() => setActiveSection("Timeline")}
                 onEditProfile={() => setConversationSettingsMode("user")}
@@ -1523,6 +1983,8 @@ export default function InsDiaryPrototype() {
                   })
                 }
                 onSelectThread={openConversationThread}
+                onUpdateThreadProfile={updateThreadProfile}
+                onUpdateUserProfile={setUserProfile}
               />
             ) : conversationView === "global-search" ? (
               <ConversationGlobalSearchPage
@@ -1631,23 +2093,47 @@ export default function InsDiaryPrototype() {
         )
       }
       modalLayer={
-        <AnimatePresence>
-          {conversationSettingsMode === "user" && (
-            <ConversationSettingsModal
-              mode="user"
-              profile={userProfile}
-              onSave={setUserProfile}
-              onClose={() => setConversationSettingsMode(null)}
-            />
-          )}
-          {conversationSettingsMode === "thread" && threadProfiles[selectedThreadId] && (
-            <ConversationSettingsModal
-              mode="thread"
-              profile={threadProfiles[selectedThreadId]}
-              onSave={(profile) => updateThreadProfile(selectedThreadId, profile)}
-              onClose={() => setConversationSettingsMode(null)}
-            />
-          )}
+        <>
+          <MessageNotificationBanner
+            notification={
+              activeSection === "Conversation"
+                ? null
+                : messageNotificationQueue[0] ?? null
+            }
+            onOpen={handleOpenMessageNotification}
+            onDismiss={dismissMessageNotification}
+          />
+          <AnimatePresence>
+            {conversationSettingsMode === "user" && (
+              <ConversationSettingsModal
+                mode="user"
+                profile={userProfile}
+                onSave={setUserProfile}
+                onClose={() => setConversationSettingsMode(null)}
+              />
+            )}
+            {conversationSettingsMode === "thread" &&
+              threadProfiles[selectedThreadId] && (
+                <ConversationSettingsModal
+                  mode="thread"
+                  profile={threadProfiles[selectedThreadId]}
+                  onSave={async (profile) => {
+                    const saved = await updateThreadProfile(
+                      selectedThreadId,
+                      profile,
+                    );
+                    const group = String(profile.group || "").trim();
+                    if (group && !(userProfile.groups || []).includes(group)) {
+                      await setUserProfile({
+                        ...userProfile,
+                        groups: [...(userProfile.groups || []), group],
+                      });
+                    }
+                    return saved;
+                  }}
+                  onClose={() => setConversationSettingsMode(null)}
+                />
+              )}
           {datePickerOpen && (
             <DatePickerModal
               page={
@@ -1679,7 +2165,8 @@ export default function InsDiaryPrototype() {
                 onClose={closeDiaryShare}
               />
             )}
-        </AnimatePresence>
+          </AnimatePresence>
+        </>
       }
     />
   );

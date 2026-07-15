@@ -82,7 +82,7 @@ export function ConversationSearchResultList({
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-end px-1 text-[10px] text-black/28">
+      <div className="mb-4 flex items-center justify-end px-1 text-[10px] text-black/[0.28]">
         <span>{displayResults.length} 条结果</span>
       </div>
       {displayResults.map((record, index) => {
@@ -99,7 +99,7 @@ export function ConversationSearchResultList({
         return (
           <div key={`${date}-${record.id || index}`}>
             {date && date !== previousDate && (
-              <div className="mb-4 mt-6 text-center text-[11px] font-medium tracking-[0.04em] text-black/28">
+              <div className="mb-4 mt-6 text-center text-[11px] font-medium tracking-[0.04em] text-black/[0.28]">
                 {formatDate(date)}
               </div>
             )}

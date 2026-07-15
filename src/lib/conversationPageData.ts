@@ -16,6 +16,7 @@ import {
 } from "./date";
 import {
   getConversationDisplayText,
+  getConversationVisualKind,
   legacyConversationMessageToRecord,
   shouldHideConversationRecord,
 } from "./conversation";
@@ -360,7 +361,12 @@ export function getConversationThreadSummaries(
 
   return threadIds.map((threadId) => {
     const records = getConversationRecordsForThread(threadId, remoteData).filter(
-      (record) => !shouldHideConversationRecord(record),
+      (record) => {
+        if (shouldHideConversationRecord(record)) return false;
+        return !["thinking", "operation", "hidden"].includes(
+          getConversationVisualKind(record),
+        );
+      },
     );
     const latestRecord = records[records.length - 1] ?? null;
     const indexedDates = threadIndex[threadId] ?? [];

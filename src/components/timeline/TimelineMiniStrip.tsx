@@ -55,7 +55,7 @@ export function TimelineMiniStrip({ page }) {
 
   return (
     <div className="mb-5 border-b pb-4" style={{ borderColor: page.line }}>
-      <div className="relative h-12 rounded-full bg-white/24">
+      <div className="relative h-12 rounded-full bg-white/[0.24]">
         <div
           className="absolute left-0 right-0 top-[24px] border-t border-dashed"
           style={{ borderColor: page.line }}
@@ -83,7 +83,7 @@ export function TimelineMiniStrip({ page }) {
         })}
       </div>
       <div
-        className="mt-1 grid font-mono text-[9px] text-black/42"
+        className="mt-1 grid font-mono text-[9px] text-black/[0.42]"
         style={{ gridTemplateColumns: "repeat(13, minmax(0, 1fr))" }}
       >
         {ticks.map((hour) => (

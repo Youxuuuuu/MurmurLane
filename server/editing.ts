@@ -1,9 +1,7 @@
-import { copyFile, mkdir, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import {
-  fileExists,
-  getCyberbossDataRoot,
   readTextFile,
   resolveDataPath,
 } from "./fileLoaders.js";
@@ -228,27 +226,7 @@ function assertEditableMemoryDocumentSpec(
   throw new Error("Unsupported editable document.");
 }
 
-async function backupExistingFile(filePath: string) {
-  if (!(await fileExists(filePath))) {
-    return null;
-  }
-
-  const rootPath = getCyberbossDataRoot();
-  const relativePath = path.relative(rootPath, filePath);
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const backupPath = path.join(
-    resolveDataPath(".murmurlane-backups"),
-    stamp,
-    relativePath,
-  );
-
-  await mkdir(path.dirname(backupPath), { recursive: true });
-  await copyFile(filePath, backupPath);
-  return backupPath;
-}
-
 async function writeWhitelistedFile(filePath: string, content: string) {
-  await backupExistingFile(filePath);
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(filePath, normalizeLineEndings(content), "utf8");
 }

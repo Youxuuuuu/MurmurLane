@@ -85,7 +85,7 @@ function ThinkingPanel({ message, face = ">ᴗo ಣ >", standalone = false }) {
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="flex items-center gap-1.5 font-mono text-[10px] leading-none tracking-[0.08em] text-black/34"
+        className="flex items-center gap-1.5 font-mono text-[10px] leading-none tracking-[0.08em] text-black/[0.34]"
       >
         <span>{face}</span>
         <span className="text-[11px]">{open ? "⌄" : "›"}</span>
@@ -126,7 +126,7 @@ export function ChatBubble({
     return (
       <div className="flex justify-center py-1">
         <div
-          className="border bg-white/35 px-2.5 py-1 font-mono text-[9px] tracking-[0.08em] text-black/38"
+          className="border bg-white/35 px-2.5 py-1 font-mono text-[9px] tracking-[0.08em] text-black/[0.38]"
           style={{ borderColor: page.line }}
         >
           {displayText}
@@ -158,7 +158,7 @@ export function ChatBubble({
       <div className="flex justify-center py-0.5">
         <button
           type="button"
-          className="max-w-[342px] px-2 text-center font-mono text-[9px] font-semibold tracking-[0.04em] text-black/42"
+          className="max-w-[342px] px-2 text-center font-mono text-[9px] font-semibold tracking-[0.04em] text-black/[0.42]"
           onClick={() => setActionOpen((value) => !value)}
         >
           <div className="flex items-center justify-center gap-2">
@@ -169,7 +169,7 @@ export function ChatBubble({
             <span className="break-all leading-[1.25]">{displayText}</span>
           </div>
           {actionOpen && operationPaths.length > 0 && (
-            <div className="mt-1 space-y-0.5 text-[8px] font-normal leading-[1.25] tracking-normal text-black/34">
+            <div className="mt-1 space-y-0.5 text-[8px] font-normal leading-[1.25] tracking-normal text-black/[0.34]">
               {operationPaths.map((path) => (
                 <div key={path} className="break-all">
                   {path}
@@ -207,14 +207,14 @@ export function ChatBubble({
             {splitBubbleText(displayText).map((part, index) => (
               <div
                 key={`${message.id}-quote-part-${index}`}
-                className="inline-block rounded-[7px] border border-black/[0.06] bg-[#f3f3f2] px-3 py-2 text-left font-sans text-[14px] leading-[1.55] text-black/78"
+                className="inline-block rounded-[7px] border border-black/[0.06] bg-[#f3f3f2] px-3 py-2 text-left font-sans text-[14px] leading-[1.55] text-black/[0.78]"
               >
                 {part}
               </div>
             ))}
           </div>
           <div
-            className="ml-auto mt-1 max-w-[260px] border-l-4 bg-white/35 px-2 py-1.5 text-left font-mono text-[8px] text-black/42"
+            className="ml-auto mt-1 max-w-[260px] border-l-4 bg-white/35 px-2 py-1.5 text-left font-mono text-[8px] text-black/[0.42]"
             style={{ borderLeftColor: page.line }}
           >
             {quoteText}
@@ -243,7 +243,7 @@ export function ChatBubble({
         onAvatarClick={fromUser ? undefined : onEditThread}
       >
         <div
-          className="flex max-w-[204px] items-center gap-2 border bg-white/72 px-3 py-2 text-left"
+          className="flex max-w-[204px] items-center gap-2 border bg-white/[0.72] px-3 py-2 text-left"
           style={{ borderColor: page.line }}
         >
           <div
@@ -253,7 +253,7 @@ export function ChatBubble({
             {String(fileName).split(".").pop()}
           </div>
           <div className="min-w-0">
-            <div className="truncate text-[12px] leading-4 text-black/72">
+            <div className="truncate text-[12px] leading-4 text-black/[0.72]">
               {fileName}
             </div>
             <div className="mt-0.5 font-mono text-[8px] uppercase tracking-[0.1em] text-black/35">
@@ -357,7 +357,7 @@ export function ChatBubble({
         {splitBubbleText(displayText).map((part, index) => (
           <div
             key={`${message.id}-part-${index}`}
-            className={`${fromUser ? "border border-black/[0.06] bg-[#f3f3f2] text-black/78" : "border bg-white/[0.73] text-black/72"} w-fit max-w-full rounded-[7px] px-3 py-2 text-left font-sans text-[14px] leading-[1.55] shadow-[0_1px_0_rgba(0,0,0,.02)]`}
+            className={`${fromUser ? "border border-black/[0.06] bg-[#f3f3f2] text-black/[0.78]" : "border bg-white/[0.73] text-black/[0.72]"} w-fit max-w-full rounded-[7px] px-3 py-2 text-left font-sans text-[14px] leading-[1.55] shadow-[0_1px_0_rgba(0,0,0,.02)]`}
             style={{ borderColor: fromUser ? "rgba(0,0,0,.06)" : page.line }}
           >
             {part}

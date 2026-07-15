@@ -11,6 +11,7 @@ import type {
   SearchConversationOptions,
   FetchTimelineOptions,
   MemoryApiResponse,
+  LiveUpdateEvent,
   ReminderHistoryApiResponse,
   TimelineEventApiResponse,
   TimelineApiResponse,
@@ -327,6 +328,27 @@ export function resolveApiFileUrl(filePath: string) {
   return buildApiUrl(
     `/api/file?path=${encodeURIComponent(String(filePath ?? ""))}`,
   );
+}
+
+export function subscribeToLiveUpdates(
+  onEvent: (event: LiveUpdateEvent) => void,
+  onConnectionChange?: (connected: boolean) => void,
+) {
+  const source = new EventSource(buildApiUrl("/api/events"));
+
+  source.addEventListener("open", () => onConnectionChange?.(true));
+  source.addEventListener("error", () => onConnectionChange?.(false));
+  source.addEventListener("change", (event) => {
+    try {
+      onEvent(JSON.parse((event as MessageEvent<string>).data) as LiveUpdateEvent);
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.debug("[MurmurLane Debug] ignored invalid live update", error);
+      }
+    }
+  });
+
+  return () => source.close();
 }
 
 export { API_BASE_URL, buildApiUrl };

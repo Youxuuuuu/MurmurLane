@@ -10,6 +10,7 @@ export type ConversationIdentity = {
   handle: string;
   signature: string;
   avatar: string;
+  groups?: string[];
 };
 
 export type ConversationThreadProfile = ConversationIdentity & {
@@ -17,6 +18,8 @@ export type ConversationThreadProfile = ConversationIdentity & {
   backgroundImage: string;
   backgroundPositionX: number;
   backgroundPositionY: number;
+  group: string;
+  pinned: boolean;
   thinkingFace: string;
 };
 
@@ -28,6 +31,7 @@ export const defaultUserProfile: ConversationIdentity = {
   handle: "@user_213",
   signature: "你是下雨时的屋檐，方大同",
   avatar: "",
+  groups: [],
 };
 
 const defaultThreadNames = [
@@ -53,6 +57,8 @@ export function createDefaultThreadProfile(
     backgroundImage: "",
     backgroundPositionX: 50,
     backgroundPositionY: 50,
+    group: "",
+    pinned: false,
     thinkingFace: ">ᴗo ಣ >",
   };
 }
@@ -89,9 +95,8 @@ export function useConversationProfiles(threadIds: string[]) {
 
   useEffect(() => {
     let cancelled = false;
-
-    fetchConversationProfiles()
-      .then((result) => {
+    const refreshProfiles = () => {
+      fetchConversationProfiles().then((result) => {
         if (cancelled) return;
         if (result.user) {
           setUserProfile((current) => ({ ...current, ...result.user }));
@@ -105,9 +110,14 @@ export function useConversationProfiles(threadIds: string[]) {
       .catch((error) => {
         if (!cancelled) setProfileError(String(error?.message || error));
       });
+    };
+
+    refreshProfiles();
+    window.addEventListener("murmurlane:profiles-changed", refreshProfiles);
 
     return () => {
       cancelled = true;
+      window.removeEventListener("murmurlane:profiles-changed", refreshProfiles);
     };
   }, []);
 

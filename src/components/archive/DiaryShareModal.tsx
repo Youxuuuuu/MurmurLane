@@ -219,7 +219,7 @@ export function DiaryShareModal({ page, onClose, selectedText = "" }) {
 
   return (
     <motion.div
-      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/24 px-5 py-[calc(20px+env(safe-area-inset-top))]"
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/[0.24] px-5 py-[calc(20px+env(safe-area-inset-top))]"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -239,7 +239,7 @@ export function DiaryShareModal({ page, onClose, selectedText = "" }) {
       >
         <PaperTexture mode="warm" />
         <div className="relative mb-3 flex items-center justify-between">
-          <div className="font-mono text-[9px] uppercase tracking-[0.18em] text-black/38">
+          <div className="font-mono text-[9px] uppercase tracking-[0.18em] text-black/[0.38]">
             share {shareModeLabel}
           </div>
           <button
@@ -278,7 +278,7 @@ export function DiaryShareModal({ page, onClose, selectedText = "" }) {
         </div>
           <div
         ref={previewViewportRef}
-        className="relative max-h-[68vh] overflow-y-auto overflow-x-hidden px-2 py-2"
+        className="share-scroll relative max-h-[68vh] overflow-y-auto overflow-x-hidden px-2 py-2"
       >
         <div
           className="mx-auto"
@@ -302,7 +302,7 @@ export function DiaryShareModal({ page, onClose, selectedText = "" }) {
               <div className="absolute left-1/2 top-3 h-4 w-4 -translate-x-1/2 rounded-full bg-[#f3eee4] shadow-inner" />
               <div className="absolute left-1/2 top-1 h-px w-24 -translate-x-1/2 rotate-[-8deg] bg-[#9b8064]/45" />
               <div className="absolute left-1/2 top-1 h-px w-24 -translate-x-1/2 rotate-[8deg] bg-[#9b8064]/40" />
-              <div className="relative mt-3 font-mono text-[9px] uppercase tracking-[0.18em] text-black/38">
+              <div className="relative mt-3 font-mono text-[9px] uppercase tracking-[0.18em] text-black/[0.38]">
                 {page.date} · {shareModeLabel} archive
               </div>
               <h3
@@ -313,7 +313,7 @@ export function DiaryShareModal({ page, onClose, selectedText = "" }) {
               </h3>
               <DiaryShareText
                 text={excerpt}
-                className="relative mt-4 text-left font-serif text-[12px] leading-[1.72] tracking-[0.02em] text-black/62"
+                className="relative mt-4 text-left font-serif text-[12px] leading-[1.72] tracking-[0.02em] text-black/[0.62]"
               />
               <div
                 className="relative mt-5 font-serif text-[18px] leading-none"
@@ -321,7 +321,7 @@ export function DiaryShareModal({ page, onClose, selectedText = "" }) {
               >
                 ✦
               </div>
-              <div className="relative mt-4 font-mono text-[8px] uppercase tracking-[0.18em] text-black/34">
+              <div className="relative mt-4 font-mono text-[8px] uppercase tracking-[0.18em] text-black/[0.34]">
                 from memory carrier
               </div>
             </div>
@@ -345,10 +345,10 @@ export function DiaryShareModal({ page, onClose, selectedText = "" }) {
               </div>
               <div className="relative flex items-start justify-between gap-4">
                 <div>
-                  <div className="font-mono text-[9px] uppercase tracking-[0.18em] text-black/38">
+                  <div className="font-mono text-[9px] uppercase tracking-[0.18em] text-black/[0.38]">
                     rain {shareModeLabel}
                   </div>
-                  <div className="mt-1 font-mono text-[9px] tracking-[0.16em] text-black/34">
+                  <div className="mt-1 font-mono text-[9px] tracking-[0.16em] text-black/[0.34]">
                     {page.date}
                   </div>
                 </div>
@@ -361,9 +361,9 @@ export function DiaryShareModal({ page, onClose, selectedText = "" }) {
               </h3>
               <DiaryShareText
                 text={longText}
-                className="relative mt-4 font-serif text-[11px] leading-[1.62] tracking-[0.02em] text-black/62"
+                className="relative mt-4 font-serif text-[11px] leading-[1.62] tracking-[0.02em] text-black/[0.62]"
               />
-              <div className="relative mt-5 flex items-center gap-2 font-mono text-[8px] uppercase tracking-[0.16em] text-black/34">
+              <div className="relative mt-5 flex items-center gap-2 font-mono text-[8px] uppercase tracking-[0.16em] text-black/[0.34]">
                 <span className="h-px flex-1 bg-[#9bbdb9]/45" />
                 <span>rain marks / soft archive</span>
                 <span className="h-px flex-1 bg-[#9bbdb9]/45" />
@@ -375,10 +375,10 @@ export function DiaryShareModal({ page, onClose, selectedText = "" }) {
 
               <div className="relative flex items-start justify-between gap-3">
                 <div>
-                  <div className="font-mono text-[9px] uppercase tracking-[0.16em] text-black/36">
+                  <div className="font-mono text-[9px] uppercase tracking-[0.16em] text-black/[0.36]">
                     {page.date}
                   </div>
-                  <div className="mt-1 font-mono text-[8px] uppercase tracking-[0.16em] text-black/28">
+                  <div className="mt-1 font-mono text-[8px] uppercase tracking-[0.16em] text-black/[0.28]">
                     handwritten archive
                   </div>
                 </div>
@@ -391,12 +391,12 @@ export function DiaryShareModal({ page, onClose, selectedText = "" }) {
               </h3>
               <DiaryShareText
                 text={longText}
-                className="relative mt-4 font-serif text-[11px] leading-6 tracking-[0.02em] text-black/62"
+                className="relative mt-4 font-serif text-[11px] leading-6 tracking-[0.02em] text-black/[0.62]"
               />
               <div className="relative mt-5 flex items-center justify-between gap-3">
                 <span className="font-serif text-[15px] text-[#8a745f]">✧</span>
                 <span className="h-px flex-1 bg-[#b9a58d]/45" />
-                <span className="font-mono text-[8px] uppercase tracking-[0.16em] text-black/34">
+                <span className="font-mono text-[8px] uppercase tracking-[0.16em] text-black/[0.34]">
                   memory note
                 </span>
               </div>

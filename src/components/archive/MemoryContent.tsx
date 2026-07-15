@@ -111,7 +111,7 @@ export function DiaryProseContent({ page, highlightResult }) {
                 />
               </h3>
             )}
-            <p className="whitespace-pre-line text-[12px] leading-[2.05] tracking-[0.02em] text-black/66">
+            <p className="whitespace-pre-line text-[12px] leading-[2.05] tracking-[0.02em] text-black/[0.66]">
               <HighlightText
                 text={item.text}
                 query={active ? highlightResult?.query : ""}
@@ -135,7 +135,7 @@ export function SummaryMemoryContent({ page, highlightResult }) {
           <section
             id={`hit-${targetId}`}
             key={item.no}
-            className="border bg-white/32 px-3 py-3 transition"
+            className="border bg-white/[0.32] px-3 py-3 transition"
             style={{
               borderColor: active ? page.color : page.line,
               background: active ? `${page.color}12` : "rgba(255,255,255,.28)",
@@ -200,13 +200,13 @@ export function ChecklistMemoryContent({
               onClick={() => onToggleOpenLoop?.(item.no, !checked)}
             />
             <p
-              className={`min-w-0 flex-1 text-[11px] leading-[1.75] ${checked ? "text-[#6f6862]" : "text-black/56"}`}
+              className={`min-w-0 flex-1 text-[11px] leading-[1.75] ${checked ? "text-[#6f6862]" : "text-black/[0.56]"}`}
             >
               <span
                 className={`font-serif text-[12px] font-bold ${
                   checked
                     ? "text-[#5f5953] opacity-60 line-through decoration-[#928982]"
-                    : "text-black/68"
+                    : "text-black/[0.68]"
                 }`}
               >
                 <HighlightText
@@ -306,7 +306,7 @@ export function ContinuousStaticMemoryContent({ page, highlightResult }) {
                 <p
                   id={`hit-${targetId}`}
                   key={item.no}
-                  className="flex gap-2 text-[11px] leading-[1.9] text-black/56 transition"
+                  className="flex gap-2 text-[11px] leading-[1.9] text-black/[0.56] transition"
                   style={{
                     background: active ? `${page.color}10` : "transparent",
                   }}
@@ -360,7 +360,7 @@ export function GroupedMemoryContent({ page, highlightResult }) {
                 color={page.color}
               />
             </h3>
-            <p className="mt-2 text-[11px] leading-[1.78] text-black/56">
+            <p className="mt-2 text-[11px] leading-[1.78] text-black/[0.56]">
               <HighlightText
                 text={item.text}
                 query={active ? highlightResult?.query : ""}
@@ -409,7 +409,7 @@ export function ProjectMemoryContent({ page, highlightResult }) {
                 style={{ background: page.line }}
               />
             </div>
-            <p className="mt-2 text-[11px] leading-[1.78] text-black/56">
+            <p className="mt-2 text-[11px] leading-[1.78] text-black/[0.56]">
               <HighlightText
                 text={stripMemoryItemDate(item.text)}
                 query={active ? highlightResult?.query : ""}
@@ -438,7 +438,7 @@ export function DatedMemoryContent({ page, highlightResult }) {
             className="grid grid-cols-[58px_1fr] gap-3 transition"
             style={{ background: active ? `${page.color}10` : "transparent" }}
           >
-            <div className="pt-[2px] font-mono text-[8px] leading-4 tracking-[0.08em] text-black/34">
+            <div className="pt-[2px] font-mono text-[8px] leading-4 tracking-[0.08em] text-black/[0.34]">
               {dateText || `NO.${pad2(item.no)}`}
             </div>
             <div className="min-w-0 border-b pb-3 last:border-b-0" style={{ borderBottomColor: page.line }}>
@@ -449,7 +449,7 @@ export function DatedMemoryContent({ page, highlightResult }) {
                   color={page.color}
                 />
               </h3>
-              <p className="mt-1 text-[11px] leading-[1.7] text-black/54">
+              <p className="mt-1 text-[11px] leading-[1.7] text-black/[0.54]">
                 <HighlightText
                   text={stripMemoryItemDate(item.text)}
                   query={active ? highlightResult?.query : ""}

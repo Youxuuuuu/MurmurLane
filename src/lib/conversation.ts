@@ -293,7 +293,7 @@ export function getConversationMediaItems(
     ...attachments.map((item, index) => ({
       ...item,
       sourceType: "attachment",
-      mediaKey: `attachment-${index}-${item?.fileName || item?.relativePath || item?.path || ""}`,
+      mediaKey: `attachment-${index}-${item?.fileName || item?.relativePath || item?.path || item?.url || ""}`,
     })),
     ...stickers.map((item, index) => ({
       ...item,
@@ -303,7 +303,7 @@ export function getConversationMediaItems(
     ...files.map((item, index) => ({
       ...item,
       sourceType: "file",
-      mediaKey: `file-${index}-${item?.fileName || item?.relativePath || item?.path || ""}`,
+      mediaKey: `file-${index}-${item?.fileName || item?.relativePath || item?.path || item?.url || ""}`,
     })),
   ];
 }
@@ -311,26 +311,22 @@ export function getConversationMediaItems(
 export function getConversationMediaPath(item: ConversationMediaItem) {
   return (
     item?.url ||
-    item?.filePath ||
     item?.path ||
-    item?.localPath ||
-    item?.savedPath ||
     item?.relativePath ||
     ""
   );
 }
 
 export function isImageLikeMedia(item: ConversationMediaItem) {
-  const mimeType = String(item?.mimeType || item?.contentType || "").toLowerCase();
+  const contentType = String(item?.contentType || "").toLowerCase();
   const filePath = String(
     item?.fileName || item?.relativePath || item?.path || item?.url || "",
   ).toLowerCase();
 
   return Boolean(
-    item?.isImage ||
+      item?.isImage ||
       item?.kind === "image" ||
-      item?.type === "image" ||
-      mimeType.startsWith("image/") ||
+      contentType.startsWith("image/") ||
       /\.(png|jpg|jpeg|webp|bmp|svg)$/i.test(filePath),
   );
 }
@@ -342,7 +338,6 @@ export function isStickerLikeMedia(item: ConversationMediaItem) {
 
   return Boolean(
     item?.kind === "sticker" ||
-      item?.type === "sticker" ||
       item?.sourceType === "sticker" ||
       /\.gif$/i.test(filePath),
   );
