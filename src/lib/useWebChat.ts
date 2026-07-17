@@ -15,6 +15,7 @@ import {
   resolveThreadSubscriptionCursor,
   settleWebChatDrafts,
 } from "./webChatRecords";
+import { resolveWebChatActivityStatus } from "./webChatStatus";
 import type { ConversationRecord } from "../types/conversation";
 import type {
   WebChatEvent,
@@ -192,13 +193,16 @@ export function useWebChat({
         return;
       }
 
-      if (event.kind === "turn.started" || event.kind === "typing") {
-        setStatus((current) => ({ ...(current || {}), threadId: targetThreadId, status: "running" }));
-        return;
-      }
-
-      if (event.kind === "turn.completed") {
-        setStatus((current) => ({ ...(current || {}), threadId: targetThreadId, status: "idle" }));
+      if (
+        event.kind === "turn.started"
+        || event.kind === "turn.completed"
+        || event.kind === "typing"
+      ) {
+        setStatus((current) => ({
+          ...(current || {}),
+          threadId: targetThreadId,
+          status: resolveWebChatActivityStatus(event, current?.status) || current?.status,
+        }));
         return;
       }
 
