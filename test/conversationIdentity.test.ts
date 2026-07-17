@@ -39,13 +39,13 @@ test("draft and canonical user records keep one render identity", () => {
   assert.equal(reconciled[0].text, "canonical text");
 });
 
-test("assistant identity is item-scoped inside its turn", () => {
+test("assistant identity follows its native item across transport and canonical turns", () => {
   const live: ConversationRecord = {
     id: "web-assistant-random",
     itemId: "item-7",
     type: "assistant",
     threadId: "thread-1",
-    turnId: "turn-2",
+    turnId: "turn-transport",
     text: "live",
   };
   const archived: ConversationRecord = {
@@ -53,12 +53,12 @@ test("assistant identity is item-scoped inside its turn", () => {
     itemId: "item-7",
     type: "assistant",
     threadId: "thread-1",
-    turnId: "turn-2",
+    turnId: "prompt-canonical",
     text: "archived",
     sourceKey: "claudecode|session.jsonl|14|assistant|assistant",
   };
 
-  const expected = "assistant:thread-1:turn-2:item-7";
+  const expected = "assistant:thread-1:item-7";
   assert.equal(getConversationRenderId(live), expected);
   assert.equal(getConversationRenderId(archived), expected);
 });
@@ -118,7 +118,7 @@ test("live and archived records reconcile without changing the logical mount key
     itemId: "item-1",
     type: "assistant",
     threadId: "thread-1",
-    turnId: "turn-1",
+    turnId: "turn-transport-1",
     timestamp: "2026-07-17T00:00:02.000Z",
     text: "live text",
     meta: { itemId: "item-1", ephemeral: true, webChatLive: true },
@@ -129,7 +129,7 @@ test("live and archived records reconcile without changing the logical mount key
     sourceKey: "claudecode|session|9|assistant",
     type: "assistant",
     threadId: "thread-1",
-    turnId: "turn-1",
+    turnId: "prompt-canonical-1",
     timestamp: "2026-07-17T00:00:02.000Z",
     text: "canonical text",
     meta: { itemId: "item-1", sourceKey: "claudecode|session|9|assistant" },
@@ -170,6 +170,6 @@ test("legacy compatibility matching adopts itemId instead of content as identity
   const reconciled = mergeConversationRecords([archivedLegacy, live], "thread-2");
 
   assert.equal(reconciled.length, 1);
-  assert.equal(getConversationRenderId(reconciled[0]), "assistant:thread-2:turn-2:item-2");
+  assert.equal(getConversationRenderId(reconciled[0]), "assistant:thread-2:item-2");
   assert.equal(getConversationRenderId(reconciled[0]).includes("same text"), false);
 });

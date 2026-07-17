@@ -40,9 +40,8 @@ export function getConversationRenderId(
 
   const itemId = getConversationItemId(record);
   const threadId = getConversationThreadId(record, selectedThreadId);
-  const turnId = getConversationTurnId(record);
-  if (type === "assistant" && itemId && threadId && turnId) {
-    return `assistant:${threadId}:${turnId}:${itemId}`;
+  if (type === "assistant" && itemId && threadId) {
+    return `assistant:${threadId}:${itemId}`;
   }
 
   const legacyStableId = getLegacyStableId(record);
