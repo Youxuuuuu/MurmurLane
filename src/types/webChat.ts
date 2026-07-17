@@ -7,10 +7,39 @@ export interface WebChatMedia extends ConversationMediaItem {
 
 export interface WebChatMessageInput {
   messageId?: string;
+  segmentId?: string;
   text: string;
   quote?: ConversationQuote | null;
   attachments?: WebChatMedia[];
   receivedAt?: string;
+}
+
+export interface WebChatBubbleSegment {
+  segmentId: string;
+  text: string;
+  quote?: ConversationQuote | null;
+  attachments?: WebChatMedia[];
+}
+
+export interface WebChatLogicalMessageInput {
+  messageId: string;
+  text: string;
+  quote?: ConversationQuote | null;
+  attachments?: WebChatMedia[];
+  receivedAt: string;
+  bubbleSegments: WebChatBubbleSegment[];
+}
+
+export interface WebChatSendEnvelope {
+  requestId: string;
+  messageId: string;
+  logicalTurnId: string;
+  threadId?: string;
+  clientId: string;
+  newThread?: boolean;
+  model?: string;
+  modelProvider?: string;
+  messages: [WebChatLogicalMessageInput];
 }
 
 export interface WebChatUsage {
@@ -75,6 +104,11 @@ export interface WebChatEvent {
 
 export interface WebChatSendResult {
   accepted: boolean;
+  status?: "accepted" | "failed" | "unknown" | string;
+  requestId?: string;
+  messageId?: string;
+  logicalTurnId?: string;
+  deduplicated?: boolean;
   queued?: boolean;
   threadId?: string;
   turnId?: string;

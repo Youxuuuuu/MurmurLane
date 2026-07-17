@@ -38,6 +38,17 @@ export interface ConversationMediaItem {
 export interface ConversationRecordMeta {
   messageId?: string;
   itemId?: string;
+  requestId?: string;
+  logicalTurnId?: string;
+  transportTurnId?: string;
+  canonicalTurnId?: string;
+  displayTurnId?: string;
+  bubbleSegments?: Array<{
+    segmentId: string;
+    text: string;
+    quote?: ConversationQuote | null;
+    attachments?: ConversationMediaItem[];
+  }>;
   sourceKey?: string;
   deliveryState?: "sending" | "sent" | "failed" | string;
   visibleAs?: string;
