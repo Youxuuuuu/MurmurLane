@@ -303,7 +303,9 @@ export function ConversationComposer({
       String(selected?.modelProvider || selected?.provider || ""),
     );
   };
-  const spring = reduceMotion ? { duration: 0.12 } : { type: "spring" as const, stiffness: 460, damping: 38, mass: 0.8 };
+  const spring = reduceMotion
+    ? { duration: 0.08 }
+    : { type: "spring" as const, duration: 0.24, bounce: 0 };
   const panelEnter = reduceMotion
     ? { duration: 0.08 }
     : { duration: 0.16, ease: [0.23, 1, 0.32, 1] as const };
@@ -324,7 +326,7 @@ export function ConversationComposer({
           </button>
           <AnimatePresence>
             {detailsOpen ? (
-              <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 5 }} className="absolute bottom-[calc(100%+7px)] left-0 z-20 w-[min(88vw,310px)] rounded-[20px] bg-white/95 p-3 shadow-[0_14px_42px_rgba(61,56,73,.14)] backdrop-blur-xl">
+              <motion.div initial={{ opacity: 0, transform: "translateY(5px)" }} animate={{ opacity: 1, transform: "translateY(0px)" }} exit={{ opacity: 0, transform: "translateY(5px)" }} transition={spring} className="absolute bottom-[calc(100%+7px)] left-0 z-20 w-[min(88vw,310px)] rounded-[20px] bg-white/95 p-3 shadow-[0_14px_42px_rgba(61,56,73,.14)] backdrop-blur-xl">
                 <div className="mb-2 text-[11px] font-medium text-black/45">模型与上下文</div>
                 <select value={currentModel === "默认模型" ? "" : currentModel} disabled={!onChooseModel} onChange={(event) => handleModelChange(event.target.value)} className="w-full rounded-[13px] bg-black/[0.04] px-3 py-2 text-[16px] font-normal text-black/70 outline-none">
                   {!currentModel || currentModel === "默认模型" ? <option value="">默认模型</option> : null}
@@ -365,7 +367,7 @@ export function ConversationComposer({
           </div>
           <button type="button" onClick={() => { setPanel((value) => value === "stickers" ? null : "stickers"); setDetailsOpen(false); }} className={`composer-icon-button ${panel === "stickers" ? "bg-[#eee9f3] text-[#725f87]" : "text-black/48"}`} aria-label="表情包"><Icon name="smile" /></button>
           <button type="button" onClick={() => void toggleRecording()} className={`composer-icon-button ${recording ? "bg-[#d8868c] text-white" : "text-black/48"}`} aria-label={recording ? "停止录音" : "录制语音"}><Icon name="mic" /></button>
-          <motion.button type="button" whileTap={reduceMotion ? undefined : { scale: 0.94 }} onClick={() => void sendAll()} disabled={!canSend} className="composer-icon-button bg-[#d8c9e6] text-white transition-colors disabled:bg-[#ebe6ef] disabled:text-white/75" aria-label={queuedMessages.length ? "合并发送" : "发送"}><Icon name="send" /></motion.button>
+          <motion.button type="button" whileTap={reduceMotion ? undefined : { transform: "scale(0.97)" }} onClick={() => void sendAll()} disabled={!canSend} className="composer-icon-button bg-[#d8c9e6] text-white transition-colors disabled:bg-[#ebe6ef] disabled:text-white/75" aria-label={queuedMessages.length ? "合并发送" : "发送"}><Icon name="send" /></motion.button>
         </div>
         {displayError ? <div className="mt-1.5 px-3 text-[10px] text-[#b45f68]" role="alert">{displayError}</div> : null}
       </div>
@@ -415,9 +417,11 @@ export function ConversationComposer({
               <motion.button
                 key={message.messageId}
                 type="button"
-                initial={{ opacity: 0, x: 14, y: 6 }}
-                animate={sendingQueue ? { opacity: 0, scale: 0.96, x: 40, y: -4 } : { opacity: 0.9, x: 0, y: 0 }}
-                exit={{ opacity: 0, scale: 0.94, x: 8 }}
+                initial={{ opacity: 0, transform: "translate(14px, 6px)" }}
+                animate={sendingQueue
+                  ? { opacity: 0, transform: "translate(40px, -4px) scale(0.96)" }
+                  : { opacity: 0.9, transform: "translate(0px, 0px) scale(1)" }}
+                exit={{ opacity: 0, transform: "translateX(8px) scale(0.94)" }}
                 transition={sendingQueue ? { duration: 0.2, delay: index * 0.05, ease: [0.22, 0.8, 0.2, 1] } : spring}
                 onPointerDown={(event) => {
                   event.preventDefault();

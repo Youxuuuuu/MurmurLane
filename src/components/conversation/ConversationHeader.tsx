@@ -5,6 +5,10 @@ import type {
 import { ConversationAvatar } from "./ConversationAvatar";
 import { ConversationNavBar } from "./ConversationNavBar";
 import { AnimatePresence, motion } from "framer-motion";
+import {
+  chatStatusEnterTransition,
+  chatStatusExitTransition,
+} from "../../lib/chatMotion";
 
 function SearchDotsIcon() {
   return (
@@ -82,13 +86,12 @@ export function ConversationHeader({
             {threadProfile.name}
           </div>
           <div className="relative mt-1 min-h-[16px] truncate text-[12px] font-semibold tracking-[0.05em] text-black/[0.32]">
-            <AnimatePresence mode="wait" initial={false}>
+            <AnimatePresence initial={false}>
               <motion.span
                 key={isTyping ? "typing" : "handle"}
                 initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.16 }}
+                animate={{ opacity: 1, transition: chatStatusEnterTransition }}
+                exit={{ opacity: 0, transition: chatStatusExitTransition }}
                 className="absolute inset-0 block truncate"
               >
                 {isTyping ? "正在输入…" : `${threadProfile.handle} >`}

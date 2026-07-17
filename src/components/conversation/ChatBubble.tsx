@@ -20,6 +20,12 @@ import { createBubbleId, getConversationRenderId } from "../../lib/conversationI
 import { ThinkingPanel } from "./ThinkingPanel";
 import { bubbleRevealLedger, type BubbleRevealSlot } from "../../lib/BubbleRevealLedger";
 import { useBubbleRevealLedger } from "../../lib/useBubbleRevealLedger";
+import {
+  bubbleRevealInitial,
+  bubbleRevealTarget,
+  bubbleRevealTransition,
+  shouldAdvanceBubbleReveal,
+} from "../../lib/chatMotion";
 
 export function BubbleRow({
   message,
@@ -114,6 +120,9 @@ function RevealedBubblePart({
     shouldAnimateRef.current = slot.status === "queued"
       && bubbleRevealLedger.claimEntering(renderId, slot.bubbleId);
   }
+  const [motionFinished, setMotionFinished] = useState(
+    () => !shouldAnimateRef.current,
+  );
   const finishEntering = () => {
     if (!shouldAnimateRef.current || completedRef.current) return;
     completedRef.current = true;
@@ -129,7 +138,11 @@ function RevealedBubblePart({
   }, [renderId, slot.bubbleId]);
 
   const shouldAnimate = shouldAnimateRef.current;
-  const isActivelyAnimating = shouldAnimate && !completedRef.current;
+  const isActivelyAnimating = shouldAnimate && !motionFinished;
+  const handleAnimationComplete = () => {
+    finishEntering();
+    setMotionFinished(true);
+  };
   return (
     <motion.div
       data-bubble-id={slot.bubbleId}
@@ -141,15 +154,20 @@ function RevealedBubblePart({
         willChange: isActivelyAnimating ? "transform, opacity" : style?.willChange,
       }}
       initial={shouldAnimate
-        ? { opacity: 0, transform: "translateY(8px) scale(0.975)" }
+        ? bubbleRevealInitial
         : false}
       animate={shouldAnimate
-        ? { opacity: 1, transform: "translateY(0px) scale(1)" }
+        ? bubbleRevealTarget
         : undefined}
       transition={shouldAnimate
-        ? { type: "spring", stiffness: 460, damping: 38, mass: 0.8 }
+        ? bubbleRevealTransition
         : undefined}
-      onAnimationComplete={finishEntering}
+      onUpdate={(latest) => {
+        if (shouldAnimate && shouldAdvanceBubbleReveal(latest.opacity)) {
+          finishEntering();
+        }
+      }}
+      onAnimationComplete={handleAnimationComplete}
     >
       {children}
     </motion.div>
