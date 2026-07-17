@@ -17,6 +17,7 @@ import { MusicShareCard } from "./MusicShareCard";
 import { ConversationAvatar } from "./ConversationAvatar";
 import { ConversationPhotoGallery } from "./PhotoStack";
 import { createBubbleId, getConversationRenderId } from "../../lib/conversationIdentity";
+import { ThinkingPanel } from "./ThinkingPanel";
 
 export function BubbleRow({
   message,
@@ -90,29 +91,6 @@ function parseInlineQuote(value) {
   };
 }
 
-function ThinkingPanel({ message, face = ">ᴗo ಣ >", standalone = false }) {
-  const [open, setOpen] = useState(false);
-  const text = getConversationDisplayText(message);
-
-  return (
-    <div className={standalone ? "max-w-[min(86vw,520px)] px-3 py-2" : "mb-2"}>
-      <button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        className="flex items-center gap-1.5 font-mono text-[10px] font-semibold leading-none tracking-[0.08em] text-black/[0.34]"
-      >
-        <span>{face}</span>
-        <span className="text-[11px]">{open ? "⌄" : "›"}</span>
-      </button>
-      {open && (
-        <div className="mt-2 whitespace-pre-line font-serif text-[10px] font-normal leading-[1.5] text-black/45">
-          {text}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function ChatBubbleContent({
   message,
   bubbleIdentityKey = "",
@@ -122,7 +100,6 @@ function ChatBubbleContent({
   threadProfile,
   onEditThread,
   onQuote = undefined,
-  thinkingMessage = null,
   animateBubbleSequence = false,
 }) {
   const visualKind = getConversationVisualKind(message);
@@ -164,28 +141,12 @@ function ChatBubbleContent({
         }
       : { initial: false };
   const messageTextParts = displayText ? splitBubbleText(displayText) : [];
-  const renderAttachedThinking = () =>
-    !fromUser && thinkingMessage ? (
-      <motion.div
-        key={bubbleMotionKey("__thinking__", 0)}
-        style={{
-          transformOrigin: "left bottom",
-          willChange: isAnimatingBubbleSequence ? "transform, opacity" : undefined,
-        }}
-        {...bubbleMotion("__thinking__", 0)}
-      >
-        <ThinkingPanel
-          message={thinkingMessage}
-          face={threadProfile?.thinkingFace}
-        />
-      </motion.div>
-    ) : null;
   const renderMessageTextBubbles = () =>
     messageTextParts.map((part, index) => (
       <motion.div
         key={bubbleMotionKey("__text__", index)}
         data-bubble-text={part}
-        className={`${fromUser ? "border border-black/[0.06] bg-[#f3f3f2] text-black/[0.78]" : `${thinkingMessage && index === 0 ? "-mt-2.5 " : ""}border bg-white/[0.73] text-black/[0.72]`} w-fit max-w-full rounded-[7px] px-3 py-1.5 text-left font-sans text-[14px] font-normal leading-[1.55] shadow-[0_1px_0_rgba(0,0,0,.02)]`}
+        className={`${fromUser ? "border border-black/[0.06] bg-[#f3f3f2] text-black/[0.78]" : "border bg-white/[0.73] text-black/[0.72]"} w-fit max-w-full rounded-[7px] px-3 py-1.5 text-left font-sans text-[14px] font-normal leading-[1.55] shadow-[0_1px_0_rgba(0,0,0,.02)]`}
         style={{
           borderColor: fromUser ? "rgba(0,0,0,.06)" : page.line,
           transformOrigin: fromUser ? "right bottom" : "left bottom",
@@ -265,7 +226,8 @@ function ChatBubbleContent({
     return (
       <div className="flex justify-start">
         <ThinkingPanel
-          message={message}
+          records={[message]}
+          panelId={createBubbleId(getConversationRenderId(message), "thinking-panel")}
           face={threadProfile?.thinkingFace}
           standalone
         />
@@ -327,7 +289,6 @@ function ChatBubbleContent({
         onAvatarClick={fromUser ? undefined : onEditThread}
       >
         <div className={`flex max-w-[min(78vw,360px)] flex-col gap-2 ${fromUser ? "items-end" : "items-start"}`}>
-          {renderAttachedThinking()}
           {renderMessageTextBubbles()}
           <motion.div
             key={bubbleMotionKey("__voice__", messageTextParts.length)}
@@ -366,7 +327,6 @@ function ChatBubbleContent({
         onAvatarClick={fromUser ? undefined : onEditThread}
       >
         <div className={`flex max-w-[min(78vw,360px)] flex-col gap-2 ${fromUser ? "items-end" : "items-start"}`}>
-          {renderAttachedThinking()}
           {renderMessageTextBubbles()}
           <motion.div
             key={bubbleMotionKey("__file__", messageTextParts.length)}
@@ -412,7 +372,6 @@ function ChatBubbleContent({
           onAvatarClick={fromUser ? undefined : onEditThread}
         >
           <div className={`flex max-w-[min(92vw,360px)] flex-col gap-2 ${fromUser ? "items-end" : "items-start"}`}>
-            {renderAttachedThinking()}
             {renderMessageTextBubbles()}
             <motion.div
               key={bubbleMotionKey("__image__", messageTextParts.length)}
@@ -459,7 +418,6 @@ function ChatBubbleContent({
         onAvatarClick={fromUser ? undefined : onEditThread}
       >
         <div className={`flex max-w-[min(78vw,360px)] flex-col gap-2 ${fromUser ? "items-end" : "items-start"}`}>
-          {renderAttachedThinking()}
           {renderMessageTextBubbles()}
           <motion.div
             key={bubbleMotionKey("__media__", messageTextParts.length)}
@@ -510,7 +468,6 @@ function ChatBubbleContent({
       onAvatarClick={fromUser ? undefined : onEditThread}
     >
       <div className={`flex max-w-[min(78vw,360px)] flex-col gap-2 ${fromUser ? "items-end" : "items-start"}`}>
-        {renderAttachedThinking()}
         {renderMessageTextBubbles()}
         {onQuote ? (
           <button type="button" onClick={() => onQuote(message)} className="text-[9px] font-semibold text-black/30 underline-offset-2 hover:underline">

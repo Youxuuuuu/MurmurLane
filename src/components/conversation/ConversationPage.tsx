@@ -2,7 +2,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useReducedMotion } from "framer-motion";
 import {
-  getConversationVisualKind,
   shouldHideConversationRecord,
 } from "../../lib/conversation";
 import {
@@ -13,6 +12,7 @@ import { getConversationRenderId } from "../../lib/conversationIdentity";
 import { CardScrollArea } from "../layout/CardScrollArea";
 import { PageCard } from "../layout/PageCard";
 import { ChatBubble } from "./ChatBubble";
+import { AssistantTurn } from "./AssistantTurn";
 import { ConversationComposer } from "./ConversationComposer";
 import { ConversationEmptyState } from "./ConversationEmptyState";
 import {
@@ -20,6 +20,10 @@ import {
   groupConversationDisplayRecords,
   messageMatchesConversationDisplayTarget,
 } from "../../lib/conversationDisplayGroups";
+import {
+  buildAssistantTurnDisplayModel,
+  expandRangeToAssistantTurnBoundaries,
+} from "../../lib/assistantTurnModel";
 
 const CONVERSATION_RECENT_RENDER_LIMIT = 200;
 const CONVERSATION_HIT_CONTEXT_LIMIT = 80;
@@ -36,49 +40,6 @@ function formatDateDivider(dateText) {
 function formatFloatingDate(dateText) {
   const [year, month, day] = String(dateText).split(".").map(Number);
   return year && month && day ? `${year}/${month}/${day}` : "";
-}
-
-function sharesConversationTurn(left, right) {
-  const leftTurn = String(left?.turnId || "").trim();
-  const rightTurn = String(right?.turnId || "").trim();
-  if (leftTurn && rightTurn) return leftTurn === rightTurn;
-  return !leftTurn && !rightTurn;
-}
-
-function findAttachedThinkingIndex(messages, assistantIndex) {
-  const assistant = messages[assistantIndex];
-  if (!assistant || getConversationVisualKind(assistant) !== "assistant") return -1;
-  const date = getMessageDate(assistant);
-
-  for (let index = assistantIndex - 1; index >= 0; index -= 1) {
-    const candidate = messages[index];
-    if (getMessageDate(candidate) !== date) break;
-    const kind = getConversationVisualKind(candidate);
-    if (kind === "thinking" && sharesConversationTurn(candidate, assistant)) {
-      return index;
-    }
-    if (kind === "assistant" || candidate?.type === "user") break;
-  }
-
-  return -1;
-}
-
-function findAttachedAssistantIndex(messages, thinkingIndex) {
-  const thinking = messages[thinkingIndex];
-  if (!thinking || getConversationVisualKind(thinking) !== "thinking") return -1;
-  const date = getMessageDate(thinking);
-
-  for (let index = thinkingIndex + 1; index < messages.length; index += 1) {
-    const candidate = messages[index];
-    if (getMessageDate(candidate) !== date) break;
-    const kind = getConversationVisualKind(candidate);
-    if (kind === "assistant") {
-      return sharesConversationTurn(thinking, candidate) ? index : -1;
-    }
-    if (candidate?.type === "user") break;
-  }
-
-  return -1;
 }
 
 function getBubbleAnimationEntries(messages, selectedThreadId) {
@@ -187,13 +148,29 @@ export function ConversationPage({
     );
     return { start, end };
   }, [visibleMessages.length, visibleRange]);
+  const renderedRange = useMemo(
+    () => expandRangeToAssistantTurnBoundaries(
+      visibleMessages,
+      clampedVisibleRange,
+      selectedThreadId,
+    ),
+    [clampedVisibleRange, selectedThreadId, visibleMessages],
+  );
   const renderedMessages = useMemo(
     () =>
       visibleMessages.slice(
-        clampedVisibleRange.start,
-        clampedVisibleRange.end,
+        renderedRange.start,
+        renderedRange.end,
       ),
-    [visibleMessages, clampedVisibleRange],
+    [visibleMessages, renderedRange],
+  );
+  const renderedDisplayItems = useMemo(
+    () => buildAssistantTurnDisplayModel(
+      renderedMessages,
+      selectedThreadId,
+      renderedRange.start,
+    ),
+    [renderedMessages, renderedRange.start, selectedThreadId],
   );
   const renderedBubbleAnimationEntries = useMemo(
     () => getBubbleAnimationEntries(renderedMessages, selectedThreadId),
@@ -632,6 +609,78 @@ export function ConversationPage({
     });
   };
 
+  const renderRecordEntry = (entry, showDateDivider = true) => {
+    const message = entry.record;
+    const animationKey = getConversationRenderId(message, selectedThreadId);
+    const isBubbleMessage = ["assistant", "user"].includes(message.type);
+    const isUnseenBubble =
+      isBubbleMessage &&
+      bubbleAnimationThreadRef.current === selectedThreadId &&
+      !observedBubbleKeysRef.current.has(animationKey);
+    const animateBubbleSequence = Boolean(
+      isUnseenBubble &&
+        (!awaitingInitialBubbleBatchRef.current || message.meta?.webChatLive) &&
+        !reduceMotion &&
+        !historyLoadInFlightRef.current &&
+        !pendingDateTargetRef.current &&
+        !targetDate &&
+        !hasConversationHit,
+    );
+    const date = getMessageDate(message);
+    const previousDate = entry.index > 0
+      ? getMessageDate(visibleMessages[entry.index - 1])
+      : "";
+    const shouldShowDateDivider = Boolean(
+      showDateDivider && date && date !== previousDate,
+    );
+    const active =
+      highlightResult?.mode === "Conversation" &&
+      messageMatchesConversationDisplayTarget(
+        message,
+        highlightResult?.targetId,
+      ) &&
+      highlightResult?.threadId === selectedThreadId;
+    return (
+      <div key={animationKey} data-message-render-id={animationKey}>
+        {shouldShowDateDivider && (
+          <div
+            id={`conversation-date-${date}`}
+            className="my-5 text-center font-sans text-[11px] font-semibold tracking-[0.04em] text-black/[0.28]"
+          >
+            {formatDateDivider(date)}
+          </div>
+        )}
+        <div
+          id={`hit-message-${message.id}`}
+          data-conversation-date={date}
+          className="relative mb-4 border-l-2 pl-1 transition"
+          style={{
+            borderLeftColor: active ? page.color : "transparent",
+            background: active ? `${page.color}12` : "transparent",
+          }}
+        >
+          <ChatBubble
+            message={message}
+            bubbleIdentityKey={animationKey}
+            page={page}
+            messages={visibleMessages}
+            userProfile={userProfile}
+            threadProfile={threadProfile}
+            onEditThread={onEditThread}
+            onQuote={(nextMessage) => {
+              setQuoteMessage(nextMessage);
+              setActiveAction(null);
+            }}
+            activeActionId={activeAction?.id || null}
+            onActionOpen={setActiveAction}
+            onActionClose={() => setActiveAction(null)}
+            animateBubbleSequence={animateBubbleSequence}
+          />
+        </div>
+      </div>
+    );
+  };
+
   return (
     <PageCard
       page={page}
@@ -659,66 +708,22 @@ export function ConversationPage({
             background: "transparent",
           }}
         >
-          {renderedMessages.map((message, localIndex) => {
-            const globalIndex = clampedVisibleRange.start + localIndex;
-            const animationKey = getConversationRenderId(message, selectedThreadId);
-            const isBubbleMessage = ["assistant", "user"].includes(message.type);
-            const isUnseenBubble =
-              isBubbleMessage &&
-              bubbleAnimationThreadRef.current === selectedThreadId &&
-              !observedBubbleKeysRef.current.has(animationKey);
-            const animateBubbleSequence = Boolean(
-              isUnseenBubble &&
-                (!awaitingInitialBubbleBatchRef.current || message.meta?.webChatLive) &&
-                !reduceMotion &&
-                !historyLoadInFlightRef.current &&
-                !pendingDateTargetRef.current &&
-                !targetDate &&
-                !hasConversationHit,
-            );
-            const visualKind = getConversationVisualKind(message);
-            const attachedAssistantIndex =
-              visualKind === "thinking"
-                ? findAttachedAssistantIndex(visibleMessages, globalIndex)
-                : -1;
-            if (visualKind === "thinking" && attachedAssistantIndex !== -1) {
-              return null;
+          {renderedDisplayItems.map((item) => {
+            if (item.kind === "record") {
+              return renderRecordEntry(item.entry);
             }
-            if (
-              visualKind === "thinking" &&
-              Boolean(message.meta?.webChatLive) &&
-              ["running", "streaming"].includes(webChat?.status?.status)
-            ) {
-              // Live thinking waits for its matching final bubble. Historical
-              // standalone thinking remains visible instead of being swallowed.
-              return null;
-            }
-            const attachedThinkingIndex =
-              visualKind === "assistant"
-                ? findAttachedThinkingIndex(visibleMessages, globalIndex)
-                : -1;
-            const attachedThinking =
-              attachedThinkingIndex !== -1
-                ? visibleMessages[attachedThinkingIndex]
-                : null;
-            const dateAnchorIndex = attachedThinkingIndex !== -1
-              ? attachedThinkingIndex
-              : globalIndex;
-            const date = getMessageDate(message);
-            const previousDate =
-              dateAnchorIndex > 0
-                ? getMessageDate(visibleMessages[dateAnchorIndex - 1])
-                : "";
+            const firstEntry = item.entries[0];
+            const date = getMessageDate(firstEntry.record);
+            const previousDate = item.firstIndex > 0
+              ? getMessageDate(visibleMessages[item.firstIndex - 1])
+              : "";
             const showDateDivider = Boolean(date && date !== previousDate);
-            const active =
-              highlightResult?.mode === "Conversation" &&
-              messageMatchesConversationDisplayTarget(
-                message,
-                highlightResult?.targetId,
-              ) &&
-              highlightResult?.threadId === selectedThreadId;
             return (
-              <div key={animationKey}>
+              <div
+                key={item.renderId}
+                data-turn-render-id={item.renderId}
+                data-conversation-date={date}
+              >
                 {showDateDivider && (
                   <div
                     id={`conversation-date-${date}`}
@@ -727,34 +732,11 @@ export function ConversationPage({
                     {formatDateDivider(date)}
                   </div>
                 )}
-                <div
-                  id={`hit-message-${message.id}`}
-                  data-conversation-date={date}
-                  className="relative mb-4 border-l-2 pl-1 transition"
-                  style={{
-                    borderLeftColor: active ? page.color : "transparent",
-                    background: active ? `${page.color}12` : "transparent",
-                  }}
-                >
-                  <ChatBubble
-                    message={message}
-                    bubbleIdentityKey={animationKey}
-                    page={page}
-                    messages={visibleMessages}
-                    userProfile={userProfile}
-                    threadProfile={threadProfile}
-                    onEditThread={onEditThread}
-                    onQuote={(nextMessage) => {
-                      setQuoteMessage(nextMessage);
-                      setActiveAction(null);
-                    }}
-                    activeActionId={activeAction?.id || null}
-                    onActionOpen={setActiveAction}
-                    onActionClose={() => setActiveAction(null)}
-                    thinkingMessage={attachedThinking}
-                    animateBubbleSequence={animateBubbleSequence}
-                  />
-                </div>
+                <AssistantTurn
+                  turn={item}
+                  thinkingFace={threadProfile?.thinkingFace}
+                  renderRecord={(entry) => renderRecordEntry(entry, false)}
+                />
               </div>
             );
           })}
