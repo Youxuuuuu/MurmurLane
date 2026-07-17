@@ -4,6 +4,7 @@ import type {
   WebChatMedia,
   WebChatMessageInput,
   WebChatModelResponse,
+  WebChatSendResult,
   WebChatStatus,
 } from "../types/webChat";
 
@@ -79,13 +80,7 @@ export function sendWebChatMessages({
   modelProvider?: string;
   messages: WebChatMessageInput[];
 }) {
-  return requestChatJson<{
-    accepted: boolean;
-    queued?: boolean;
-    threadId?: string;
-    turnId?: string;
-    clientMessageId?: string;
-  }>("/api/chat/messages", {
+  return requestChatJson<WebChatSendResult>("/api/chat/messages", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

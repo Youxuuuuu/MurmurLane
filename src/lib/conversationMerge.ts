@@ -2,6 +2,11 @@ import {
   getConversationDisplayText,
   getConversationQuoteText,
 } from "./conversation";
+import {
+  getConversationItemId,
+  getConversationMessageId,
+  getConversationRenderId,
+} from "./conversationIdentity";
 import type { ConversationRecord } from "../types/conversation";
 
 function normalizeMergeText(value: unknown) {
@@ -62,7 +67,7 @@ function getSourceKey(message: ConversationRecord) {
 }
 
 function getMessageId(message: ConversationRecord) {
-  return String(message?.meta?.messageId || "").trim();
+  return getConversationMessageId(message);
 }
 
 function getThreadId(message: ConversationRecord, selectedThreadId: string) {
@@ -104,55 +109,7 @@ export function getConversationMergeKey(
   message: ConversationRecord,
   selectedThreadId = "",
 ) {
-  const type = getRecordType(message);
-  const threadId = getThreadId(message, selectedThreadId);
-  const uiMergeKey = String(message?.meta?.uiMergeKey || "").trim();
-  if (uiMergeKey) {
-    return uiMergeKey;
-  }
-  const sourceKey = getSourceKey(message);
-  // One runtime turn can contain more than one assistant record (for example
-  // an internal "No response requested" placeholder followed by the actual
-  // answer). Canonical source rows are distinct messages and must never be
-  // collapsed merely because their turnId matches.
-  if (type === "assistant" && sourceKey) {
-    return `source:${sourceKey}`;
-  }
-  const turnId = String(message?.turnId || "").trim();
-  if (type === "assistant" && turnId) {
-    // A streamed reply and the persisted/final reply can have different text
-    // and different IDs. The runtime turn is their stable identity.
-    return `assistant:turn:${threadId}:${turnId}`;
-  }
-
-  const messageId = getMessageId(message);
-  if (messageId) {
-    return `${type}:message:${messageId}`;
-  }
-
-  if (sourceKey) {
-    return `source:${sourceKey}`;
-  }
-
-  const recordId = String(message?.id || "").trim();
-  if (recordId) {
-    return `${type}:id:${recordId}`;
-  }
-
-  const text = normalizeMergeText(
-    getConversationDisplayText(message) || message?.text,
-  );
-  const quote = normalizeMergeText(getConversationQuoteText(message));
-  const media = getMediaSignature(message);
-  return [
-    type,
-    threadId,
-    message?.timestamp || message?.createdAt || "",
-    text,
-    quote,
-    media,
-    message?.id || "",
-  ].join(":");
+  return getConversationRenderId(message, selectedThreadId);
 }
 
 function hasCanonicalSource(message: ConversationRecord) {
@@ -203,6 +160,17 @@ function recordsRepresentSameMessage(
   const liveQuote = normalizeMergeText(getConversationQuoteText(live));
   const canonicalSourceKey = getSourceKey(canonical);
   const liveSourceKey = getSourceKey(live);
+  const canonicalMessageId = getMessageId(canonical);
+  const liveMessageId = getMessageId(live);
+  const canonicalItemId = getConversationItemId(canonical);
+  const liveItemId = getConversationItemId(live);
+
+  if (canonicalMessageId && liveMessageId) {
+    return canonicalMessageId === liveMessageId;
+  }
+  if (canonicalItemId && liveItemId && canonicalTurnId && liveTurnId) {
+    return canonicalItemId === liveItemId && canonicalTurnId === liveTurnId;
+  }
 
   if (canonicalSourceKey && liveSourceKey && canonicalSourceKey === liveSourceKey) {
     return true;

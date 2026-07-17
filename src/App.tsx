@@ -84,6 +84,7 @@ import {
   getConversationVisualKind,
   shouldHideConversationRecord,
 } from "./lib/conversation";
+import { getConversationRenderId } from "./lib/conversationIdentity";
 
 const ENABLE_APP_DEBUG_LOG = false;
 const searchDataVersions = new WeakMap();
@@ -116,23 +117,8 @@ function normalizeTimelineResponse(response) {
   };
 }
 
-function getLiveConversationRecordKey(date, threadId, record, index = 0) {
-  const fallbackParts = [
-    record?.timestamp || record?.createdAt || "",
-    record?.turnId || "",
-    record?.type || record?.role || "",
-    getConversationDisplayText(record),
-  ]
-    .map((value) => String(value || "").trim())
-    .filter(Boolean);
-  const stableIdentity =
-    record?.id ||
-    record?.meta?.messageId ||
-    record?.meta?.sourceKey ||
-    record?.source?.sourceKey ||
-    fallbackParts.join("|") ||
-    index;
-  return `${toDotDate(date)}:${threadId}:${stableIdentity}`;
+function getLiveConversationRecordKey(date, threadId, record) {
+  return `${toDotDate(date)}:${getConversationRenderId(record, threadId)}`;
 }
 
 function rememberConversationRecords(knownSet, date, records = []) {

@@ -7,6 +7,13 @@ import {
   subscribeToWebChat,
 } from "../data/chatApi";
 import { mergeConversationRecords } from "./conversationMerge";
+import {
+  upsertConversationRecordByIdentity,
+} from "./conversationIdentity";
+import {
+  createWebChatDraftRecord,
+  settleWebChatDrafts,
+} from "./webChatRecords";
 import type { ConversationRecord } from "../types/conversation";
 import type {
   WebChatEvent,
@@ -20,6 +27,12 @@ function createClientId() {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : `web-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function createMessageId() {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `message-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
 function hasDetailedUsage(usage: WebChatUsage | null | undefined) {
@@ -61,10 +74,12 @@ function appendRecord(
   if (!threadId) return current;
   const nextRecord = { ...record, threadId };
   const existing = current[threadId] ?? [];
-  if (existing.some((item) => item.id === nextRecord.id)) return current;
   return {
     ...current,
-    [threadId]: mergeConversationRecords([...existing, nextRecord], threadId),
+    [threadId]: mergeConversationRecords(
+      upsertConversationRecordByIdentity(existing, nextRecord, threadId),
+      threadId,
+    ),
   };
 }
 
@@ -100,13 +115,18 @@ export function useWebChat({
         setMessagesByThread((current) => {
           const draftMessages = draftThreadId ? current[draftThreadId] ?? [] : [];
           const actualMessages = current[eventThreadId] ?? [];
-          const merged = [...actualMessages];
+          let merged = [...actualMessages];
           draftMessages.forEach((record) => {
-            if (!merged.some((item) => item.id === record.id)) {
-              merged.push({ ...record, threadId: eventThreadId });
-            }
+            merged = upsertConversationRecordByIdentity(
+              merged,
+              { ...record, threadId: eventThreadId },
+              eventThreadId,
+            );
           });
-          const next = { ...current, [eventThreadId]: merged };
+          const next = {
+            ...current,
+            [eventThreadId]: mergeConversationRecords(merged, eventThreadId),
+          };
           if (draftThreadId && draftThreadId !== eventThreadId) delete next[draftThreadId];
           return next;
         });
@@ -123,10 +143,16 @@ export function useWebChat({
         setMessagesByThread((current) => {
           const liveRecord: ConversationRecord = {
             ...event.record,
+            messageId: event.record.messageId || event.record.meta?.messageId,
+            itemId: event.record.itemId || event.itemId || event.record.meta?.itemId,
             meta: {
               ...(event.record.meta || {}),
               ephemeral: true,
               webChatLive: true,
+              deliveryState:
+                event.record.type === "user"
+                  ? "sent"
+                  : event.record.meta?.deliveryState,
             },
           };
           return appendRecord(current, targetThreadId, liveRecord);
@@ -223,22 +249,55 @@ export function useWebChat({
       newThread?: boolean;
     }) => {
       setError("");
-      const result = await sendWebChatMessages({
-        threadId: currentThreadIdRef.current,
-        clientId: clientIdRef.current,
-        newThread,
-        model,
-        modelProvider,
-        messages,
+      const draftThreadId = currentThreadIdRef.current;
+      const identifiedMessages = messages.map((message) => ({
+        ...message,
+        messageId: String(message.messageId || createMessageId()),
+        receivedAt: message.receivedAt || new Date().toISOString(),
+      }));
+      const messageIds = identifiedMessages.map((message) => message.messageId);
+      setMessagesByThread((current) => {
+        let next = current;
+        for (const message of identifiedMessages) {
+          const draft = createWebChatDraftRecord(message, draftThreadId);
+          next = appendRecord(next, draftThreadId, draft);
+        }
+        return next;
       });
-      if (result.threadId && result.threadId !== currentThreadIdRef.current && newThread) {
-        onThreadCreated?.({
-          draftThreadId: currentThreadIdRef.current,
-          threadId: result.threadId,
-          clientId: result.clientMessageId,
+
+      try {
+        const result = await sendWebChatMessages({
+          threadId: draftThreadId,
+          clientId: clientIdRef.current,
+          newThread,
+          model,
+          modelProvider,
+          messages: identifiedMessages,
         });
+        const targetThreadId = String(result.threadId || draftThreadId);
+        setMessagesByThread((current) => settleWebChatDrafts(current, {
+          sourceThreadId: draftThreadId,
+          targetThreadId,
+          messageIds,
+          turnId: String(result.turnId || ""),
+          deliveryState: "sent",
+        }));
+        if (targetThreadId && targetThreadId !== draftThreadId && newThread) {
+          onThreadCreated?.({
+            draftThreadId,
+            threadId: targetThreadId,
+            clientId: result.clientId || clientIdRef.current,
+          });
+        }
+        return result;
+      } catch (nextError) {
+        setMessagesByThread((current) => settleWebChatDrafts(current, {
+          sourceThreadId: draftThreadId,
+          messageIds,
+          deliveryState: "failed",
+        }));
+        throw nextError;
       }
-      return result;
     },
     [onThreadCreated],
   );

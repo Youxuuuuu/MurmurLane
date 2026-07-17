@@ -35,6 +35,7 @@ export interface WebChatStatus {
   usage?: WebChatUsage | null;
   pendingApproval?: unknown;
   webClients?: number;
+  eventCursor?: number;
 }
 
 export interface WebChatModel {
@@ -70,4 +71,14 @@ export interface WebChatEvent {
   model?: string;
   modelProvider?: string;
   [key: string]: unknown;
+}
+
+export interface WebChatSendResult {
+  accepted: boolean;
+  queued?: boolean;
+  threadId?: string;
+  turnId?: string;
+  clientId?: string;
+  clientMessageId?: string;
+  messageIds?: string[];
 }

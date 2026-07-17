@@ -36,6 +36,10 @@ export interface ConversationMediaItem {
 }
 
 export interface ConversationRecordMeta {
+  messageId?: string;
+  itemId?: string;
+  sourceKey?: string;
+  deliveryState?: "sending" | "sent" | "failed" | string;
   visibleAs?: string;
   displayText?: string;
   quote?: ConversationQuote;
@@ -53,6 +57,9 @@ export interface ConversationRecordMeta {
 
 export interface ConversationRecord {
   id: string;
+  messageId?: string;
+  itemId?: string;
+  sourceKey?: string;
   type?: ConversationRecordRole;
   role?: string;
   timestamp?: string;
@@ -63,6 +70,10 @@ export interface ConversationRecord {
   workspaceRoot?: string;
   text?: string;
   meta?: ConversationRecordMeta;
+  source?: {
+    sourceKey?: string;
+    [key: string]: unknown;
+  };
   [key: string]: unknown;
 }
 

@@ -9,6 +9,7 @@ import {
   getConversationMergeKey,
   mergeConversationRecords,
 } from "../../lib/conversationMerge";
+import { getConversationRenderId } from "../../lib/conversationIdentity";
 import { CardScrollArea } from "../layout/CardScrollArea";
 import { PageCard } from "../layout/PageCard";
 import { ChatBubble } from "./ChatBubble";
@@ -660,7 +661,7 @@ export function ConversationPage({
         >
           {renderedMessages.map((message, localIndex) => {
             const globalIndex = clampedVisibleRange.start + localIndex;
-            const animationKey = getConversationMergeKey(message, selectedThreadId);
+            const animationKey = getConversationRenderId(message, selectedThreadId);
             const isBubbleMessage = ["assistant", "user"].includes(message.type);
             const isUnseenBubble =
               isBubbleMessage &&

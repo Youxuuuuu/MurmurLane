@@ -11,6 +11,13 @@ import type { StickerAsset } from "../../data/api";
 import type { ConversationQuoteObject, ConversationRecord } from "../../types/conversation";
 import type { WebChatMedia, WebChatMessageInput, WebChatModel, WebChatModelResponse, WebChatStatus } from "../../types/webChat";
 import { StickerPanel } from "./StickerPanel";
+import {
+  createBubbleId,
+  getConversationItemId,
+  getConversationMessageId,
+  getConversationRenderId,
+  getLegacyStableId,
+} from "../../lib/conversationIdentity";
 
 const FALLBACK_MODEL_IDS = [
   "qwen3.6-flash",
@@ -50,6 +57,18 @@ function mediaLabel(media: WebChatMedia) {
   if (media.kind === "sticker") return "表情包";
   if (media.kind === "image") return "图片";
   return String(media.fileName || media.sourceFileName || "文件");
+}
+
+function mediaIdentity(media: WebChatMedia) {
+  return String(
+    media.mediaKey
+    || media.absolutePath
+    || media.path
+    || media.relativePath
+    || media.url
+    || media.fileName
+    || media.label,
+  );
 }
 
 export function ConversationComposer({
@@ -98,11 +117,17 @@ export function ConversationComposer({
     const textValue = getConversationDisplayText(quoteMessage).trim();
     const media = getConversationPrimaryMediaItem(quoteMessage);
     const kind = getConversationVisualKind(quoteMessage);
+    const quoteRenderId = getConversationRenderId(quoteMessage);
     return {
       text: textValue.slice(0, 4_000) || (kind === "sticker" ? "[表情包]" : kind === "image" ? "[图片]" : kind === "file" ? `[文件] ${media?.fileName || media?.label || ""}` : kind === "voice" ? "[语音]" : `[${kind}]`),
       title: quoteMessage.type === "user" ? "我" : "AI",
-      messageId: quoteMessage.id,
-      bubbleId: String(quoteMessage.meta?.quoteBubbleId || `${quoteMessage.id}:0`),
+      messageId: getConversationMessageId(quoteMessage)
+        || getConversationItemId(quoteMessage)
+        || getLegacyStableId(quoteMessage),
+      bubbleId: String(
+        quoteMessage.meta?.quoteBubbleId
+        || createBubbleId(quoteRenderId, "message"),
+      ),
       contentType: kind,
       previewThumbnail: media ? getConversationMediaSrc(media) : "",
       previewMeta: media || undefined,
@@ -322,7 +347,7 @@ export function ConversationComposer({
 
         {attachments.length ? (
           <div className="mb-2 flex gap-1.5 overflow-x-auto px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {attachments.map((media, index) => <button key={`${media.fileName}-${index}`} type="button" onClick={() => setAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index))} className="shrink-0 rounded-full bg-white/82 px-2.5 py-1.5 text-[10px] text-black/50 shadow-sm">{mediaLabel(media)} ×</button>)}
+            {attachments.map((media, index) => <button key={mediaIdentity(media)} type="button" onClick={() => setAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index))} className="shrink-0 rounded-full bg-white/82 px-2.5 py-1.5 text-[10px] text-black/50 shadow-sm">{mediaLabel(media)} ×</button>)}
           </div>
         ) : null}
 
@@ -388,7 +413,7 @@ export function ConversationComposer({
           >
             {queuedMessages.map((message, index) => (
               <motion.button
-                key={message.messageId || index}
+                key={message.messageId}
                 type="button"
                 initial={{ opacity: 0, x: 14, y: 6 }}
                 animate={sendingQueue ? { opacity: 0, scale: 0.96, x: 40, y: -4 } : { opacity: 0.9, x: 0, y: 0 }}

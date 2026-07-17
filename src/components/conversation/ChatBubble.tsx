@@ -16,6 +16,7 @@ import { TinyIcon } from "../common/TinyIcon";
 import { MusicShareCard } from "./MusicShareCard";
 import { ConversationAvatar } from "./ConversationAvatar";
 import { ConversationPhotoGallery } from "./PhotoStack";
+import { createBubbleId, getConversationRenderId } from "../../lib/conversationIdentity";
 
 export function BubbleRow({
   message,
@@ -143,10 +144,7 @@ function ChatBubbleContent({
   const animateOnMountRef = useRef(Boolean(animateBubbleSequence));
   const bubbleKeyRoot = String(
     bubbleIdentityKey ||
-      message.meta?.uiMergeKey ||
-      message.turnId ||
-      message.meta?.messageId ||
-      message.id,
+      getConversationRenderId(message),
   );
   const isAnimatingBubbleSequence = animateOnMountRef.current && !reduceMotion;
   const bubbleMotionKey = (part: string, index: number) =>
@@ -541,7 +539,8 @@ function LongPressBubble({
 }) {
   const timerRef = useRef<number | null>(null);
   const targetRef = useRef<any>(message);
-  const actionIdRef = useRef(`${message.id}:__message__`);
+  const messageRenderId = getConversationRenderId(message);
+  const actionIdRef = useRef(createBubbleId(messageRenderId, "message"));
   const open = activeActionId === actionIdRef.current;
   const clearTimer = () => {
     if (timerRef.current !== null) window.clearTimeout(timerRef.current);
@@ -549,18 +548,21 @@ function LongPressBubble({
   };
   const openMenu = (event: SyntheticEvent) => {
     const target = event.target as HTMLElement;
-    const bubbleText = target.closest<HTMLElement>("[data-bubble-text]")?.dataset.bubbleText;
+    const bubbleElement = target.closest<HTMLElement>("[data-bubble-text]");
+    const bubbleText = bubbleElement?.dataset.bubbleText;
+    const bubbleId = bubbleElement?.dataset.bubbleId
+      || createBubbleId(getConversationRenderId(message), "message");
     targetRef.current = bubbleText
       ? {
           ...message,
           text: bubbleText,
           meta: {
             ...(message.meta || {}),
-            quoteBubbleId: `${message.id}:${bubbleText}`,
+            quoteBubbleId: bubbleId,
           },
         }
       : message;
-    actionIdRef.current = `${message.id}:${bubbleText || "__message__"}`;
+    actionIdRef.current = bubbleId;
     onActionOpen?.({ id: actionIdRef.current, message: targetRef.current });
   };
   const actions = [
