@@ -52,6 +52,52 @@ test("thinking-only and completed states retain one AssistantTurn identity", () 
   assert.equal(completed[0].entries.length, 3);
 });
 
+test("transport and canonical records share one display turn without a mount-key change", () => {
+  const thinking: ConversationRecord = {
+    ...record("thinking-correlated", "thinking", "prompt-canonical", "thought"),
+    meta: {
+      sourceKey: "source|thinking-correlated",
+      logicalTurnId: "web:request-1",
+      displayTurnId: "web:request-1",
+      transportTurnId: "turn-transport",
+      canonicalTurnId: "prompt-canonical",
+    },
+  };
+  const liveAssistant: ConversationRecord = {
+    ...record("assistant-live", "assistant", "turn-transport", "answer"),
+    itemId: "claude:msg-native:0",
+    meta: {
+      itemId: "claude:msg-native:0",
+      logicalTurnId: "web:request-1",
+      displayTurnId: "web:request-1",
+      transportTurnId: "turn-transport",
+    },
+  };
+  const canonicalAssistant: ConversationRecord = {
+    ...record("assistant-canonical", "assistant", "prompt-canonical", "answer"),
+    itemId: "claude:msg-native:0",
+    meta: {
+      itemId: "claude:msg-native:0",
+      sourceKey: "source|assistant-canonical",
+      logicalTurnId: "web:request-1",
+      displayTurnId: "web:request-1",
+      transportTurnId: "turn-transport",
+      canonicalTurnId: "prompt-canonical",
+    },
+  };
+
+  const before = buildAssistantTurnDisplayModel([thinking, liveAssistant], "thread-1");
+  const after = buildAssistantTurnDisplayModel([thinking, canonicalAssistant], "thread-1");
+  assert.equal(before.length, 1);
+  assert.equal(after.length, 1);
+  assert.equal(before[0].renderId, "assistant-turn:thread-1:web:request-1");
+  assert.equal(after[0].renderId, before[0].renderId);
+  assert.equal(
+    before[0].kind === "assistant-turn" ? before[0].thinkingPanelId : "",
+    after[0].kind === "assistant-turn" ? after[0].thinkingPanelId : "",
+  );
+});
+
 test("turn model keeps operations and assistant records in source order", () => {
   const records = [
     record("thinking-1", "thinking", "turn-1", "thought"),

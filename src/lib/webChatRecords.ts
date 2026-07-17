@@ -1,5 +1,5 @@
 import type { ConversationRecord } from "../types/conversation";
-import type { WebChatMessageInput } from "../types/webChat";
+import type { WebChatEvent, WebChatMessageInput } from "../types/webChat";
 import {
   getConversationMessageId,
   upsertConversationRecordByIdentity,
@@ -36,6 +36,58 @@ export function createWebChatDraftRecord(
       ephemeral: true,
       webChatLive: true,
       draft: true,
+    },
+  };
+}
+
+export function createWebChatLiveRecord(
+  event: WebChatEvent,
+  targetThreadId: string,
+): ConversationRecord {
+  if (!event.record) {
+    throw new Error("web chat message event requires a record");
+  }
+  const record = event.record;
+  const type = String(record.type || record.role || "").trim();
+  const messageId = String(
+    record.messageId
+      || record.meta?.messageId
+      || (type === "user" ? event.messageId : "")
+      || "",
+  ).trim();
+  const itemId = String(record.itemId || event.itemId || record.meta?.itemId || "").trim();
+  const identity = {
+    requestId: String(event.requestId || record.meta?.requestId || "").trim(),
+    logicalTurnId: String(event.logicalTurnId || record.meta?.logicalTurnId || "").trim(),
+    displayTurnId: String(event.displayTurnId || record.meta?.displayTurnId || "").trim(),
+    transportTurnId: String(event.transportTurnId || record.meta?.transportTurnId || "").trim(),
+    canonicalTurnId: String(event.canonicalTurnId || record.meta?.canonicalTurnId || "").trim(),
+  };
+  if (!identity.displayTurnId && identity.logicalTurnId) {
+    identity.displayTurnId = identity.logicalTurnId;
+  }
+
+  return {
+    ...record,
+    ...(messageId ? { messageId } : {}),
+    ...(itemId ? { itemId } : {}),
+    threadId: String(record.threadId || event.threadId || targetThreadId || "").trim(),
+    turnId: String(record.turnId || event.turnId || identity.transportTurnId || "").trim(),
+    meta: {
+      ...(record.meta || {}),
+      ...(messageId ? { messageId } : {}),
+      ...(itemId ? { itemId } : {}),
+      ...(identity.requestId ? { requestId: identity.requestId } : {}),
+      ...(identity.logicalTurnId ? { logicalTurnId: identity.logicalTurnId } : {}),
+      ...(identity.displayTurnId ? { displayTurnId: identity.displayTurnId } : {}),
+      ...(identity.transportTurnId ? { transportTurnId: identity.transportTurnId } : {}),
+      ...(identity.canonicalTurnId ? { canonicalTurnId: identity.canonicalTurnId } : {}),
+      ...(Number(event.protocolVersion) > 0
+        ? { webChatProtocolVersion: Number(event.protocolVersion) }
+        : {}),
+      ephemeral: true,
+      webChatLive: true,
+      deliveryState: type === "user" ? "sent" : record.meta?.deliveryState,
     },
   };
 }

@@ -2,8 +2,8 @@ import type { ConversationRecord } from "../types/conversation";
 import {
   createBubbleId,
   getAssistantTurnRenderId,
+  getConversationDisplayTurnId,
   getConversationThreadId,
-  getConversationTurnId,
   getConversationRenderId,
 } from "./conversationIdentity";
 
@@ -46,7 +46,7 @@ export function getRecordAssistantTurnRenderId(
   if (!isAssistantTurnRecord(record)) return "";
   return getAssistantTurnRenderId(
     getConversationThreadId(record, selectedThreadId),
-    getConversationTurnId(record),
+    getConversationDisplayTurnId(record),
   );
 }
 
@@ -74,7 +74,7 @@ export function buildAssistantTurnDisplayModel(
     let turn = turns.get(turnRenderId);
     if (!turn) {
       const threadId = getConversationThreadId(record, selectedThreadId);
-      const turnId = getConversationTurnId(record);
+      const turnId = getConversationDisplayTurnId(record);
       turn = {
         kind: "assistant-turn",
         renderId: turnRenderId,

@@ -23,6 +23,12 @@ export function getConversationTurnId(record: ConversationRecord) {
   return normalizeIdentityPart(record.turnId);
 }
 
+export function getConversationDisplayTurnId(record: ConversationRecord) {
+  return normalizeIdentityPart(record.meta?.displayTurnId)
+    || normalizeIdentityPart(record.meta?.logicalTurnId)
+    || getConversationTurnId(record);
+}
+
 export function getLegacyStableId(record: ConversationRecord) {
   return normalizeIdentityPart(record.sourceKey || record.meta?.sourceKey || record.source?.sourceKey)
     || normalizeIdentityPart(record.id);

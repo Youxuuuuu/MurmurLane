@@ -85,6 +85,7 @@ export interface WebChatModelResponse {
 }
 
 export interface WebChatEvent {
+  protocolVersion?: number;
   cursor?: number;
   id?: string;
   kind?: string;
@@ -94,6 +95,12 @@ export interface WebChatEvent {
   previousThreadId?: string;
   turnId?: string;
   itemId?: string;
+  requestId?: string;
+  messageId?: string;
+  logicalTurnId?: string;
+  displayTurnId?: string;
+  transportTurnId?: string;
+  canonicalTurnId?: string;
   text?: string;
   usage?: WebChatUsage;
   record?: ConversationRecord;

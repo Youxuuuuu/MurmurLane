@@ -11,6 +11,7 @@ import {
   upsertConversationRecordByIdentity,
 } from "./conversationIdentity";
 import {
+  createWebChatLiveRecord,
   createWebChatDraftRecord,
   resolveThreadSubscriptionCursor,
   settleWebChatDrafts,
@@ -154,20 +155,7 @@ export function useWebChat({
       const targetThreadId = eventThreadId || selectedThreadId;
       if (event.kind === "message" && event.record) {
         setMessagesByThread((current) => {
-          const liveRecord: ConversationRecord = {
-            ...event.record,
-            messageId: event.record.messageId || event.record.meta?.messageId,
-            itemId: event.record.itemId || event.itemId || event.record.meta?.itemId,
-            meta: {
-              ...(event.record.meta || {}),
-              ephemeral: true,
-              webChatLive: true,
-              deliveryState:
-                event.record.type === "user"
-                  ? "sent"
-                  : event.record.meta?.deliveryState,
-            },
-          };
+          const liveRecord = createWebChatLiveRecord(event, targetThreadId);
           return appendRecord(current, targetThreadId, liveRecord);
         });
         return;

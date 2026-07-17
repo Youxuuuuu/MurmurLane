@@ -43,6 +43,7 @@ export interface ConversationRecordMeta {
   transportTurnId?: string;
   canonicalTurnId?: string;
   displayTurnId?: string;
+  webChatProtocolVersion?: number;
   bubbleSegments?: Array<{
     segmentId: string;
     text: string;

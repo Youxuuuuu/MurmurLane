@@ -7,6 +7,7 @@ import {
   upsertConversationRecordByIdentity,
 } from "../src/lib/conversationIdentity";
 import {
+  createWebChatLiveRecord,
   createWebChatDraftRecord,
   resolveThreadSubscriptionCursor,
   settleWebChatDrafts,
@@ -110,6 +111,35 @@ test("settling a draft moves and updates the same logical message", () => {
 test("status snapshot advances a thread-scoped subscription cursor", () => {
   assert.equal(resolveThreadSubscriptionCursor(41, 52), 52);
   assert.equal(resolveThreadSubscriptionCursor(73, 52), 73);
+});
+
+test("protocol-v2 live records copy stable turn correlation into record metadata", () => {
+  const live = createWebChatLiveRecord({
+    protocolVersion: 2,
+    kind: "message",
+    threadId: "thread-1",
+    turnId: "turn-transport-1",
+    itemId: "claude:msg-native-1:0",
+    requestId: "request-1",
+    messageId: "message-1",
+    logicalTurnId: "web:request-1",
+    displayTurnId: "web:request-1",
+    transportTurnId: "turn-transport-1",
+    canonicalTurnId: "prompt-canonical-1",
+    record: {
+      id: "web-assistant-1",
+      type: "assistant",
+      text: "answer",
+    },
+  }, "thread-1");
+
+  assert.equal(live.itemId, "claude:msg-native-1:0");
+  assert.equal(live.meta?.requestId, "request-1");
+  assert.equal(live.meta?.logicalTurnId, "web:request-1");
+  assert.equal(live.meta?.displayTurnId, "web:request-1");
+  assert.equal(live.meta?.transportTurnId, "turn-transport-1");
+  assert.equal(live.meta?.canonicalTurnId, "prompt-canonical-1");
+  assert.equal(live.meta?.webChatProtocolVersion, 2);
 });
 
 test("live and archived records reconcile without changing the logical mount key", () => {
