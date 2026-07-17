@@ -141,6 +141,20 @@ export function fetchConversationProfiles(): Promise<ConversationProfilesRespons
   return requestJson<ConversationProfilesResponse>("/api/conversation-profiles");
 }
 
+export type StickerAsset = {
+  id: string;
+  fileName: string;
+  name: string;
+  tags: string[];
+  category: string;
+  description: string;
+  src: string;
+};
+
+export function fetchStickerAssets(): Promise<{ stickers: StickerAsset[] }> {
+  return requestJson<{ stickers: StickerAsset[] }>("/api/stickers");
+}
+
 export function saveConversationUserProfile(
   profile: ConversationProfileApiData,
 ): Promise<ConversationProfileApiData> {

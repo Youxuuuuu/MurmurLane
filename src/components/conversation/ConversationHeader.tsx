@@ -4,6 +4,7 @@ import type {
 } from "../../lib/conversationProfiles";
 import { ConversationAvatar } from "./ConversationAvatar";
 import { ConversationNavBar } from "./ConversationNavBar";
+import { AnimatePresence, motion } from "framer-motion";
 
 function SearchDotsIcon() {
   return (
@@ -23,6 +24,7 @@ export function ConversationHeader({
   onOpenSearch,
   floatingDate,
   onOpenDatePicker,
+  isTyping = false,
 }: {
   userProfile: ConversationIdentity;
   threadProfile: ConversationThreadProfile;
@@ -31,29 +33,35 @@ export function ConversationHeader({
   onOpenSearch: () => void;
   floatingDate?: string;
   onOpenDatePicker: () => void;
+  isTyping?: boolean;
 }) {
   return (
     <header
-      className="relative z-30 shrink-0 px-3 pb-3 pt-2"
-      style={{ backgroundColor: threadProfile.background || "transparent" }}
+      className="absolute inset-x-0 top-0 z-30 px-3 pb-3 pt-2 backdrop-blur-[3px]"
+      style={{
+        backgroundColor: `color-mix(in srgb, ${threadProfile.background || "#f7f2f6"} 68%, transparent)`,
+      }}
     >
-      <ConversationNavBar
-        title={floatingDate || threadProfile.name}
-        subtitle={floatingDate ? "SELECT DATE" : threadProfile.handle}
-        onBack={onBack}
-        backLabel="返回对话列表"
-        onTitleClick={floatingDate ? onOpenDatePicker : undefined}
-        trailing={
-          <button
-            type="button"
-            onClick={onOpenSearch}
-            className="flex h-11 w-11 items-center justify-end text-black/70"
-            aria-label="搜索当前聊天"
-          >
-            <SearchDotsIcon />
-          </button>
-        }
-      />
+      <div className="relative -mx-3 -mt-2 bg-white px-3 pt-2">
+        <ConversationNavBar
+          title={floatingDate || threadProfile.name}
+          subtitle={floatingDate ? "SELECT DATE" : threadProfile.handle}
+          onBack={onBack}
+          backLabel="返回对话列表"
+          onTitleClick={floatingDate ? onOpenDatePicker : undefined}
+          trailing={
+            <button
+              type="button"
+              onClick={onOpenSearch}
+              className="flex h-11 w-11 items-center justify-end text-black/70"
+              aria-label="搜索当前聊天"
+            >
+              <SearchDotsIcon />
+            </button>
+          }
+        />
+        <div className="pointer-events-none absolute inset-x-0 -bottom-4 h-4 bg-gradient-to-b from-white to-transparent" />
+      </div>
 
       <div className="mt-2 flex items-center gap-3 px-3">
         <ConversationAvatar src={userProfile.avatar} name={userProfile.name} size="lg" />
@@ -73,14 +81,31 @@ export function ConversationHeader({
           <div className="truncate text-[23px] font-bold leading-none text-black/45">
             {threadProfile.name}
           </div>
-          <div className="mt-1 truncate text-[12px] font-semibold tracking-[0.05em] text-black/[0.32]">
-            {threadProfile.handle} &gt;
+          <div className="relative mt-1 min-h-[16px] truncate text-[12px] font-semibold tracking-[0.05em] text-black/[0.32]">
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.span
+                key={isTyping ? "typing" : "handle"}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.16 }}
+                className="absolute inset-0 block truncate"
+              >
+                {isTyping ? "正在输入…" : `${threadProfile.handle} >`}
+              </motion.span>
+            </AnimatePresence>
           </div>
         </button>
       </div>
       <p className="mt-3 truncate px-4 text-left font-sans text-[11px] font-semibold text-black/20">
         /*{threadProfile.signature}*/
       </p>
+      <div
+        className="pointer-events-none absolute inset-x-0 -bottom-5 h-5"
+        style={{
+          background: `linear-gradient(to bottom, color-mix(in srgb, ${threadProfile.background || "#f7f2f6"} 68%, transparent), transparent)`,
+        }}
+      />
     </header>
   );
 }

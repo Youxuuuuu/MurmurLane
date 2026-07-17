@@ -6,6 +6,7 @@ import type {
   LegacyConversationMessage,
 } from "../types/conversation";
 import { resolveApiFileUrl } from "../data/api";
+import { resolveWebChatAssetUrl } from "../data/chatApi";
 import { toHyphenDate } from "./date";
 
 export type CloudMusicDevice = "mobile" | "desktop";
@@ -343,8 +344,21 @@ export function isStickerLikeMedia(item: ConversationMediaItem) {
   );
 }
 
+export function isAudioLikeMedia(item: ConversationMediaItem) {
+  const contentType = String(item?.contentType || "").toLowerCase();
+  const filePath = String(
+    item?.fileName || item?.relativePath || item?.path || item?.url || "",
+  ).toLowerCase();
+  return Boolean(
+    item?.kind === "voice" ||
+      item?.kind === "audio" ||
+      contentType.startsWith("audio/") ||
+      /\.(mp3|m4a|wav|ogg|oga|webm|aac|flac)$/i.test(filePath),
+  );
+}
+
 export function isFileLikeMedia(item: ConversationMediaItem) {
-  return !isStickerLikeMedia(item) && !isImageLikeMedia(item);
+  return !isStickerLikeMedia(item) && !isImageLikeMedia(item) && !isAudioLikeMedia(item);
 }
 
 export function getConversationMediaSrc(item: ConversationMediaItem) {
@@ -358,6 +372,10 @@ export function getConversationMediaSrc(item: ConversationMediaItem) {
     return mediaPath;
   }
 
+  if (mediaPath.startsWith("/api/chat/")) {
+    return resolveWebChatAssetUrl(mediaPath);
+  }
+
   return resolveApiFileUrl(mediaPath);
 }
 
@@ -368,6 +386,7 @@ export function getConversationPrimaryMediaItem(
   return (
     items.find((item) => isStickerLikeMedia(item)) ??
     items.find((item) => isImageLikeMedia(item)) ??
+    items.find((item) => isAudioLikeMedia(item)) ??
     items.find((item) => isFileLikeMedia(item)) ??
     null
   );
@@ -392,6 +411,13 @@ export function shouldHideConversationRecord(record: ConversationRecord) {
   return false;
 }
 
+const WEB_CHAT_UI_NOTE_RE =
+  /\s*Web chat UI note:\s*when you need to quote the user's words in your reply,\s*start the reply with \[Quoted: exact quoted text\] on its own line,\s*then write your response\.\s*Keep the quote short\.\s*$/i;
+
+export function stripWebChatUiNote(value: unknown) {
+  return String(value ?? "").replace(WEB_CHAT_UI_NOTE_RE, "").trim();
+}
+
 export function getConversationDisplayText(record: ConversationRecord) {
   if (
     record?.type === "user" &&
@@ -407,11 +433,11 @@ export function getConversationDisplayText(record: ConversationRecord) {
   if (record?.type === "assistant") {
     const parsed = safeParseActionText(record.text);
     if (parsed?.action === "send_message") {
-      return parsed.message || "";
+      return stripWebChatUiNote(parsed.message || "");
     }
   }
 
-  return record?.text || "";
+  return stripWebChatUiNote(record?.text || "");
 }
 
 export function getConversationQuoteText(record: ConversationRecord) {
@@ -438,6 +464,7 @@ export function getConversationVisualKind(record: ConversationRecord) {
   if (mediaItem) {
     if (isStickerLikeMedia(mediaItem)) return "sticker";
     if (isImageLikeMedia(mediaItem)) return "image";
+    if (isAudioLikeMedia(mediaItem)) return "voice";
     if (isFileLikeMedia(mediaItem)) return "file";
   }
 

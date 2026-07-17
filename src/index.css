@@ -4,6 +4,7 @@
 
 :root {
   color-scheme: light;
+  --app-shell-height: 100dvh;
   font-family:
     "Georgia",
     "Times New Roman",
@@ -13,9 +14,14 @@
 html,
 body,
 #root {
-  height: 100%;
-  min-height: 100%;
+  height: var(--app-shell-height);
+  min-height: var(--app-shell-height);
   overflow: hidden;
+}
+
+.app-shell {
+  height: var(--app-shell-height);
+  min-height: var(--app-shell-height);
 }
 
 html {
@@ -23,10 +29,9 @@ html {
 }
 
 body {
-  position: fixed;
-  inset: 0;
   width: 100%;
-  height: 100%;
+  height: var(--app-shell-height);
+  min-height: var(--app-shell-height);
   margin: 0;
   overflow: hidden;
   overscroll-behavior: none;
@@ -41,20 +46,75 @@ textarea {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Keep mouse/touch focus quiet while retaining a small, keyboard-only cue. */
-:where(button, [role="button"], a, input, select, textarea):focus:not(:focus-visible) {
+/* Keep native focus rings from changing the shape or weight of the chat UI. */
+:where(button, [role="button"], a, input, select, textarea, [contenteditable="true"]):focus {
   outline: none;
   box-shadow: none;
 }
 
-:where(input, select, textarea):focus {
-  outline: none;
-  box-shadow: inset 0 0 0 1px rgba(154, 128, 100, 0.58);
+:where(button, [role="button"], a):focus-visible {
+  outline: 2px solid rgba(126, 105, 151, 0.28);
+  outline-offset: 2px;
 }
 
-:where(button, [role="button"], a):focus-visible {
-  outline: 2px solid rgba(154, 128, 100, 0.58);
-  outline-offset: 1px;
+input,
+select,
+textarea,
+[contenteditable="true"] {
+  font-size: 16px !important;
+  font-weight: 400 !important;
+}
+
+.conversation-composer-textarea {
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* iOS 仍按 16px 计算聚焦字号，但视觉上缩回原来的 12px。
+   这样既不会触发自动放大，也不需要禁止用户手动缩放页面。 */
+/* Android Chrome 的动态视口会随键盘缩短；iOS WebKit 的 PWA 外壳则需要
+   固定 100vh 才能填满 Home Indicator 区域。 */
+@supports (-webkit-touch-callout: none) {
+  :root {
+    --app-shell-height: 100vh;
+  }
+
+  @media (hover: none) and (pointer: coarse) {
+    .conversation-composer-input-shell {
+      height: 42px;
+      overflow: hidden;
+    }
+
+    .conversation-composer-textarea {
+      font-size: 16px !important;
+      font-weight: 700 !important;
+      width: 133.333333% !important;
+      min-height: 56px !important;
+      max-height: 149px !important;
+      padding-top: 14.666667px !important;
+      padding-bottom: 14.666667px !important;
+      line-height: 26.666667px !important;
+      transform: scale(0.75);
+      transform-origin: left top;
+    }
+  }
+}
+
+.composer-icon-button {
+  display: inline-flex;
+  height: 42px;
+  width: 42px;
+  flex: 0 0 42px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 160ms ease, color 160ms ease, transform 120ms ease;
+}
+
+.composer-icon-button:active {
+  transform: scale(0.94);
 }
 
 input[type="search"] {
@@ -69,19 +129,6 @@ input[type="search"]::-webkit-search-results-decoration {
   display: none;
   -webkit-appearance: none;
   appearance: none;
-}
-
-/* iOS Safari zooms fields whose computed size is below 16px. Keep that
-   threshold only on WebKit touch browsers; other viewports retain the compact
-   type scale used by the page. */
-@media (pointer: coarse) {
-  @supports (-webkit-touch-callout: none) {
-    input,
-    textarea,
-    select {
-      font-size: 16px !important;
-    }
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -20,6 +20,7 @@ import {
   legacyConversationMessageToRecord,
   shouldHideConversationRecord,
 } from "./conversation";
+import { mergeConversationRecords } from "./conversationMerge";
 
 export const defaultConversationThreadId =
   "266618a6-b29f-4a8d-abd4-12ff874eb859";
@@ -316,13 +317,12 @@ export function getConversationRecordsForThread(
   threadId: string,
   remoteData: RemoteData = emptyRemoteData,
 ): ConversationRecord[] {
-  const recordsByKey = new Map<string, ConversationRecord>();
+  const records: ConversationRecord[] = [];
   const collect = (dateGroups: ConversationDateEntries) => {
     Object.entries(dateGroups ?? {}).forEach(([dateText, threads]) => {
-      (threads?.[threadId] ?? []).forEach((record, index) => {
+      (threads?.[threadId] ?? []).forEach((record) => {
         const date = toDotDate(dateText);
-        const key = `${date}:${record.id || index}`;
-        recordsByKey.set(key, { ...record, conversationDate: date });
+        records.push({ ...record, conversationDate: date });
       });
     });
   };
@@ -330,27 +330,17 @@ export function getConversationRecordsForThread(
   collect(remoteData.searchCache.conversations);
   collect(remoteData.conversationEntries);
 
-  if (!recordsByKey.size) {
+  if (!records.length) {
     Object.entries(conversationEntries ?? {}).forEach(([dateText, threads]) => {
       (threads?.[threadId] ?? []).forEach((message) => {
         const date = toDotDate(dateText);
         const record = legacyConversationMessageToRecord(message, date, threadId);
-        recordsByKey.set(`${date}:${record.id}`, {
-          ...record,
-          conversationDate: date,
-        });
+        records.push({ ...record, conversationDate: date });
       });
     });
   }
 
-  return Array.from(recordsByKey.values()).sort((left, right) => {
-    const leftDate = String(left.conversationDate ?? "");
-    const rightDate = String(right.conversationDate ?? "");
-    return (
-      getConversationRecordSortTime(leftDate, left) -
-      getConversationRecordSortTime(rightDate, right)
-    );
-  });
+  return mergeConversationRecords(records, threadId);
 }
 
 export function getConversationThreadSummaries(

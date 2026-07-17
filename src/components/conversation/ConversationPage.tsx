@@ -1,9 +1,18 @@
 // @ts-nocheck
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { getConversationVisualKind, shouldHideConversationRecord } from "../../lib/conversation";
+import { useReducedMotion } from "framer-motion";
+import {
+  getConversationVisualKind,
+  shouldHideConversationRecord,
+} from "../../lib/conversation";
+import {
+  getConversationMergeKey,
+  mergeConversationRecords,
+} from "../../lib/conversationMerge";
 import { CardScrollArea } from "../layout/CardScrollArea";
 import { PageCard } from "../layout/PageCard";
 import { ChatBubble } from "./ChatBubble";
+import { ConversationComposer } from "./ConversationComposer";
 import { ConversationEmptyState } from "./ConversationEmptyState";
 import {
   getConversationMessageDate as getMessageDate,
@@ -28,6 +37,63 @@ function formatFloatingDate(dateText) {
   return year && month && day ? `${year}/${month}/${day}` : "";
 }
 
+function sharesConversationTurn(left, right) {
+  const leftTurn = String(left?.turnId || "").trim();
+  const rightTurn = String(right?.turnId || "").trim();
+  if (leftTurn && rightTurn) return leftTurn === rightTurn;
+  return !leftTurn && !rightTurn;
+}
+
+function findAttachedThinkingIndex(messages, assistantIndex) {
+  const assistant = messages[assistantIndex];
+  if (!assistant || getConversationVisualKind(assistant) !== "assistant") return -1;
+  const date = getMessageDate(assistant);
+
+  for (let index = assistantIndex - 1; index >= 0; index -= 1) {
+    const candidate = messages[index];
+    if (getMessageDate(candidate) !== date) break;
+    const kind = getConversationVisualKind(candidate);
+    if (kind === "thinking" && sharesConversationTurn(candidate, assistant)) {
+      return index;
+    }
+    if (kind === "assistant" || candidate?.type === "user") break;
+  }
+
+  return -1;
+}
+
+function findAttachedAssistantIndex(messages, thinkingIndex) {
+  const thinking = messages[thinkingIndex];
+  if (!thinking || getConversationVisualKind(thinking) !== "thinking") return -1;
+  const date = getMessageDate(thinking);
+
+  for (let index = thinkingIndex + 1; index < messages.length; index += 1) {
+    const candidate = messages[index];
+    if (getMessageDate(candidate) !== date) break;
+    const kind = getConversationVisualKind(candidate);
+    if (kind === "assistant") {
+      return sharesConversationTurn(thinking, candidate) ? index : -1;
+    }
+    if (candidate?.type === "user") break;
+  }
+
+  return -1;
+}
+
+function getBubbleAnimationEntries(messages, selectedThreadId) {
+  const byKey = new Map();
+  messages.forEach((message) => {
+    if (!["assistant", "user"].includes(message?.type)) return;
+    const key = getConversationMergeKey(message, selectedThreadId);
+    if (!key || byKey.has(key)) return;
+    byKey.set(key, {
+      key,
+      live: Boolean(message?.meta?.webChatLive),
+    });
+  });
+  return Array.from(byKey.values());
+}
+
 export function ConversationPage({
   page,
   selectedThreadId,
@@ -41,16 +107,39 @@ export function ConversationPage({
   hasEarlierDate,
   earlierDateLoading,
   onFloatingDateChange,
+  liveMessages = [],
+  webChat = null,
 }) {
+  const [quoteMessage, setQuoteMessage] = useState(null);
+  const [activeAction, setActiveAction] = useState(null);
+  const reduceMotion = useReducedMotion();
+  const bubbleAnimationThreadRef = useRef(null);
+  const observedBubbleKeysRef = useRef(new Set());
+  const awaitingInitialBubbleBatchRef = useRef(false);
+  useEffect(() => {
+    setActiveAction(null);
+  }, [selectedThreadId]);
+  const mergedMessages = useMemo(
+    () => mergeConversationRecords(
+      [...(page.messages || []), ...(liveMessages || [])],
+      selectedThreadId,
+    ),
+    [liveMessages, page.messages, selectedThreadId],
+  );
   const visibleMessages = useMemo(
     () =>
       groupConversationDisplayRecords(
-        page.messages.filter(
+        mergedMessages.filter(
           (message) => !shouldHideConversationRecord(message),
         ),
       ),
-    [page.messages],
+    [mergedMessages],
   );
+  const bubbleAnimationEntries = useMemo(
+    () => getBubbleAnimationEntries(visibleMessages, selectedThreadId),
+    [visibleMessages, selectedThreadId],
+  );
+  const pageHasEntry = Boolean(page.hasEntry || visibleMessages.length);
   const [visibleRange, setVisibleRange] = useState(() => ({
     start: Math.max(0, visibleMessages.length - CONVERSATION_RECENT_RENDER_LIMIT),
     end: visibleMessages.length,
@@ -65,6 +154,7 @@ export function ConversationPage({
   const pendingEarlierAnchorRef = useRef(null);
   const floatingDateTimerRef = useRef(null);
   const conversationKeyRef = useRef(null);
+  const historyLoadInFlightRef = useRef(false);
   const messageCountRef = useRef({
     key: selectedThreadId,
     count: visibleMessages.length,
@@ -103,6 +193,10 @@ export function ConversationPage({
         clampedVisibleRange.end,
       ),
     [visibleMessages, clampedVisibleRange],
+  );
+  const renderedBubbleAnimationEntries = useMemo(
+    () => getBubbleAnimationEntries(renderedMessages, selectedThreadId),
+    [renderedMessages, selectedThreadId],
   );
   const targetDateIndex = useMemo(() => {
     if (!targetDate) return -1;
@@ -220,6 +314,64 @@ export function ConversationPage({
   ]);
 
   useLayoutEffect(() => {
+    const threadChanged = bubbleAnimationThreadRef.current !== selectedThreadId;
+
+    if (threadChanged) {
+      bubbleAnimationThreadRef.current = selectedThreadId;
+      observedBubbleKeysRef.current = new Set(
+        bubbleAnimationEntries.map((entry) => entry.key),
+      );
+      awaitingInitialBubbleBatchRef.current = bubbleAnimationEntries.length === 0;
+      return;
+    }
+
+    const shouldBaselineCurrentMessages = Boolean(
+      reduceMotion ||
+        historyLoadInFlightRef.current ||
+        pendingDateTargetRef.current ||
+        targetDate ||
+        hasConversationHit,
+    );
+    if (shouldBaselineCurrentMessages) {
+      bubbleAnimationEntries.forEach((entry) => {
+        observedBubbleKeysRef.current.add(entry.key);
+      });
+      if (bubbleAnimationEntries.length) {
+        awaitingInitialBubbleBatchRef.current = false;
+      }
+      return;
+    }
+
+    const newEntries = renderedBubbleAnimationEntries.filter(
+      (entry) => !observedBubbleKeysRef.current.has(entry.key),
+    );
+    if (!newEntries.length) return;
+
+    // Commit the keys only after their first render. The render that introduced
+    // a realtime message can therefore mount it in its hidden enter state,
+    // instead of painting it once and resetting it in a follow-up effect.
+    newEntries.forEach((entry) => {
+      observedBubbleKeysRef.current.add(entry.key);
+    });
+
+    if (awaitingInitialBubbleBatchRef.current) {
+      awaitingInitialBubbleBatchRef.current = false;
+      // The first async history batch can be larger than the rendered window.
+      // Baseline every loaded key now so older rows do not animate on scroll.
+      bubbleAnimationEntries.forEach((entry) => {
+        observedBubbleKeysRef.current.add(entry.key);
+      });
+    }
+  }, [
+    bubbleAnimationEntries,
+    renderedBubbleAnimationEntries,
+    selectedThreadId,
+    reduceMotion,
+    targetDate,
+    hasConversationHit,
+  ]);
+
+  useLayoutEffect(() => {
     const previous = messageCountRef.current;
     messageCountRef.current = {
       key: conversationKey,
@@ -233,6 +385,15 @@ export function ConversationPage({
     }
 
     const addedCount = visibleMessages.length - previous.count;
+    if (historyLoadInFlightRef.current) {
+      historyLoadInFlightRef.current = false;
+      setNewMessageCount(0);
+      return;
+    }
+    if (pendingDateTargetRef.current || targetDate) {
+      setNewMessageCount(0);
+      return;
+    }
     if (addedCount <= 0 || hasConversationHit) return;
 
     if (isNearBottomRef.current) {
@@ -417,7 +578,21 @@ export function ConversationPage({
         messageCount: visibleMessages.length,
         renderedCount: renderedMessages.length,
       };
-      onLoadEarlier?.();
+      isNearBottomRef.current = false;
+      historyLoadInFlightRef.current = true;
+      const request = onLoadEarlier?.();
+      if (request && typeof request.then === "function") {
+        request.then((loaded) => {
+          // Keep the guard through the React commit when an earlier date was
+          // actually added. The message-count effect clears it after the
+          // prepended records land, so they cannot become a false "new" badge.
+          if (!loaded) historyLoadInFlightRef.current = false;
+        }, () => {
+          historyLoadInFlightRef.current = false;
+        });
+      } else {
+        historyLoadInFlightRef.current = false;
+      }
       return;
     }
 
@@ -438,6 +613,12 @@ export function ConversationPage({
   };
 
   const handleShowNewMessages = () => {
+    pendingDateTargetRef.current = null;
+    pendingHighlightTargetRef.current = null;
+    pendingEarlierAnchorRef.current = null;
+    topScrollAdjustmentRef.current = null;
+    resetVisibleRangeRef.current = null;
+    shouldResetToBottomRef.current = false;
     isNearBottomRef.current = true;
     shouldStickToBottomRef.current = true;
     setNewMessageCount(0);
@@ -454,53 +635,73 @@ export function ConversationPage({
     <PageCard
       page={page}
       motionKey={`conversation-${selectedThreadId}`}
-      className="relative flex h-full min-h-0 flex-col overflow-hidden bg-white"
+      initial={false}
+      className="relative flex h-full min-h-0 flex-col overflow-hidden"
+      style={{
+        backgroundColor: threadProfile?.background || page.paper,
+        backgroundImage: threadProfile?.backgroundImage
+          ? `linear-gradient(rgba(255,255,255,.22), rgba(255,255,255,.22)), url(${threadProfile.backgroundImage})`
+          : "none",
+        backgroundSize: "100% 100%, cover",
+        backgroundPosition: `center, ${threadProfile?.backgroundPositionX ?? 50}% ${threadProfile?.backgroundPositionY ?? 50}%`,
+        backgroundRepeat: "no-repeat, no-repeat",
+      }}
       showTexture={false}
     >
-      {page.hasEntry ? (
+      {pageHasEntry ? (
         <div className="relative flex min-h-0 flex-1">
           <CardScrollArea
           id="conversation-message-scroll"
-          className="z-10 px-3 pb-6 pt-5"
+          className="z-10 px-3 pb-[122px] pt-[184px]"
           onScroll={handleConversationScroll}
           style={{
-            backgroundColor: threadProfile?.background || "#fbfbfa",
-            backgroundImage: threadProfile?.backgroundImage
-              ? `linear-gradient(rgba(255,255,255,.22), rgba(255,255,255,.22)), url(${threadProfile.backgroundImage})`
-              : "none",
-            backgroundSize: "100% 100%, cover",
-            backgroundPosition: `center, ${threadProfile?.backgroundPositionX ?? 50}% ${threadProfile?.backgroundPositionY ?? 50}%`,
-            backgroundRepeat: "no-repeat, no-repeat",
-            backgroundAttachment: "scroll",
+            background: "transparent",
           }}
         >
           {renderedMessages.map((message, localIndex) => {
             const globalIndex = clampedVisibleRange.start + localIndex;
+            const animationKey = getConversationMergeKey(message, selectedThreadId);
+            const isBubbleMessage = ["assistant", "user"].includes(message.type);
+            const isUnseenBubble =
+              isBubbleMessage &&
+              bubbleAnimationThreadRef.current === selectedThreadId &&
+              !observedBubbleKeysRef.current.has(animationKey);
+            const animateBubbleSequence = Boolean(
+              isUnseenBubble &&
+                (!awaitingInitialBubbleBatchRef.current || message.meta?.webChatLive) &&
+                !reduceMotion &&
+                !historyLoadInFlightRef.current &&
+                !pendingDateTargetRef.current &&
+                !targetDate &&
+                !hasConversationHit,
+            );
             const visualKind = getConversationVisualKind(message);
-            const nextMessage = visibleMessages[globalIndex + 1];
-            const nextIsAssistantText =
-              nextMessage &&
-              getConversationVisualKind(nextMessage) === "assistant" &&
-              getMessageDate(nextMessage) === getMessageDate(message) &&
-              (!message.turnId ||
-                !nextMessage.turnId ||
-                message.turnId === nextMessage.turnId);
-            if (visualKind === "thinking" && nextIsAssistantText) {
+            const attachedAssistantIndex =
+              visualKind === "thinking"
+                ? findAttachedAssistantIndex(visibleMessages, globalIndex)
+                : -1;
+            if (visualKind === "thinking" && attachedAssistantIndex !== -1) {
               return null;
             }
-            const previousMessage = visibleMessages[globalIndex - 1];
+            if (
+              visualKind === "thinking" &&
+              Boolean(message.meta?.webChatLive) &&
+              ["running", "streaming"].includes(webChat?.status?.status)
+            ) {
+              // Live thinking waits for its matching final bubble. Historical
+              // standalone thinking remains visible instead of being swallowed.
+              return null;
+            }
+            const attachedThinkingIndex =
+              visualKind === "assistant"
+                ? findAttachedThinkingIndex(visibleMessages, globalIndex)
+                : -1;
             const attachedThinking =
-              visualKind === "assistant" &&
-              previousMessage &&
-              getConversationVisualKind(previousMessage) === "thinking" &&
-              getMessageDate(previousMessage) === getMessageDate(message) &&
-              (!message.turnId ||
-                !previousMessage.turnId ||
-                message.turnId === previousMessage.turnId)
-                ? previousMessage
+              attachedThinkingIndex !== -1
+                ? visibleMessages[attachedThinkingIndex]
                 : null;
-            const dateAnchorIndex = attachedThinking
-              ? globalIndex - 1
+            const dateAnchorIndex = attachedThinkingIndex !== -1
+              ? attachedThinkingIndex
               : globalIndex;
             const date = getMessageDate(message);
             const previousDate =
@@ -516,7 +717,7 @@ export function ConversationPage({
               ) &&
               highlightResult?.threadId === selectedThreadId;
             return (
-              <div key={message.id}>
+              <div key={animationKey}>
                 {showDateDivider && (
                   <div
                     id={`conversation-date-${date}`}
@@ -536,12 +737,21 @@ export function ConversationPage({
                 >
                   <ChatBubble
                     message={message}
+                    bubbleIdentityKey={animationKey}
                     page={page}
                     messages={visibleMessages}
                     userProfile={userProfile}
                     threadProfile={threadProfile}
                     onEditThread={onEditThread}
+                    onQuote={(nextMessage) => {
+                      setQuoteMessage(nextMessage);
+                      setActiveAction(null);
+                    }}
+                    activeActionId={activeAction?.id || null}
+                    onActionOpen={setActiveAction}
+                    onActionClose={() => setActiveAction(null)}
                     thinkingMessage={attachedThinking}
+                    animateBubbleSequence={animateBubbleSequence}
                   />
                 </div>
               </div>
@@ -559,8 +769,23 @@ export function ConversationPage({
           )}
         </div>
       ) : (
-        <ConversationEmptyState />
+        <div className="min-h-0 flex-1">
+          <ConversationEmptyState />
+        </div>
       )}
+      {webChat?.sendMessages ? (
+        <ConversationComposer
+          status={webChat.status}
+          models={webChat.models}
+          connection={webChat.connection}
+          quoteMessage={quoteMessage}
+          onClearQuote={() => setQuoteMessage(null)}
+          onSendMessages={({ messages, newThread }) => webChat.sendMessages({ messages, newThread })}
+          onChooseModel={webChat.chooseModel}
+          isNewThread={String(selectedThreadId).startsWith("draft-")}
+          error={webChat.error}
+        />
+      ) : null}
     </PageCard>
   );
 }

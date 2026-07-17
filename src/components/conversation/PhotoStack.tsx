@@ -183,7 +183,7 @@ function PhotoControl({
       type="button"
       aria-label={ariaLabel || label}
       data-photo-control="true"
-      className="inline-flex min-h-8 items-center whitespace-nowrap rounded-[7px] border-0 px-2.5 py-1.5 font-mono text-[9px] font-semibold leading-none tracking-[0.08em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9a8064]/55"
+      className="inline-flex min-h-8 items-center whitespace-nowrap rounded-[13px] border-0 px-2.5 py-1.5 font-mono text-[9px] font-semibold leading-none tracking-[0.08em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9a8064]/55"
       style={getPhotoControlStyle(page)}
       onPointerDown={(event) => {
         // Do not let the collapsed stack capture the expand/collapse button.
@@ -575,10 +575,8 @@ function PhotoStackCollection({
   };
 
   const control = (
-    <motion.div
-      layout
-      transition={PHOTO_GROUP_TRANSITION}
-      className={`flex shrink-0 ${expanded ? "pt-1" : "self-center"}`}
+    <div
+      className={`pointer-events-auto absolute z-[115] -translate-y-1/2 ${controlSide === "left" ? "right-full mr-2" : "left-full ml-2"} top-1/2`}
     >
       <PhotoControl
         page={page}
@@ -586,14 +584,14 @@ function PhotoStackCollection({
         ariaLabel={expanded ? "收起图片组" : `展开 ${entries.length} 张图片`}
         onClick={expanded ? onCollapse : onExpand}
       />
-    </motion.div>
+    </div>
   );
 
   const imageCollection = (
     <motion.div
       layout
       transition={PHOTO_GROUP_TRANSITION}
-      className={expanded ? "flex min-w-0 flex-col gap-3" : "relative shrink-0"}
+      className={expanded ? "relative flex min-w-0 flex-col gap-3" : "relative shrink-0"}
       style={
         expanded
           ? undefined
@@ -632,6 +630,7 @@ function PhotoStackCollection({
           : undefined
       }
     >
+      {!expanded ? control : null}
       {entries.map((entry, index) => {
         const stackStyle = getRestingStyle(index, currentIndex, entries.length);
         const layoutDuration = Math.min(0.28, 0.2 + index * 0.03);
@@ -645,7 +644,7 @@ function PhotoStackCollection({
             layout
             className={
               expanded
-                ? "block max-w-[220px]"
+                ? "relative block max-w-[220px]"
                 : "absolute inset-0"
             }
             style={{
@@ -658,6 +657,7 @@ function PhotoStackCollection({
               ease: PHOTO_GROUP_TRANSITION.ease,
             }}
           >
+            {expanded && index === 0 ? control : null}
             <button
               ref={(node) => {
                 cardRefs.current[index] = node;
@@ -720,13 +720,9 @@ function PhotoStackCollection({
     <motion.div
       layout
       transition={PHOTO_GROUP_TRANSITION}
-      className={`flex gap-[24px] sm:gap-[26px] ${
-        expanded ? "items-start" : "select-none items-center"
-      }`}
+      className={`relative flex ${expanded ? "items-start" : "select-none items-center"}`}
     >
-      {controlSide === "left" && control}
       {imageCollection}
-      {controlSide === "right" && control}
     </motion.div>
   );
 }

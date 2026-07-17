@@ -1,0 +1,168 @@
+import { API_BASE_URL } from "./api";
+import type {
+  WebChatEvent,
+  WebChatMedia,
+  WebChatMessageInput,
+  WebChatModelResponse,
+  WebChatStatus,
+} from "../types/webChat";
+
+const env = (import.meta as { env?: Record<string, string | undefined> }).env;
+const CHAT_API_BASE_URL = String(
+  env?.VITE_MURMURLANE_CHAT_API_BASE_URL ||
+    (env?.DEV ? "http://127.0.0.1:8791" : API_BASE_URL),
+).replace(/\/+$/, "");
+const CHAT_TOKEN = String(env?.VITE_MURMURLANE_CHAT_TOKEN || "").trim();
+
+function buildChatUrl(path: string) {
+  return `${CHAT_API_BASE_URL}${path}`;
+}
+
+function buildAuthHeaders(headers: HeadersInit = {}) {
+  const next = new Headers(headers);
+  if (CHAT_TOKEN) {
+    next.set("X-Cyberboss-Web-Token", CHAT_TOKEN);
+    next.set("Authorization", `Bearer ${CHAT_TOKEN}`);
+  }
+  return next;
+}
+
+async function requestChatJson<T>(path: string, init: RequestInit = {}) {
+  const response = await fetch(buildChatUrl(path), {
+    ...init,
+    headers: buildAuthHeaders(init.headers),
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(body || `Web Chat request failed: ${response.status}`);
+  }
+  return response.json() as Promise<T>;
+}
+
+export function fetchWebChatStatus(threadId = "") {
+  const query = threadId ? `?threadId=${encodeURIComponent(threadId)}` : "";
+  return requestChatJson<WebChatStatus>(`/api/chat/status${query}`);
+}
+
+export function fetchWebChatModels() {
+  return requestChatJson<WebChatModelResponse>("/api/chat/models");
+}
+
+export function setWebChatModel(model: string, modelProvider = "") {
+  return requestChatJson<WebChatStatus>("/api/chat/model", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model, modelProvider }),
+  });
+}
+
+export function selectWebChatThread(threadId: string, clientId = "") {
+  return requestChatJson<WebChatStatus>("/api/chat/thread/select", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ threadId, clientId }),
+  });
+}
+
+export function sendWebChatMessages({
+  threadId = "",
+  clientId,
+  newThread = false,
+  model = "",
+  modelProvider = "",
+  messages,
+}: {
+  threadId?: string;
+  clientId: string;
+  newThread?: boolean;
+  model?: string;
+  modelProvider?: string;
+  messages: WebChatMessageInput[];
+}) {
+  return requestChatJson<{
+    accepted: boolean;
+    queued?: boolean;
+    threadId?: string;
+    turnId?: string;
+    clientMessageId?: string;
+  }>("/api/chat/messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      threadId,
+      clientId,
+      newThread,
+      model,
+      modelProvider,
+      messages,
+    }),
+  });
+}
+
+function readFileAsDataUrl(file: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("file could not be read"));
+    reader.readAsDataURL(file);
+  });
+}
+
+export async function uploadWebChatFile(
+  file: File | Blob,
+  fileName = "attachment",
+  kind = "file",
+): Promise<WebChatMedia> {
+  const dataUrl = await readFileAsDataUrl(file);
+  const result = await requestChatJson<{ media: WebChatMedia }>("/api/chat/uploads", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      dataUrl,
+      fileName,
+      contentType: file.type || "application/octet-stream",
+      kind,
+    }),
+  });
+  return result.media;
+}
+
+export function subscribeToWebChat({
+  threadId = "",
+  after = 0,
+  clientId,
+  onEvent,
+  onConnectionChange,
+}: {
+  threadId?: string;
+  after?: number;
+  clientId: string;
+  onEvent: (event: WebChatEvent) => void;
+  onConnectionChange?: (connected: boolean) => void;
+}) {
+  const query = new URLSearchParams({
+    threadId,
+    after: String(after || 0),
+    clientId,
+  });
+  if (CHAT_TOKEN) query.set("token", CHAT_TOKEN);
+  const source = new EventSource(`${buildChatUrl("/api/chat/events")}?${query.toString()}`);
+  source.addEventListener("open", () => onConnectionChange?.(true));
+  source.addEventListener("error", () => onConnectionChange?.(false));
+  source.addEventListener("chat", (event) => {
+    try {
+      onEvent(JSON.parse((event as MessageEvent<string>).data) as WebChatEvent);
+    } catch {
+      // Ignore a malformed event and let EventSource continue reconnecting.
+    }
+  });
+  return () => source.close();
+}
+
+export function resolveWebChatAssetUrl(assetPath: string) {
+  const normalized = String(assetPath || "").trim();
+  if (/^(https?:|data:|blob:)/i.test(normalized)) return normalized;
+  return buildChatUrl(normalized);
+}
+
+export { CHAT_API_BASE_URL };

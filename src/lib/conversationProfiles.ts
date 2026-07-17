@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchConversationProfiles,
   saveConversationThreadProfile,
@@ -92,6 +92,8 @@ export function useConversationProfiles(threadIds: string[]) {
     Record<string, Partial<ConversationThreadProfile>>
   >(readStoredThreadProfiles);
   const [profileError, setProfileError] = useState("");
+  const storedThreadProfilesRef = useRef(storedThreadProfiles);
+  storedThreadProfilesRef.current = storedThreadProfiles;
 
   useEffect(() => {
     let cancelled = false;
@@ -163,6 +165,7 @@ export function useConversationProfiles(threadIds: string[]) {
     threadId: string,
     changes: Partial<ConversationThreadProfile>,
   ) => {
+    const previous = storedThreadProfilesRef.current[threadId] ?? {};
     setStoredThreadProfiles((current) => ({
       ...current,
       [threadId]: { ...(current[threadId] ?? {}), ...changes },
@@ -179,6 +182,10 @@ export function useConversationProfiles(threadIds: string[]) {
       setProfileError("");
       return saved;
     } catch (error) {
+      setStoredThreadProfiles((current) => ({
+        ...current,
+        [threadId]: previous,
+      }));
       setProfileError(String(error?.message || error));
       throw error;
     }

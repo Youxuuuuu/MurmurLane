@@ -28,13 +28,16 @@ export function ConversationSettingsModal({
   profile,
   onSave,
   onClose,
+  onPreview,
 }: {
   mode: "user" | "thread";
   profile: ConversationIdentity | ConversationThreadProfile;
   onSave: (profile: ConversationIdentity | ConversationThreadProfile) => void;
   onClose: () => void;
+  onPreview?: (profile: ConversationIdentity | ConversationThreadProfile) => void;
 }) {
   const [draft, setDraft] = useState(profile);
+  const originalProfileRef = useRef(profile);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -50,8 +53,20 @@ export function ConversationSettingsModal({
     ? Number((draft as ConversationThreadProfile).backgroundPositionY ?? 50)
     : 50;
 
-  const update = (changes: Record<string, string | number | boolean>) =>
-    setDraft((current) => ({ ...current, ...changes }));
+  const update = (changes: Record<string, string | number | boolean>) => {
+    const next = { ...draft, ...changes };
+    setDraft(next);
+    if (isThread) onPreview?.(next as ConversationThreadProfile);
+  };
+  const resetBackground = () => {
+    update({
+      background: "#fbfbfa",
+      backgroundImage: "",
+      backgroundPositionX: 50,
+      backgroundPositionY: 50,
+    });
+    if (backgroundInputRef.current) backgroundInputRef.current.value = "";
+  };
   const dialogProps = useModalDialog(onClose);
 
   return (
@@ -101,7 +116,7 @@ export function ConversationSettingsModal({
             <label key={key} className="block text-[11px] font-semibold text-black/[0.38]">
               {label}
               <input
-                className="mt-1 w-full rounded-[8px] border border-black/10 bg-[#f7f7f6] px-3 py-2.5 text-[13px] font-normal text-black/[0.72] outline-none focus:border-[#9a8064]/55"
+                className="mt-1 w-full rounded-[8px] border border-black/10 bg-[#f7f7f6] px-3 py-2.5 text-[16px] font-normal text-black/[0.72] outline-none"
                 name={key}
                 autoComplete="off"
                 value={String(draft[key as keyof typeof draft] || "")}
@@ -114,7 +129,7 @@ export function ConversationSettingsModal({
               <label className="block text-[11px] font-semibold text-black/[0.38]">
                 聊天分组
                 <input
-                  className="mt-1 w-full rounded-[8px] border border-black/10 bg-[#f7f7f6] px-3 py-2.5 text-[13px] font-normal text-black/[0.72] outline-none focus:border-[#9a8064]/55"
+                  className="mt-1 w-full rounded-[8px] border border-black/10 bg-[#f7f7f6] px-3 py-2.5 text-[16px] font-normal text-black/[0.72] outline-none"
                   name="group"
                   autoComplete="off"
                   value={(draft as ConversationThreadProfile).group || ""}
@@ -158,34 +173,21 @@ export function ConversationSettingsModal({
                   aria-label={`选择背景 ${background}`}
                 />
               ))}
-              <label
-                className="relative flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-full border-2"
+              <button
+                type="button"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 text-[17px] text-black/45"
                 style={{
                   background: (draft as ConversationThreadProfile).background,
                   borderColor:
-                    !backgrounds.includes(
-                      (draft as ConversationThreadProfile).background,
-                    ) && !selectedBackgroundImage
+                    !backgrounds.includes((draft as ConversationThreadProfile).background) && !selectedBackgroundImage
                       ? "rgba(0,0,0,.52)"
                       : "rgba(0,0,0,.08)",
                 }}
-                title="选择自定义背景颜色"
+                aria-label="打开自定义背景颜色"
+                onClick={() => update({ background: (draft as ConversationThreadProfile).background || "#fbfbfa" })}
               >
-                <span className="pointer-events-none rounded-full bg-white/80 px-1 text-[13px] leading-5 text-black/55">
-                  +
-                </span>
-                <input
-                  type="color"
-                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                  value={(draft as ConversationThreadProfile).background || "#fbfbfa"}
-                  aria-label="选择自定义背景颜色"
-                  onChange={(event) =>
-                    update({
-                      background: event.target.value,
-                    })
-                  }
-                />
-              </label>
+                +
+              </button>
               <button
                 type="button"
                 onClick={() => backgroundInputRef.current?.click()}
@@ -241,6 +243,34 @@ export function ConversationSettingsModal({
                 }}
               />
             </div>
+            <div className="mt-3 rounded-[16px] bg-black/[0.03] p-3">
+              <div className="mb-2 flex items-center justify-between text-[10px] font-semibold text-black/42">
+                <span>自定义颜色</span>
+                <span className="h-5 w-5 rounded-full" style={{ background: (draft as ConversationThreadProfile).background }} />
+              </div>
+              <div className="grid grid-cols-5 gap-2">
+                {["#f7f4f2", "#edf2f1", "#eef0f6", "#f1edf5", "#f2efe8", "#e7f0ee", "#e9edf5", "#eee7f0", "#f0ece6", "#e7eef1"].map((color) => (
+                  <button key={color} type="button" className="h-8 rounded-[10px]" style={{ background: color }} onClick={() => update({ background: color })} aria-label={`选择 ${color}`} />
+                ))}
+              </div>
+              <label className="mt-3 flex items-center gap-2 rounded-[11px] bg-white px-3 py-2 text-[10px] text-black/42">
+                HEX
+                <input
+                  value={(draft as ConversationThreadProfile).background || "#fbfbfa"}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    if (/^#[0-9a-f]{6}$/i.test(value)) update({ background: value });
+                    else setDraft((current) => ({ ...current, background: value }));
+                  }}
+                  onBlur={() => {
+                    const value = String((draft as ConversationThreadProfile).background || "");
+                    if (!/^#[0-9a-f]{6}$/i.test(value)) update({ background: "#fbfbfa" });
+                  }}
+                  className="min-w-0 flex-1 bg-transparent font-mono text-[16px] uppercase text-black/65"
+                  aria-label="HEX 背景颜色"
+                />
+              </label>
+            </div>
             {selectedBackgroundImage && (
               <div className="mt-3 rounded-[10px] border border-black/10 bg-black/[0.03] p-3">
                 <div
@@ -291,33 +321,54 @@ export function ConversationSettingsModal({
                 </p>
               </div>
             )}
+            <button
+              type="button"
+              className="mt-3 rounded-full border border-black/[0.08] bg-white px-3 py-2 text-[11px] font-semibold text-black/48"
+              onClick={resetBackground}
+            >
+              恢复默认
+            </button>
           </div>
         )}
 
-        <button
-          type="button"
-          className="mt-5 w-full rounded-[9px] bg-black py-3 text-[13px] font-semibold text-white"
-          disabled={saving}
-          onClick={async () => {
-            setSaving(true);
-            setSaveError("");
-            try {
-              await onSave(draft);
-              onClose();
-            } catch (error) {
-              setSaveError(
-                error?.status === 404
-                  ? "资料接口尚未加载，请重启 MurmurLane 后端后再保存。"
-                  : error instanceof TypeError
-                    ? "无法连接资料服务，请确认 MurmurLane 后端正在运行。"
-                  : "保存失败，请确认前后端编辑 Token 已配置且一致。",
-              );
-              setSaving(false);
-            }
-          }}
-        >
-          {saving ? "保存中…" : "保存"}
-        </button>
+        <div className="mt-5 flex gap-2">
+          <button
+            type="button"
+            className="flex-1 rounded-[9px] border border-black/[0.08] bg-black/[0.03] py-3 text-[13px] font-semibold text-black/50"
+            disabled={saving}
+            onClick={onClose}
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            className="flex-[1.4] rounded-[9px] bg-black py-3 text-[13px] font-semibold text-white"
+            disabled={saving}
+            onClick={async () => {
+              setSaving(true);
+              setSaveError("");
+              try {
+                await onSave(draft);
+                onClose();
+              } catch (error) {
+                if (isThread) {
+                  setDraft(originalProfileRef.current);
+                  onPreview?.(originalProfileRef.current);
+                }
+                setSaveError(
+                  error?.status === 404
+                    ? "资料接口尚未加载，请重启 MurmurLane 后端后再保存。"
+                    : error instanceof TypeError
+                      ? "无法连接资料服务，请确认 MurmurLane 后端正在运行。"
+                      : "保存失败，请确认前后端编辑 Token 已配置且一致。",
+                );
+                setSaving(false);
+              }
+            }}
+          >
+            {saving ? "保存中…" : "保存"}
+          </button>
+        </div>
         {saveError && (
           <p className="mt-2 text-center text-[11px] text-[#a2594b]" role="alert">
             {saveError}

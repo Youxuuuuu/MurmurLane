@@ -1,6 +1,6 @@
 import express from "express";
 import { config as loadDotenv } from "dotenv";
-import { readdir, stat } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { createLiveUpdateHub } from "./liveUpdates.js";
@@ -71,6 +71,28 @@ const allowedMediaExtensions = new Set([
   ".m4a",
 ]);
 const defaultApiFileMaxBytes = 25 * 1024 * 1024;
+const stickerAssetExtensions = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif", ".avif"]);
+
+function getStickerRoot() {
+  return resolveDataPath("stickers");
+}
+
+function getStickerAssetPath(fileName: string) {
+  const safeName = path.basename(String(fileName || ""));
+  const extension = path.extname(safeName).toLowerCase();
+  if (!safeName || safeName !== fileName || !stickerAssetExtensions.has(extension)) {
+    return null;
+  }
+  return path.join(getStickerRoot(), "assets", safeName);
+}
+
+function getBundledStickerFallback(id: string) {
+  const fileName = `${id}.png`;
+  const filePath = path.join(process.cwd(), "public", "stickers", fileName);
+  return existsSync(filePath)
+    ? `/stickers/${encodeURIComponent(fileName)}`
+    : "";
+}
 
 function getApiFileMaxBytes() {
   const configured = Number(process.env.API_FILE_MAX_BYTES);
@@ -780,6 +802,63 @@ app.get("/api/moments", async (request, response, next) => {
 app.get("/api/conversation-profiles", async (_request, response, next) => {
   try {
     response.json(await readConversationProfiles());
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/stickers", async (_request, response, next) => {
+  try {
+    const assetRoot = path.join(getStickerRoot(), "assets");
+    const files = (await readdir(assetRoot, { withFileTypes: true }))
+      .filter((entry) => entry.isFile() && stickerAssetExtensions.has(path.extname(entry.name).toLowerCase()))
+      .map((entry) => entry.name)
+      .sort((left, right) => left.localeCompare(right, "zh-CN", { numeric: true }));
+    let index: Record<string, { name?: string; tags?: string[]; category?: string; desc?: string }> = {};
+    try {
+      index = JSON.parse(await readFile(path.join(getStickerRoot(), "index.json"), "utf8"));
+    } catch {
+      // The asset folder remains usable when optional metadata is absent.
+    }
+    response.json({
+      stickers: files.map((fileName) => {
+        const id = path.parse(fileName).name;
+        const metadata = index[id] || {};
+        return {
+          id,
+          fileName,
+          name: metadata.name || id,
+          tags: Array.isArray(metadata.tags) ? metadata.tags : [],
+          category: metadata.category || "",
+          description: metadata.desc || "",
+          // Use an octet-stream response for previews. Some mobile/browser
+          // shells block direct GIF subresources, while image decoders still
+          // render the same bytes when the response is loaded as an image.
+          src:
+            getBundledStickerFallback(id) ||
+            `/api/stickers/assets/${encodeURIComponent(fileName)}?raw=1`,
+        };
+      }),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/stickers/assets/:fileName", async (request, response, next) => {
+  try {
+    const filePath = getStickerAssetPath(request.params.fileName);
+    if (!filePath || !existsSync(filePath)) {
+      response.status(404).json({ error: "Sticker not found." });
+      return;
+    }
+    response.setHeader("Cache-Control", "public, max-age=86400, immutable");
+    if (String(request.query.raw || "") === "1") {
+      response.setHeader("Content-Type", "application/octet-stream");
+    } else {
+      response.type(path.extname(filePath));
+    }
+    response.send(await readFile(filePath));
   } catch (error) {
     next(error);
   }

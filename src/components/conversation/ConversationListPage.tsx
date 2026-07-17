@@ -56,7 +56,7 @@ function GroupNameDialog({ value, onChange, onSave, onClose }) {
             name="group-name"
             autoComplete="off"
             onChange={(event) => onChange(event.target.value)}
-            className="mt-1 h-11 w-full rounded-[10px] border border-black/10 bg-[#f4f5f7] px-3 text-[13px] outline-none focus:border-[#9a8064]/55"
+          className="mt-1 h-11 w-full rounded-[10px] border border-black/10 bg-[#f4f5f7] px-3 text-[16px] outline-none"
             maxLength={40}
           />
         </label>
@@ -74,12 +74,20 @@ function GroupNameDialog({ value, onChange, onSave, onClose }) {
 }
 
 function formatThreadDate(summary) {
-  const timestamp = summary.latestRecord?.timestamp;
+  const canonicalDateText = String(summary.latestDate || "").replace(/-/g, ".");
+  const [year, month, day] = canonicalDateText.split(".").map(Number);
   const today = new Date();
-  const date = timestamp ? new Date(timestamp) : null;
+  const date = year && month && day ? new Date(year, month - 1, day) : null;
 
   if (date && !Number.isNaN(date.getTime())) {
-    if (date.toDateString() === today.toDateString()) {
+    const timestamp = summary.latestRecord?.timestamp;
+    const timestampDate = timestamp ? new Date(timestamp) : null;
+    if (
+      date.toDateString() === today.toDateString() &&
+      timestampDate &&
+      !Number.isNaN(timestampDate.getTime()) &&
+      timestampDate.toDateString() === date.toDateString()
+    ) {
       return formatConversationTime(timestamp);
     }
     return new Intl.DateTimeFormat("zh-CN", {
@@ -88,12 +96,13 @@ function formatThreadDate(summary) {
     }).format(date);
   }
 
-  const match = String(summary.latestDate || "").match(/\.(\d{2})\.(\d{2})$/);
-  return match
+  const timestamp = summary.latestRecord?.timestamp;
+  const fallback = timestamp ? new Date(timestamp) : null;
+  return fallback && !Number.isNaN(fallback.getTime())
     ? new Intl.DateTimeFormat("zh-CN", {
         month: "numeric",
         day: "numeric",
-      }).format(new Date(2000, Number(match[1]) - 1, Number(match[2])))
+      }).format(fallback)
     : "";
 }
 
@@ -108,6 +117,7 @@ export function ConversationListPage({
   onOpenMenu,
   onOpenMoment,
   onAddMoment,
+  onCreateThread,
   onSelectThread,
   onUpdateThreadProfile,
   onUpdateUserProfile,
@@ -159,6 +169,9 @@ export function ConversationListPage({
         const leftPinned = threadProfiles[left.threadId]?.pinned ? 1 : 0;
         const rightPinned = threadProfiles[right.threadId]?.pinned ? 1 : 0;
         if (leftPinned !== rightPinned) return rightPinned - leftPinned;
+        const leftDate = String(left.latestDate || "").replace(/-/g, ".");
+        const rightDate = String(right.latestDate || "").replace(/-/g, ".");
+        if (leftDate !== rightDate) return rightDate.localeCompare(leftDate);
         const leftTime = new Date(left.latestRecord?.timestamp || left.latestDate || 0).getTime();
         const rightTime = new Date(right.latestRecord?.timestamp || right.latestDate || 0).getTime();
         return rightTime - leftTime;
@@ -342,7 +355,7 @@ export function ConversationListPage({
           <div className="grid grid-cols-3 gap-2 text-center">
             <div><b className="block text-[18px] font-bold tabular-nums">{threadSummaries.length}</b><span className="text-[11px] font-semibold">则对话</span></div>
             <div><b className="block text-[18px] font-bold tabular-nums">{totalMessages}</b><span className="text-[11px] font-semibold">条讯息</span></div>
-            <div><b className="block text-[18px] font-bold tabular-nums">{Math.max(1, threadSummaries.length)}</b><span className="text-[11px] font-semibold">聊天中</span></div>
+            <div><b className="block text-[18px] font-bold tabular-nums">{Math.max(1, threadSummaries.length)}</b><span className="text-[11px] font-semibold">粉丝</span></div>
           </div>
         </div>
 
@@ -356,7 +369,7 @@ export function ConversationListPage({
         <div className="mt-3 grid grid-cols-[1fr_1fr_44px] gap-2">
           <button type="button" onClick={onEditProfile} className="rounded-[7px] bg-[#f2f3f5] py-2.5 text-[12px] font-semibold">编辑个人档案</button>
           <button type="button" onClick={onOpenSearch} className="rounded-[7px] bg-[#f2f3f5] py-2.5 text-[12px] font-semibold">搜索聊天</button>
-          <button type="button" onClick={onOpenMenu} className="flex min-h-11 items-center justify-center rounded-[7px] bg-[#f2f3f5] text-black/75" aria-label="打开对话设置"><SettingsIcon /></button>
+          <button type="button" onClick={onCreateThread} className="flex min-h-11 items-center justify-center rounded-[7px] bg-[#f2f3f5] text-black/75" aria-label="新建聊天" title="新建聊天"><SettingsIcon /></button>
         </div>
       </header>
 

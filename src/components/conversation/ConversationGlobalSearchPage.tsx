@@ -104,7 +104,7 @@ export function ConversationGlobalSearchPage({
           }
         />
 
-        <div className="mt-4 flex overflow-hidden rounded-[7px] border border-[#d7dadd] bg-white/60 focus-within:border-[#b9c8d2]">
+        <div className="mt-4 flex overflow-hidden rounded-[7px] border border-[#d7dadd] bg-white/60">
           <label className="relative min-w-0 flex-1">
             <span className="sr-only">搜索全部聊天记录</span>
             <input

@@ -74,7 +74,11 @@ import { SegmentSwitch } from "./components/controls/SegmentSwitch";
 import { ThemeIconButton } from "./components/controls/ThemeIconButton";
 import { TimelineModeSwitch } from "./components/controls/TimelineModeSwitch";
 import { validateAppData } from "./dev/validateAppData";
-import { useConversationProfiles } from "./lib/conversationProfiles";
+import {
+  createDefaultThreadProfile,
+  useConversationProfiles,
+} from "./lib/conversationProfiles";
+import { useWebChat } from "./lib/useWebChat";
 import {
   getConversationDisplayText,
   getConversationVisualKind,
@@ -113,7 +117,30 @@ function normalizeTimelineResponse(response) {
 }
 
 function getLiveConversationRecordKey(date, threadId, record, index = 0) {
-  return `${toDotDate(date)}:${threadId}:${record?.id || `${record?.timestamp || ""}:${record?.type || ""}:${index}`}`;
+  const fallbackParts = [
+    record?.timestamp || record?.createdAt || "",
+    record?.turnId || "",
+    record?.type || record?.role || "",
+    getConversationDisplayText(record),
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+  const stableIdentity =
+    record?.id ||
+    record?.meta?.messageId ||
+    record?.meta?.sourceKey ||
+    record?.source?.sourceKey ||
+    fallbackParts.join("|") ||
+    index;
+  return `${toDotDate(date)}:${threadId}:${stableIdentity}`;
+}
+
+function rememberConversationRecords(knownSet, date, records = []) {
+  records.forEach((record, index) => {
+    const threadId = String(record?.threadId || "");
+    if (!threadId) return;
+    knownSet.add(getLiveConversationRecordKey(date, threadId, record, index));
+  });
 }
 
 function getLiveMessagePreview(record) {
@@ -127,6 +154,7 @@ function getLiveMessagePreview(record) {
     image: "[图片]",
     sticker: "[表情]",
     file: "[文件]",
+    voice: "[语音]",
     music: "[音乐]",
   };
   return labels[getConversationVisualKind(record)] || "[新消息]";
@@ -171,6 +199,7 @@ export default function InsDiaryPrototype() {
   const [activeSection, setActiveSection] = useState("Conversation");
   const [conversationView, setConversationView] = useState("list");
   const [conversationSettingsMode, setConversationSettingsMode] = useState(null);
+  const [conversationProfilePreview, setConversationProfilePreview] = useState(null);
   const [conversationPlaceholder, setConversationPlaceholder] = useState(null);
   const [conversationMoments, setConversationMoments] = useState([]);
   const [conversationDateLoading, setConversationDateLoading] = useState(false);
@@ -179,6 +208,8 @@ export default function InsDiaryPrototype() {
   const [selectedThreadId, setSelectedThreadId] = useState(
     defaultConversationThreadId,
   );
+  const [webThreadIds, setWebThreadIds] = useState<string[]>([]);
+  const [webThreadProfileOverrides, setWebThreadProfileOverrides] = useState({});
   const [timelineView, setTimelineView] = useState("line");
   const [statsPeriod, setStatsPeriod] = useState("day");
   const [highlightResult, setHighlightResult] = useState(null);
@@ -239,6 +270,9 @@ export default function InsDiaryPrototype() {
   const selectedThreadIdRef = useRef(selectedThreadId);
   const threadProfilesRef = useRef({});
   const knownConversationRecordIdsRef = useRef(new Set());
+  const loadedConversationDatesRef = useRef(new Set());
+  const conversationDateLoadingRef = useRef(new Set());
+  const conversationEarlierLoadInFlightRef = useRef(false);
   const conversationBaselineReadyRef = useRef(false);
   const initialLiveRefreshCompleteRef = useRef(false);
   const liveSearchActiveRef = useRef(false);
@@ -360,7 +394,7 @@ export default function InsDiaryPrototype() {
       });
     };
 
-    const registerIncomingMessages = (date, records) => {
+    const registerIncomingMessages = (date, records, allowNotify = true) => {
       const dotDate = toDotDate(date);
       const incomingByThread = new Map();
 
@@ -389,7 +423,7 @@ export default function InsDiaryPrototype() {
         incomingByThread.set(threadId, items);
       });
 
-      if (!canNotifyConversationChanges || !incomingByThread.size) return;
+      if (!canNotifyConversationChanges || !allowNotify || !incomingByThread.size) return;
 
       incomingByThread.forEach((incomingRecords, threadId) => {
         const viewingThread =
@@ -442,7 +476,9 @@ export default function InsDiaryPrototype() {
       if (event.type === "conversations" && event.date) {
         const dotDate = toDotDate(event.date);
         const records = await fetchConversations(dotDate);
-        registerIncomingMessages(dotDate, records);
+        const dateWasLoaded = loadedConversationDatesRef.current.has(dotDate);
+        registerIncomingMessages(dotDate, records, dateWasLoaded);
+        loadedConversationDatesRef.current.add(dotDate);
         const grouped = records.length ? groupConversationRecordsByThread(records) : {};
         setRemoteConversationsState((current) => ({ ...current, [dotDate]: grouped }));
         setRemoteSearchCacheState((current) => ({
@@ -635,23 +671,34 @@ export default function InsDiaryPrototype() {
     () => getAllConversationThreadIds(remoteData),
     [remoteData],
   );
+  const profileThreadIds = useMemo(
+    () => Array.from(new Set([...availableThreadIds, ...webThreadIds])),
+    [availableThreadIds, webThreadIds],
+  );
   const {
     userProfile,
     setUserProfile,
     threadProfiles,
     updateThreadProfile,
-  } = useConversationProfiles(availableThreadIds);
-  threadProfilesRef.current = threadProfiles;
+  } = useConversationProfiles(profileThreadIds);
+  const effectiveThreadProfiles = useMemo(
+    () => ({
+      ...threadProfiles,
+      ...webThreadProfileOverrides,
+      ...(conversationProfilePreview?.threadId
+        ? { [conversationProfilePreview.threadId]: conversationProfilePreview.profile }
+        : {}),
+    }),
+    [threadProfiles, webThreadProfileOverrides, conversationProfilePreview],
+  );
+  threadProfilesRef.current = effectiveThreadProfiles;
 
   useEffect(() => {
     const rememberEntries = (entries) => {
       Object.entries(entries ?? {}).forEach(([date, threads]) => {
+        loadedConversationDatesRef.current.add(toDotDate(date));
         Object.entries(threads ?? {}).forEach(([threadId, records]) => {
-          (records ?? []).forEach((record, index) => {
-            knownConversationRecordIdsRef.current.add(
-              getLiveConversationRecordKey(date, threadId, record, index),
-            );
-          });
+          rememberConversationRecords(knownConversationRecordIdsRef.current, date, records ?? []);
         });
       });
     };
@@ -666,8 +713,8 @@ export default function InsDiaryPrototype() {
     }
   }, [activeSection]);
   const conversationThreadSummaries = useMemo(
-    () => getConversationThreadSummaries(availableThreadIds, remoteData),
-    [availableThreadIds, remoteData],
+    () => getConversationThreadSummaries(profileThreadIds, remoteData),
+    [profileThreadIds, remoteData],
   );
   const selectedThreadDates = useMemo(
     () =>
@@ -701,10 +748,11 @@ export default function InsDiaryPrototype() {
   );
 
   useEffect(() => {
-    if (!availableThreadIds.length) return;
+    if (String(selectedThreadId).startsWith("draft-")) return;
+    if (!profileThreadIds.length) return;
 
-    if (!availableThreadIds.includes(selectedThreadId)) {
-      setSelectedThreadId(latestConversationThreadId ?? availableThreadIds[0]);
+    if (!profileThreadIds.includes(selectedThreadId)) {
+      setSelectedThreadId(latestConversationThreadId ?? profileThreadIds[0]);
       return;
     }
 
@@ -715,7 +763,7 @@ export default function InsDiaryPrototype() {
     ) {
       setSelectedThreadId(latestConversationThreadId);
     }
-  }, [availableThreadIds, latestConversationThreadId, selectedThreadId]);
+  }, [profileThreadIds, latestConversationThreadId, selectedThreadId]);
 
   const handleSelectThread = (threadId) => {
     threadSelectionTouchedRef.current = true;
@@ -728,6 +776,49 @@ export default function InsDiaryPrototype() {
       current.filter((item) => item.threadId !== threadId),
     );
   };
+
+  const handleWebThreadCreated = useCallback(({ draftThreadId, threadId }) => {
+    if (!threadId) return;
+    const draftProfile = threadProfilesRef.current[draftThreadId] || createDefaultThreadProfile(threadId, 0);
+    setWebThreadProfileOverrides((current) => {
+      const next = { ...current, [threadId]: draftProfile };
+      if (draftThreadId && draftThreadId !== threadId) delete next[draftThreadId];
+      return next;
+    });
+    setWebThreadIds((current) => Array.from(new Set([
+      ...current.filter((item) => item !== draftThreadId),
+      threadId,
+    ])));
+    threadSelectionTouchedRef.current = true;
+    setSelectedThreadId(threadId);
+    setSelectedDate(getTodayDateText());
+    setConversationJumpDate(null);
+    setConversationView("chat");
+  }, []);
+
+  const webChat = useWebChat({
+    enabled: activeSection === "Conversation" && conversationView === "chat" && !conversationPlaceholder,
+    threadId: selectedThreadId,
+    onThreadCreated: handleWebThreadCreated,
+  });
+
+  const openNewConversationThread = useCallback(() => {
+    const draftThreadId = `draft-${typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`}`;
+    const profile = {
+      ...createDefaultThreadProfile(draftThreadId, 0),
+      name: "新聊天",
+      handle: "@new-chat",
+      signature: "从网页开始的聊天",
+    };
+    setWebThreadProfileOverrides((current) => ({ ...current, [draftThreadId]: profile }));
+    setWebThreadIds((current) => Array.from(new Set([...current, draftThreadId])));
+    threadSelectionTouchedRef.current = true;
+    setSelectedThreadId(draftThreadId);
+    setSelectedDate(getTodayDateText());
+    setConversationJumpDate(null);
+    setConversationPlaceholder(null);
+    setConversationView("chat");
+  }, []);
   useEffect(() => {
     const dotDate = toDotDate(selectedDate);
     const remoteConversationCount = Object.values(
@@ -1006,6 +1097,7 @@ export default function InsDiaryPrototype() {
         Array.isArray(conversationsResult.value) &&
         conversationsResult.value.length
       ) {
+        loadedConversationDatesRef.current.add(dotDate);
         conversationsResult.value.forEach((record, index) => {
           const threadId = String(record?.threadId || "");
           if (!threadId) return;
@@ -1022,6 +1114,9 @@ export default function InsDiaryPrototype() {
           [dotDate]: grouped,
         }));
       } else {
+        if (conversationsResult.status === "fulfilled") {
+          loadedConversationDatesRef.current.add(dotDate);
+        }
         setRemoteConversationsState((current) => {
           const next = { ...current };
           delete next[dotDate];
@@ -1143,6 +1238,12 @@ export default function InsDiaryPrototype() {
         const date = dates[index];
         searchPendingRef.current.conversations.delete(date);
         if (result.status === "fulfilled" && Array.isArray(result.value)) {
+          loadedConversationDatesRef.current.add(toDotDate(date));
+          rememberConversationRecords(
+            knownConversationRecordIdsRef.current,
+            date,
+            result.value,
+          );
           conversations[date] = result.value.length
             ? groupConversationRecordsByThread(result.value)
             : {};
@@ -1273,6 +1374,12 @@ export default function InsDiaryPrototype() {
 
             if (task.type === "conversations") {
               if (Array.isArray(result)) {
+                loadedConversationDatesRef.current.add(toDotDate(task.date));
+                rememberConversationRecords(
+                  knownConversationRecordIdsRef.current,
+                  task.date,
+                  result,
+                );
                 pendingSearchCache.conversations[task.date] = result.length
                   ? groupConversationRecordsByThread(result)
                   : {};
@@ -1675,7 +1782,13 @@ export default function InsDiaryPrototype() {
 
   const openConversationThread = (summary) => {
     handleSelectThread(summary.threadId);
-    if (summary.latestDate) setSelectedDate(summary.latestDate);
+    const indexedDates = (remoteDateIndexState?.conversationThreads?.[summary.threadId] ?? [])
+      .map(toDotDate)
+      .sort();
+    const latestDate = indexedDates[indexedDates.length - 1] || toDotDate(summary.latestDate || "");
+    if (latestDate) setSelectedDate(latestDate);
+    // Opening a thread should land at its newest message. Date jumps are only
+    // for explicit date/search navigation, where the first message is desired.
     setConversationJumpDate(null);
     setConversationPlaceholder(null);
     setConversationView("chat");
@@ -1695,21 +1808,26 @@ export default function InsDiaryPrototype() {
     threadId = selectedThreadId,
   ) => {
     const date = toDotDate(dateText);
+    const loadingKey = `${date}:${threadId}`;
     const alreadyLoaded =
       remoteConversationsState[date]?.[threadId] ||
       remoteSearchCacheState.conversations[date]?.[threadId];
-    if (alreadyLoaded || conversationDateLoading) return;
+    if (alreadyLoaded || conversationDateLoadingRef.current.has(loadingKey)) {
+      return false;
+    }
 
+    conversationDateLoadingRef.current.add(loadingKey);
     setConversationDateLoading(true);
     try {
       const records = await fetchConversations(date, {
         threadId,
       });
-      records.forEach((record, index) => {
-        knownConversationRecordIdsRef.current.add(
-          getLiveConversationRecordKey(date, threadId, record, index),
-        );
-      });
+      loadedConversationDatesRef.current.add(date);
+      rememberConversationRecords(
+        knownConversationRecordIdsRef.current,
+        date,
+        records,
+      );
       const grouped = groupConversationRecordsByThread(records);
       setRemoteSearchCacheState((current) => ({
         ...current,
@@ -1718,19 +1836,28 @@ export default function InsDiaryPrototype() {
           [date]: {
             ...(current.conversations[date] ?? {}),
             ...grouped,
+            [threadId]: grouped[threadId] ?? [],
           },
         },
       }));
+      return Boolean(grouped[threadId]?.length);
     } finally {
-      setConversationDateLoading(false);
+      conversationDateLoadingRef.current.delete(loadingKey);
+      setConversationDateLoading(conversationDateLoadingRef.current.size > 0);
     }
   };
 
   const handleLoadEarlierConversationDate = async () => {
+    if (conversationEarlierLoadInFlightRef.current) return;
     const earliestLoaded = loadedSelectedThreadDates[0];
     const earliestIndex = selectedThreadDates.indexOf(earliestLoaded);
     if (earliestIndex <= 0) return;
-    await loadConversationThreadDate(selectedThreadDates[earliestIndex - 1]);
+    conversationEarlierLoadInFlightRef.current = true;
+    try {
+      return await loadConversationThreadDate(selectedThreadDates[earliestIndex - 1]);
+    } finally {
+      conversationEarlierLoadInFlightRef.current = false;
+    }
   };
 
   const handleSelectConversationDate = async (dateText) => {
@@ -1792,15 +1919,17 @@ export default function InsDiaryPrototype() {
         <PageViewport
           viewportKey={`${activeSection}-${archiveSubject}-${timelineView}-${conversationView}-${conversationPlaceholder?.title || ""}`}
           scrollMode={pageScrollMode}
+          contentClassName={activeSection === "Conversation" ? "mt-0" : "mt-1"}
           header={
             activeSection === "Conversation" ? (
               conversationView === "chat" && !conversationPlaceholder ? (
                 <ConversationHeader
                   userProfile={userProfile}
-                  threadProfile={threadProfiles[selectedThreadId]}
+                  threadProfile={effectiveThreadProfiles[selectedThreadId]}
                   onBack={() => setConversationView("list")}
                   onEditThread={() => setConversationSettingsMode("thread")}
                   onOpenSearch={() => setConversationView("search")}
+                  isTyping={webChat.status?.status === "running" || webChat.status?.status === "streaming"}
                   floatingDate={conversationFloatingDate}
                   onOpenDatePicker={() => setDatePickerOpen(true)}
                 />
@@ -1887,7 +2016,7 @@ export default function InsDiaryPrototype() {
             ) : conversationView === "list" ? (
               <ConversationListPage
                 userProfile={userProfile}
-                threadProfiles={threadProfiles}
+                threadProfiles={effectiveThreadProfiles}
                 threadSummaries={conversationThreadSummaries}
                 unreadCounts={conversationUnreadCounts}
                 moments={conversationMoments}
@@ -1909,6 +2038,7 @@ export default function InsDiaryPrototype() {
                     description: "上传页将在后续设计；文件会统一保存到 D:\\study\\.cyberboss\\MLane\\moment\\yyyy\\mm\\dd\\。",
                   })
                 }
+                onCreateThread={openNewConversationThread}
                 onOpenMoment={() =>
                   setConversationPlaceholder({
                     title: "瞬间",
@@ -1924,7 +2054,7 @@ export default function InsDiaryPrototype() {
                 page={page}
                 conversationDates={allConversationDates}
                 userProfile={userProfile}
-                threadProfiles={threadProfiles}
+                threadProfiles={effectiveThreadProfiles}
                 onBack={() => setConversationView("list")}
                 onSelectResult={handleSelectGlobalConversationSearchResult}
               />
@@ -1934,7 +2064,7 @@ export default function InsDiaryPrototype() {
                 threadId={selectedThreadId}
                 threadDates={selectedThreadDates}
                 userProfile={userProfile}
-                threadProfile={threadProfiles[selectedThreadId]}
+                threadProfile={effectiveThreadProfiles[selectedThreadId]}
                 onBack={() => setConversationView("chat")}
                 onEditThread={() => setConversationSettingsMode("thread")}
                 onSelectResult={handleSelectConversationSearchResult}
@@ -1945,7 +2075,7 @@ export default function InsDiaryPrototype() {
                 selectedThreadId={selectedThreadId}
                 highlightResult={highlightResult}
                 userProfile={userProfile}
-                threadProfile={threadProfiles[selectedThreadId]}
+                threadProfile={effectiveThreadProfiles[selectedThreadId]}
                 onEditThread={() => setConversationSettingsMode("thread")}
                 targetDate={conversationJumpDate}
                 onTargetDateHandled={() => setConversationJumpDate(null)}
@@ -1953,6 +2083,8 @@ export default function InsDiaryPrototype() {
                 hasEarlierDate={hasEarlierConversationDate}
                 earlierDateLoading={conversationDateLoading}
                 onFloatingDateChange={setConversationFloatingDate}
+                liveMessages={webChat.messages}
+                webChat={webChat}
               />
             )
           ) : (
@@ -2042,14 +2174,23 @@ export default function InsDiaryPrototype() {
                 mode="user"
                 profile={userProfile}
                 onSave={setUserProfile}
-                onClose={() => setConversationSettingsMode(null)}
+                onClose={() => {
+                  setConversationSettingsMode(null);
+                  setConversationProfilePreview(null);
+                }}
               />
             )}
             {conversationSettingsMode === "thread" &&
-              threadProfiles[selectedThreadId] && (
+          effectiveThreadProfiles[selectedThreadId] && (
                 <ConversationSettingsModal
                   mode="thread"
-                  profile={threadProfiles[selectedThreadId]}
+            profile={effectiveThreadProfiles[selectedThreadId]}
+                  onPreview={(profile) =>
+                    setConversationProfilePreview({
+                      threadId: selectedThreadId,
+                      profile,
+                    })
+                  }
                   onSave={async (profile) => {
                     const saved = await updateThreadProfile(
                       selectedThreadId,
@@ -2064,7 +2205,10 @@ export default function InsDiaryPrototype() {
                     }
                     return saved;
                   }}
-                  onClose={() => setConversationSettingsMode(null)}
+                  onClose={() => {
+                    setConversationSettingsMode(null);
+                    setConversationProfilePreview(null);
+                  }}
                 />
               )}
           {datePickerOpen && (

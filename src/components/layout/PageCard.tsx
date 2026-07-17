@@ -19,7 +19,7 @@ export function PageCard({
       exit={{ opacity: 0, y: -8 }}
       {...motionProps}
       className={className}
-      style={{ background: page.paper, borderColor: "transparent" }}
+      style={{ background: page.paper, borderColor: "transparent", ...(motionProps.style || {}) }}
     >
       {showTexture && <PaperTexture mode={page.texture} />}
       {children}

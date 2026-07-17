@@ -2,6 +2,7 @@ export function PageViewport({
   viewportKey,
   scrollMode,
   header,
+  contentClassName = "mt-1",
   children,
 }) {
   const pageScrollClass =
@@ -10,11 +11,11 @@ export function PageViewport({
   return (
     <div
       key={viewportKey}
-      className={`diary-scroll flex min-h-0 flex-1 flex-col overflow-x-hidden overscroll-contain pb-4 ${pageScrollClass}`}
+      className={`diary-scroll relative flex min-h-0 flex-1 flex-col overflow-x-hidden overscroll-contain pb-4 ${pageScrollClass}`}
       style={{ paddingBottom: "var(--app-bottom-nav-space)" }}
     >
       {header}
-      <div className="mt-1 flex min-h-0 flex-1 flex-col pb-0.6">
+      <div className={`${contentClassName} flex min-h-0 flex-1 flex-col pb-0.6`}>
         {children}
       </div>
     </div>

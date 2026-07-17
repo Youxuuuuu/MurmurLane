@@ -33,6 +33,14 @@ export function useStableViewport() {
         0,
         stableHeight - currentVisualHeight - currentVisualOffsetTop,
       );
+      const layoutViewportTracksKeyboard =
+        currentLayoutHeight > 0 &&
+        currentVisualHeight > 0 &&
+        Math.abs(currentLayoutHeight - currentVisualHeight) < 2 &&
+        currentLayoutHeight < stableHeight - 80;
+      const composerKeyboardInset = layoutViewportTracksKeyboard
+        ? 0
+        : keyboardInset;
 
       document.documentElement.style.setProperty(
         "--app-stable-height",
@@ -40,7 +48,7 @@ export function useStableViewport() {
       );
       document.documentElement.style.setProperty(
         "--app-keyboard-inset",
-        `${Math.round(keyboardInset)}px`,
+        `${Math.round(composerKeyboardInset)}px`,
       );
       document.documentElement.style.setProperty(
         "--app-keyboard-center-offset",
