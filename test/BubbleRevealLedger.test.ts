@@ -97,6 +97,25 @@ test("historical messages are all mounted at rest and never enter", () => {
   }
 });
 
+test("re-entering a previously animated message normalizes every bubble to rest", () => {
+  const ledger = createLedger();
+  const renderId = "assistant:thread:turn:item";
+  let snapshot = ledger.prepareMessage(renderId, 2, "sequential");
+  const first = snapshot.visibleSlots[0];
+  ledger.claimEntering(renderId, first.bubbleId);
+  ledger.completeEntering(renderId, first.bubbleId);
+  snapshot = ledger.getSnapshot(renderId)!;
+  const second = snapshot.visibleSlots[1];
+  ledger.claimEntering(renderId, second.bubbleId);
+  ledger.completeEntering(renderId, second.bubbleId);
+
+  const history = ledger.prepareMessage(renderId, 2, "rest");
+  assert.deepEqual(history.visibleSlots.map((slot) => slot.status), ["rest", "rest"]);
+  assert.equal(ledger.getEnterCount(renderId, first.bubbleId), 1);
+  assert.equal(ledger.getEnterCount(renderId, second.bubbleId), 1);
+  assert.equal(ledger.claimEntering(renderId, first.bubbleId), false);
+});
+
 test("bubble identity is independent from text payload changes", () => {
   const ledger = createLedger();
   const renderId = "assistant:thread:turn:item";
@@ -106,5 +125,34 @@ test("bubble identity is independent from text payload changes", () => {
   assert.deepEqual(
     after.visibleSlots.map((slot) => slot.bubbleId),
     before.visibleSlots.map((slot) => slot.bubbleId),
+  );
+});
+
+test("an appended live line emits a pre-mount anchor event before it is exposed", () => {
+  const ledger = createLedger();
+  const renderId = "assistant:thread:turn:item";
+  const lifecycle: string[] = [];
+  ledger.subscribeLifecycle((event) => {
+    lifecycle.push(event.phase + ":" + event.bubbleId);
+  });
+  let snapshot = ledger.prepareMessage(renderId, 1, "sequential");
+  const first = snapshot.visibleSlots[0];
+  ledger.claimEntering(renderId, first.bubbleId);
+  ledger.completeEntering(renderId, first.bubbleId);
+
+  snapshot = ledger.prepareMessage(renderId, 3, "sequential");
+  assert.equal(snapshot.visibleSlots.length, 1);
+  assert.equal(ledger.revealNextIfReady(renderId), true);
+  snapshot = ledger.getSnapshot(renderId)!;
+  assert.equal(snapshot.visibleSlots.length, 2);
+  assert.equal(
+    lifecycle.includes("will-mount:" + snapshot.visibleSlots[1].bubbleId),
+    true,
+  );
+
+  ledger.notifyMounted(renderId, snapshot.visibleSlots[1].bubbleId);
+  assert.equal(
+    lifecycle.at(-1),
+    "mounted:" + snapshot.visibleSlots[1].bubbleId,
   );
 });

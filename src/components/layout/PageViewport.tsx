@@ -1,3 +1,5 @@
+import React from "react";
+
 export function PageViewport({
   viewportKey,
   scrollMode,
@@ -10,7 +12,7 @@ export function PageViewport({
 
   return (
     <div
-      key={viewportKey}
+      data-viewport={viewportKey}
       className={`diary-scroll relative flex min-h-0 flex-1 flex-col overflow-x-hidden overscroll-contain pb-4 ${pageScrollClass}`}
       style={{ paddingBottom: "var(--app-bottom-nav-space)" }}
     >

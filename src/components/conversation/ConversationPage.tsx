@@ -9,6 +9,14 @@ import {
   mergeConversationRecords,
 } from "../../lib/conversationMerge";
 import { getConversationRenderId } from "../../lib/conversationIdentity";
+import { bubbleRevealLedger } from "../../lib/BubbleRevealLedger";
+import {
+  ConversationEntryMetrics,
+  ConversationScrollCauseLedger,
+  resolveBubbleRevealAnchorTop,
+  shouldAnimateConversationBubble,
+  shouldShowFloatingDate,
+} from "../../lib/conversationScrollPolicy";
 import { CardScrollArea } from "../layout/CardScrollArea";
 import { PageCard } from "../layout/PageCard";
 import { ChatBubble } from "./ChatBubble";
@@ -77,6 +85,7 @@ export function ConversationPage({
   const reduceMotion = useReducedMotion();
   const bubbleAnimationThreadRef = useRef(null);
   const observedBubbleKeysRef = useRef(new Set());
+  const historicalBubbleKeysRef = useRef(new Set());
   const awaitingInitialBubbleBatchRef = useRef(false);
   useEffect(() => {
     setActiveAction(null);
@@ -109,6 +118,7 @@ export function ConversationPage({
   const visibleRangeRef = useRef(visibleRange);
   const topScrollAdjustmentRef = useRef(null);
   const shouldStickToBottomRef = useRef(false);
+  const shouldStickToBottomCauseRef = useRef(null);
   const shouldResetToBottomRef = useRef(false);
   const resetVisibleRangeRef = useRef(null);
   const pendingHighlightTargetRef = useRef(null);
@@ -116,6 +126,9 @@ export function ConversationPage({
   const pendingEarlierAnchorRef = useRef(null);
   const floatingDateTimerRef = useRef(null);
   const conversationKeyRef = useRef(null);
+  const pendingBubbleRevealAnchorsRef = useRef(new Map());
+  const scrollCauseLedgerRef = useRef(new ConversationScrollCauseLedger());
+  const entryMetricsRef = useRef(new ConversationEntryMetrics());
   const historyLoadInFlightRef = useRef(false);
   const messageCountRef = useRef({
     key: selectedThreadId,
@@ -124,6 +137,45 @@ export function ConversationPage({
   const isNearBottomRef = useRef(true);
   const [newMessageCount, setNewMessageCount] = useState(0);
   const conversationKey = selectedThreadId;
+  entryMetricsRef.current.beginEntry(conversationKey);
+
+  const publishEntryMetrics = () => {
+    const snapshot = entryMetricsRef.current.snapshot();
+    const scrollBox = typeof document === "undefined"
+      ? null
+      : document.getElementById("conversation-message-scroll");
+    if (scrollBox) {
+      scrollBox.dataset.initialBottomPositioningCount = String(
+        snapshot.initialBottomPositioningCount,
+      );
+      scrollBox.dataset.historicalBubbleEnterCount = String(
+        snapshot.historicalBubbleEnterCount,
+      );
+      scrollBox.dataset.logicalMessageMountCount = String(
+        snapshot.logicalMessageMountCount,
+      );
+    }
+    if (!import.meta.env.DEV || typeof window === "undefined") return;
+    window.__MURMURLANE_CONVERSATION_ENTRY_METRICS__ = snapshot;
+  };
+
+  const scrollWithCause = (scrollBox, requestedTop, cause) => {
+    const plan = scrollCauseLedgerRef.current.beginProgrammaticScroll({
+      cause,
+      requestedTop,
+      currentTop: scrollBox.scrollTop,
+      scrollHeight: scrollBox.scrollHeight,
+      clientHeight: scrollBox.clientHeight,
+    });
+    scrollBox.dataset.scrollCause = cause;
+    const distanceFromBottom =
+      scrollBox.scrollHeight - plan.targetTop - scrollBox.clientHeight;
+    isNearBottomRef.current =
+      distanceFromBottom <= CONVERSATION_SCROLL_EDGE_THRESHOLD;
+    if (!plan.shouldScroll) return false;
+    scrollBox.scrollTo({ top: plan.targetTop, behavior: "auto" });
+    return true;
+  };
   const hasConversationHit =
     highlightResult?.mode === "Conversation" &&
     highlightResult.threadId === selectedThreadId;
@@ -189,14 +241,76 @@ export function ConversationPage({
   }, [clampedVisibleRange]);
 
   useEffect(
-    () => () => {
+    () => {
       if (floatingDateTimerRef.current) {
         window.clearTimeout(floatingDateTimerRef.current);
       }
       onFloatingDateChange?.("");
+      return () => {
+        if (floatingDateTimerRef.current) {
+          window.clearTimeout(floatingDateTimerRef.current);
+        }
+        onFloatingDateChange?.("");
+      };
     },
-    [onFloatingDateChange],
+    [onFloatingDateChange, selectedThreadId],
   );
+
+  useLayoutEffect(() => {
+    entryMetricsRef.current.observeLogicalMessages(
+      bubbleAnimationEntries.map((entry) => entry.key),
+    );
+    publishEntryMetrics();
+  }, [bubbleAnimationEntries, selectedThreadId]);
+
+  useEffect(() => {
+    pendingBubbleRevealAnchorsRef.current.clear();
+    return bubbleRevealLedger.subscribeLifecycle((event) => {
+      if (
+        event.phase === "entering"
+        && historicalBubbleKeysRef.current.has(event.renderId)
+      ) {
+        entryMetricsRef.current.recordHistoricalBubbleEnter();
+        publishEntryMetrics();
+        return;
+      }
+
+      const scrollBox = document.getElementById("conversation-message-scroll");
+      if (!scrollBox) return;
+
+      if (event.phase === "will-mount") {
+        if (!isNearBottomRef.current) return;
+        pendingBubbleRevealAnchorsRef.current.set(event.bubbleId, {
+          threadId: selectedThreadId,
+          wasNearBottom: true,
+          scrollHeight: scrollBox.scrollHeight,
+          scrollTop: scrollBox.scrollTop,
+          userRevision: scrollCauseLedgerRef.current.getUserRevision(),
+        });
+        return;
+      }
+
+      if (event.phase !== "mounted") return;
+      const anchor = pendingBubbleRevealAnchorsRef.current.get(event.bubbleId);
+      if (!anchor) return;
+      pendingBubbleRevealAnchorsRef.current.delete(event.bubbleId);
+      if (anchor.threadId !== selectedThreadId) return;
+      const anchoredTop = resolveBubbleRevealAnchorTop({
+        wasNearBottom: anchor.wasNearBottom,
+        anchorScrollTop: anchor.scrollTop,
+        anchorScrollHeight: anchor.scrollHeight,
+        currentScrollHeight: scrollBox.scrollHeight,
+        anchorUserRevision: anchor.userRevision,
+        currentUserRevision: scrollCauseLedgerRef.current.getUserRevision(),
+      });
+      if (anchoredTop === null) return;
+      scrollWithCause(
+        scrollBox,
+        anchoredTop,
+        "bubble-reveal",
+      );
+    });
+  }, [selectedThreadId]);
 
   useLayoutEffect(() => {
     if (!targetDate || targetDateIndex < 0) return;
@@ -239,11 +353,15 @@ export function ConversationPage({
       topScrollAdjustmentRef.current = null;
       pendingHighlightTargetRef.current = null;
       shouldStickToBottomRef.current = false;
+      shouldStickToBottomCauseRef.current = null;
+      pendingBubbleRevealAnchorsRef.current.clear();
+      scrollCauseLedgerRef.current.reset();
     }
 
     if (hasConversationHit) {
       topScrollAdjustmentRef.current = null;
       shouldStickToBottomRef.current = false;
+      shouldStickToBottomCauseRef.current = null;
       shouldResetToBottomRef.current = false;
       resetVisibleRangeRef.current = null;
 
@@ -267,6 +385,7 @@ export function ConversationPage({
     topScrollAdjustmentRef.current = null;
     pendingHighlightTargetRef.current = null;
     shouldStickToBottomRef.current = false;
+    shouldStickToBottomCauseRef.current = null;
     const nextRange = {
       start: Math.max(
         0,
@@ -293,12 +412,18 @@ export function ConversationPage({
 
   useLayoutEffect(() => {
     const threadChanged = bubbleAnimationThreadRef.current !== selectedThreadId;
+    const baselineEntries = (entries) => {
+      entries.forEach((entry) => {
+        observedBubbleKeysRef.current.add(entry.key);
+        if (!entry.live) historicalBubbleKeysRef.current.add(entry.key);
+      });
+    };
 
     if (threadChanged) {
       bubbleAnimationThreadRef.current = selectedThreadId;
-      observedBubbleKeysRef.current = new Set(
-        bubbleAnimationEntries.map((entry) => entry.key),
-      );
+      observedBubbleKeysRef.current = new Set();
+      historicalBubbleKeysRef.current = new Set();
+      baselineEntries(bubbleAnimationEntries);
       awaitingInitialBubbleBatchRef.current = bubbleAnimationEntries.length === 0;
       return;
     }
@@ -311,9 +436,7 @@ export function ConversationPage({
         hasConversationHit,
     );
     if (shouldBaselineCurrentMessages) {
-      bubbleAnimationEntries.forEach((entry) => {
-        observedBubbleKeysRef.current.add(entry.key);
-      });
+      baselineEntries(bubbleAnimationEntries);
       if (bubbleAnimationEntries.length) {
         awaitingInitialBubbleBatchRef.current = false;
       }
@@ -336,9 +459,7 @@ export function ConversationPage({
       awaitingInitialBubbleBatchRef.current = false;
       // The first async history batch can be larger than the rendered window.
       // Baseline every loaded key now so older rows do not animate on scroll.
-      bubbleAnimationEntries.forEach((entry) => {
-        observedBubbleKeysRef.current.add(entry.key);
-      });
+      baselineEntries(bubbleAnimationEntries);
     }
   }, [
     bubbleAnimationEntries,
@@ -358,6 +479,7 @@ export function ConversationPage({
 
     if (previous.key !== conversationKey) {
       isNearBottomRef.current = true;
+      shouldStickToBottomCauseRef.current = null;
       setNewMessageCount(0);
       return;
     }
@@ -376,6 +498,7 @@ export function ConversationPage({
 
     if (isNearBottomRef.current) {
       shouldStickToBottomRef.current = true;
+      shouldStickToBottomCauseRef.current = "new-message";
       setVisibleRange({
         start: Math.max(
           0,
@@ -407,6 +530,7 @@ export function ConversationPage({
         resetVisibleRangeRef.current = null;
         topScrollAdjustmentRef.current = null;
         shouldStickToBottomRef.current = false;
+        shouldStickToBottomCauseRef.current = null;
         return;
       }
 
@@ -419,10 +543,14 @@ export function ConversationPage({
 
       topScrollAdjustmentRef.current = null;
       shouldStickToBottomRef.current = false;
-      scrollBox.scrollTo({
-        top: scrollBox.scrollHeight,
-        behavior: "auto",
-      });
+      shouldStickToBottomCauseRef.current = null;
+      if (!entryMetricsRef.current.claimInitialBottomPositioning()) {
+        shouldResetToBottomRef.current = false;
+        resetVisibleRangeRef.current = null;
+        return;
+      }
+      scrollWithCause(scrollBox, scrollBox.scrollHeight, "initial-position");
+      publishEntryMetrics();
       shouldResetToBottomRef.current = false;
       resetVisibleRangeRef.current = null;
       return;
@@ -436,10 +564,13 @@ export function ConversationPage({
         topScrollAdjustment.date === page.date &&
         topScrollAdjustment.threadId === selectedThreadId
       ) {
-        scrollBox.scrollTop =
+        scrollWithCause(
+          scrollBox,
           scrollBox.scrollHeight -
-          topScrollAdjustment.scrollHeight +
-          topScrollAdjustment.scrollTop;
+            topScrollAdjustment.scrollHeight +
+            topScrollAdjustment.scrollTop,
+          "history-prepend",
+        );
         return;
       }
     }
@@ -459,10 +590,7 @@ export function ConversationPage({
       const centeredTop =
         targetTop - scrollBox.clientHeight / 2 + targetRect.height / 2;
 
-      scrollBox.scrollTo({
-        top: Math.max(0, centeredTop),
-        behavior: "auto",
-      });
+      scrollWithCause(scrollBox, centeredTop, "date-jump");
       return;
     }
 
@@ -471,17 +599,16 @@ export function ConversationPage({
       const target = document.getElementById(`conversation-date-${date}`);
       if (!target) return;
       pendingDateTargetRef.current = null;
-      scrollBox.scrollTo({ top: Math.max(0, target.offsetTop - 12), behavior: "auto" });
+      scrollWithCause(scrollBox, target.offsetTop - 12, "date-jump");
       onTargetDateHandled?.();
       return;
     }
 
     if (shouldStickToBottomRef.current) {
-      scrollBox.scrollTo({
-        top: scrollBox.scrollHeight,
-        behavior: "auto",
-      });
+      const cause = shouldStickToBottomCauseRef.current || "new-message";
       shouldStickToBottomRef.current = false;
+      shouldStickToBottomCauseRef.current = null;
+      scrollWithCause(scrollBox, scrollBox.scrollHeight, cause);
     }
   }, [
     clampedVisibleRange.start,
@@ -511,15 +638,37 @@ export function ConversationPage({
     );
   };
 
+  const noteUserScrollIntent = () => {
+    scrollCauseLedgerRef.current.noteUserScrollIntent();
+  };
+
+  const handleScrollPointerDown = (event) => {
+    if (event.target === event.currentTarget) noteUserScrollIntent();
+  };
+
+  const handleScrollKeyDown = (event) => {
+    if (
+      ["ArrowDown", "ArrowUp", "End", "Home", "PageDown", "PageUp", " "]
+        .includes(event.key)
+    ) {
+      noteUserScrollIntent();
+    }
+  };
+
   const handleConversationScroll = (event) => {
     const scrollBox = event.currentTarget;
+    const cause = scrollCauseLedgerRef.current.resolveScrollEvent(
+      scrollBox.scrollTop,
+    );
+    if (cause) scrollBox.dataset.scrollCause = cause;
     const currentRange = visibleRangeRef.current;
     const distanceFromBottom =
       scrollBox.scrollHeight - scrollBox.scrollTop - scrollBox.clientHeight;
     isNearBottomRef.current =
       distanceFromBottom <= CONVERSATION_SCROLL_EDGE_THRESHOLD;
     if (isNearBottomRef.current && newMessageCount) setNewMessageCount(0);
-    updateFloatingDate(scrollBox);
+    if (shouldShowFloatingDate(cause)) updateFloatingDate(scrollBox);
+    if (cause !== "user") return;
 
     if (
       scrollBox.scrollTop <= CONVERSATION_SCROLL_EDGE_THRESHOLD &&
@@ -578,8 +727,6 @@ export function ConversationPage({
       distanceFromBottom <= CONVERSATION_SCROLL_EDGE_THRESHOLD &&
       currentRange.end < visibleMessages.length
     ) {
-      shouldStickToBottomRef.current =
-        distanceFromBottom <= CONVERSATION_SCROLL_EDGE_THRESHOLD;
       setVisibleRange((current) => ({
         start: current.start,
         end: Math.min(
@@ -599,6 +746,7 @@ export function ConversationPage({
     shouldResetToBottomRef.current = false;
     isNearBottomRef.current = true;
     shouldStickToBottomRef.current = true;
+    shouldStickToBottomCauseRef.current = "new-message";
     setNewMessageCount(0);
     setVisibleRange({
       start: Math.max(
@@ -617,15 +765,16 @@ export function ConversationPage({
       isBubbleMessage &&
       bubbleAnimationThreadRef.current === selectedThreadId &&
       !observedBubbleKeysRef.current.has(animationKey);
-    const animateBubbleSequence = Boolean(
-      isUnseenBubble &&
-        (!awaitingInitialBubbleBatchRef.current || message.meta?.webChatLive) &&
-        !reduceMotion &&
-        !historyLoadInFlightRef.current &&
-        !pendingDateTargetRef.current &&
-        !targetDate &&
-        !hasConversationHit,
-    );
+    const animateBubbleSequence = shouldAnimateConversationBubble({
+      isUnseen: isUnseenBubble,
+      awaitingInitialBatch: awaitingInitialBubbleBatchRef.current,
+      isLive: Boolean(message.meta?.webChatLive),
+      reduceMotion: Boolean(reduceMotion),
+      historyLoading: historyLoadInFlightRef.current,
+      navigating: Boolean(
+        pendingDateTargetRef.current || targetDate || hasConversationHit
+      ),
+    });
     const date = getMessageDate(message);
     const previousDate = entry.index > 0
       ? getMessageDate(visibleMessages[entry.index - 1])
@@ -701,13 +850,17 @@ export function ConversationPage({
       {pageHasEntry ? (
         <div className="relative flex min-h-0 flex-1">
           <CardScrollArea
-          id="conversation-message-scroll"
-          className="z-10 px-3 pb-[122px] pt-[184px]"
-          onScroll={handleConversationScroll}
-          style={{
-            background: "transparent",
-          }}
-        >
+            id="conversation-message-scroll"
+            className="z-10 px-3 pb-[122px] pt-[184px]"
+            onScroll={handleConversationScroll}
+            onWheel={noteUserScrollIntent}
+            onTouchMove={noteUserScrollIntent}
+            onPointerDown={handleScrollPointerDown}
+            onKeyDown={handleScrollKeyDown}
+            style={{
+              background: "transparent",
+            }}
+          >
           {renderedDisplayItems.map((item) => {
             if (item.kind === "record") {
               return renderRecordEntry(item.entry);

@@ -16,6 +16,12 @@ export interface BubbleRevealSnapshot {
   totalCount: number;
 }
 
+export type BubbleRevealLifecycleEvent = {
+  phase: "entering" | "will-mount" | "mounted";
+  renderId: string;
+  bubbleId: string;
+};
+
 interface InternalSlot extends BubbleRevealSlot {
   enterCount: number;
 }
@@ -38,6 +44,9 @@ function defaultSlotTokenFactory() {
 export class BubbleRevealLedger {
   private readonly states = new Map<string, MessageRevealState>();
   private readonly listeners = new Map<string, Set<() => void>>();
+  private readonly lifecycleListeners = new Set<(
+    event: BubbleRevealLifecycleEvent,
+  ) => void>();
   private readonly createSlotToken: () => string;
 
   constructor({ createSlotToken = defaultSlotTokenFactory }: {
@@ -70,8 +79,6 @@ export class BubbleRevealLedger {
       };
       this.states.set(renderId, state);
     }
-    const previousTotalCount = state.snapshot.totalCount;
-
     while (state.slots.length < normalizedCount) {
       const slotId = this.createSlotToken();
       state.slots.push({
@@ -86,7 +93,7 @@ export class BubbleRevealLedger {
       state.mode = "rest";
       state.visibleCount = normalizedCount;
       state.slots.slice(0, normalizedCount).forEach((slot) => {
-        if (slot.status !== "entered") slot.status = "rest";
+        slot.status = "rest";
       });
     } else {
       state.mode = "sequential";
@@ -97,15 +104,6 @@ export class BubbleRevealLedger {
       state.slots.slice(0, visibleCount).forEach((slot) => {
         if (slot.status === "hidden") slot.status = "queued";
       });
-      if (
-        normalizedCount > previousTotalCount
-        && state.visibleCount === previousTotalCount
-        && state.slots.slice(0, previousTotalCount).every((slot) => slot.status === "entered")
-      ) {
-        state.visibleCount = Math.min(normalizedCount, state.visibleCount + 1);
-        const nextSlot = state.slots[state.visibleCount - 1];
-        if (nextSlot?.status === "hidden") nextSlot.status = "queued";
-      }
     }
 
     this.rebuildSnapshot(state, normalizedCount);
@@ -126,6 +124,17 @@ export class BubbleRevealLedger {
     };
   }
 
+  subscribeLifecycle(listener: (event: BubbleRevealLifecycleEvent) => void) {
+    this.lifecycleListeners.add(listener);
+    return () => {
+      this.lifecycleListeners.delete(listener);
+    };
+  }
+
+  notifyMounted(renderId: string, bubbleId: string) {
+    this.emitLifecycle({ phase: "mounted", renderId, bubbleId });
+  }
+
   claimEntering(renderId: string, bubbleId: string) {
     const state = this.states.get(renderId);
     const slot = state?.slots.find((candidate) => candidate.bubbleId === bubbleId);
@@ -133,21 +142,44 @@ export class BubbleRevealLedger {
     slot.status = "entering";
     slot.enterCount += 1;
     this.rebuildSnapshot(state, state.snapshot.totalCount);
+    this.emitLifecycle({ phase: "entering", renderId, bubbleId });
     return true;
   }
 
   completeEntering(renderId: string, bubbleId: string) {
     const state = this.states.get(renderId);
     const slot = state?.slots.find((candidate) => candidate.bubbleId === bubbleId);
-    if (!state || !slot || (slot.status !== "entering" && slot.status !== "queued")) {
+    if (!state || !slot || slot.status !== "entering") {
       return false;
     }
     slot.status = "entered";
-    if (state.mode === "sequential" && state.visibleCount < state.snapshot.totalCount) {
-      state.visibleCount += 1;
-      const nextSlot = state.slots[state.visibleCount - 1];
-      if (nextSlot?.status === "hidden") nextSlot.status = "queued";
+    this.rebuildSnapshot(state, state.snapshot.totalCount);
+    if (!this.revealNextIfReady(renderId)) this.emit(renderId);
+    return true;
+  }
+
+  revealNextIfReady(renderId: string) {
+    const state = this.states.get(renderId);
+    if (
+      !state
+      || state.mode !== "sequential"
+      || state.visibleCount >= state.snapshot.totalCount
+      || !state.slots
+        .slice(0, state.visibleCount)
+        .every((slot) => slot.status === "entered")
+    ) {
+      return false;
     }
+
+    const nextSlot = state.slots[state.visibleCount];
+    if (!nextSlot || nextSlot.status !== "hidden") return false;
+    this.emitLifecycle({
+      phase: "will-mount",
+      renderId,
+      bubbleId: nextSlot.bubbleId,
+    });
+    state.visibleCount += 1;
+    nextSlot.status = "queued";
     this.rebuildSnapshot(state, state.snapshot.totalCount);
     this.emit(renderId);
     return true;
@@ -156,6 +188,13 @@ export class BubbleRevealLedger {
   getEnterCount(renderId: string, bubbleId: string) {
     const state = this.states.get(renderId);
     return state?.slots.find((candidate) => candidate.bubbleId === bubbleId)?.enterCount || 0;
+  }
+
+  getRenderEnterCount(renderId: string) {
+    return this.states.get(renderId)?.slots.reduce(
+      (total, slot) => total + slot.enterCount,
+      0,
+    ) || 0;
   }
 
   private rebuildSnapshot(state: MessageRevealState, totalCount: number) {
@@ -185,6 +224,10 @@ export class BubbleRevealLedger {
 
   private emit(renderId: string) {
     this.listeners.get(renderId)?.forEach((listener) => listener());
+  }
+
+  private emitLifecycle(event: BubbleRevealLifecycleEvent) {
+    this.lifecycleListeners.forEach((listener) => listener(event));
   }
 }
 

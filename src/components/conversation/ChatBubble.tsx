@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type SyntheticEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type SyntheticEvent } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import {
   getConversationDisplayText,
@@ -124,6 +124,9 @@ function RevealedBubblePart({
       bubbleRevealLedger.completeEntering(renderId, slot.bubbleId);
     }
   }, [renderId, slot.bubbleId, slot.status]);
+  useLayoutEffect(() => {
+    bubbleRevealLedger.notifyMounted(renderId, slot.bubbleId);
+  }, [renderId, slot.bubbleId]);
 
   const shouldAnimate = shouldAnimateRef.current;
   const isActivelyAnimating = shouldAnimate && !completedRef.current;

@@ -1,4 +1,4 @@
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback, useLayoutEffect, useSyncExternalStore } from "react";
 import {
   bubbleRevealLedger,
   type BubbleRevealMode,
@@ -18,5 +18,9 @@ export function useBubbleRevealLedger(
     () => bubbleRevealLedger.getSnapshot(renderId) || prepared,
     [prepared, renderId],
   );
-  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  useLayoutEffect(() => {
+    bubbleRevealLedger.revealNextIfReady(renderId);
+  }, [renderId, snapshot]);
+  return snapshot;
 }
