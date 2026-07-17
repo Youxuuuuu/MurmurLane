@@ -17,28 +17,6 @@ function normalizeMergeText(value: unknown) {
     .trim();
 }
 
-function getMediaSignature(message: ConversationRecord) {
-  return [
-    message?.meta?.attachments,
-    message?.meta?.files,
-    message?.meta?.stickers,
-  ]
-    .flatMap((items) => (Array.isArray(items) ? items : []))
-    .map((item) =>
-      [
-        item?.kind,
-        item?.fileName,
-        item?.relativePath,
-        item?.path,
-        item?.url,
-        item?.sizeBytes,
-      ]
-        .map((value) => String(value ?? "").trim())
-        .join("~"),
-    )
-    .join(";");
-}
-
 function getMediaIdentityTokens(message: ConversationRecord) {
   return [
     message?.meta?.attachments,
@@ -211,55 +189,68 @@ function recordsRepresentSameMessage(
   );
 }
 
-function removeArchivedWebChatCopies(
+function adoptStableLiveIdentity(
+  canonical: ConversationRecord,
+  live: ConversationRecord,
+) {
+  const type = getRecordType(canonical);
+  const messageId = getMessageId(live);
+  const itemId = getConversationItemId(live);
+  if (type === "user" && messageId) {
+    return {
+      ...canonical,
+      messageId,
+      meta: {
+        ...(canonical.meta || {}),
+        messageId,
+      },
+    };
+  }
+  if (type === "assistant" && itemId) {
+    return {
+      ...canonical,
+      itemId,
+      threadId: canonical.threadId || live.threadId,
+      turnId: canonical.turnId || live.turnId,
+      meta: {
+        ...(canonical.meta || {}),
+        itemId,
+      },
+    };
+  }
+  return canonical;
+}
+
+function reconcileLegacyWebChatIdentities(
   records: ConversationRecord[],
   selectedThreadId: string,
 ) {
-  // A live bridge event can already carry source metadata. It must not count
-  // as its own archived replacement or it would be filtered out immediately.
   const canonicalRecords = records.filter(
     (record) => hasCanonicalSource(record) && !isWebChatBridgeRecord(record),
   );
   if (!canonicalRecords.length) return records;
+  const bridgeRecords = records.filter(isWebChatBridgeRecord);
+  const claimedBridgeRecords = new Set<ConversationRecord>();
+  const identityMigration = new Map<ConversationRecord, ConversationRecord>();
 
-  // Keep the visual identity from the realtime copy when its archived version
-  // arrives. Without this, React sees the live record disappear and a source
-  // record mount in its place, which restarts a message-enter animation even
-  // though it is the same chat bubble.
-  const archivedUiKeys = new Map<ConversationRecord, string>();
-  const bridgeRecordsToRemove = new Set<ConversationRecord>();
-
-  records.forEach((record) => {
-    if (!isWebChatBridgeRecord(record)) return;
-    const canonical = canonicalRecords.find((candidate) =>
-      recordsRepresentSameMessage(candidate, record, selectedThreadId),
-    );
-    if (!canonical) return;
-
-    bridgeRecordsToRemove.add(record);
-    if (!archivedUiKeys.has(canonical)) {
-      archivedUiKeys.set(
-        canonical,
-        getConversationMergeKey(record, selectedThreadId),
-      );
+  for (const canonical of canonicalRecords) {
+    if (!getConversationMergeKey(canonical, selectedThreadId).startsWith("legacy:")) {
+      continue;
     }
-  });
+    const bridge = bridgeRecords.find((candidate) => (
+      !claimedBridgeRecords.has(candidate)
+      && recordsRepresentSameMessage(canonical, candidate, selectedThreadId)
+    ));
+    if (!bridge) continue;
+    claimedBridgeRecords.add(bridge);
+    identityMigration.set(canonical, bridge);
+  }
 
-  return records.flatMap((record) => {
-    if (bridgeRecordsToRemove.has(record)) return [];
-
-    const uiMergeKey = archivedUiKeys.get(record);
-    if (!uiMergeKey || record?.meta?.uiMergeKey) return [record];
-
-    return [
-      {
-        ...record,
-        meta: {
-          ...(record.meta || {}),
-          uiMergeKey,
-        },
-      },
-    ];
+  // Compatibility matching may inspect text/time, but the result adopts the
+  // transport messageId/itemId. Content never becomes the final render key.
+  return records.map((record) => {
+    const bridge = identityMigration.get(record);
+    return bridge ? adoptStableLiveIdentity(record, bridge) : record;
   });
 }
 
@@ -280,6 +271,33 @@ function shouldPreferCandidate(
   }
 
   return false;
+}
+
+function mergeRecordsWithStableIdentity(
+  existing: ConversationRecord,
+  candidate: ConversationRecord,
+) {
+  const preferCandidate = shouldPreferCandidate(existing, candidate);
+  const preferred = preferCandidate ? candidate : existing;
+  const fallback = preferCandidate ? existing : candidate;
+  const meta = {
+    ...(fallback.meta || {}),
+    ...(preferred.meta || {}),
+  };
+  delete meta.uiMergeKey;
+  if (hasCanonicalSource(preferred) && !isWebChatBridgeRecord(preferred)) {
+    delete meta.ephemeral;
+    delete meta.webChatLive;
+    delete meta.streaming;
+    delete meta.draft;
+  }
+  return {
+    ...fallback,
+    ...preferred,
+    messageId: getMessageId(preferred) || getMessageId(fallback),
+    itemId: getConversationItemId(preferred) || getConversationItemId(fallback),
+    meta,
+  };
 }
 
 function getSourceOrder(message: ConversationRecord) {
@@ -373,7 +391,7 @@ export function mergeConversationRecords(
     { message: ConversationRecord; index: number }
   >();
 
-  const reconciledRecords = removeArchivedWebChatCopies(
+  const reconciledRecords = reconcileLegacyWebChatIdentities(
     records.filter(Boolean),
     selectedThreadId,
   );
@@ -388,12 +406,14 @@ export function mergeConversationRecords(
     };
     const key = getConversationMergeKey(nextRecord, selectedThreadId);
     const existing = byKey.get(key);
-    if (
-      !existing ||
-      shouldPreferCandidate(existing.message, nextRecord)
-    ) {
+    if (!existing) {
       byKey.set(key, { message: nextRecord, index });
+      return;
     }
+    byKey.set(key, {
+      message: mergeRecordsWithStableIdentity(existing.message, nextRecord),
+      index: existing.index,
+    });
   });
 
   return Array.from(byKey.values())

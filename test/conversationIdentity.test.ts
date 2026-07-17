@@ -8,8 +8,10 @@ import {
 } from "../src/lib/conversationIdentity";
 import {
   createWebChatDraftRecord,
+  resolveThreadSubscriptionCursor,
   settleWebChatDrafts,
 } from "../src/lib/webChatRecords";
+import { mergeConversationRecords } from "../src/lib/conversationMerge";
 import type { ConversationRecord } from "../src/types/conversation";
 
 test("draft and canonical user records keep one render identity", () => {
@@ -103,4 +105,71 @@ test("settling a draft moves and updates the same logical message", () => {
   assert.equal(getConversationRenderId(settled["thread-2"][0]), "user:message-2");
   assert.equal(settled["thread-2"][0].turnId, "turn-9");
   assert.equal(settled["thread-2"][0].meta?.deliveryState, "sent");
+});
+
+test("status snapshot advances a thread-scoped subscription cursor", () => {
+  assert.equal(resolveThreadSubscriptionCursor(41, 52), 52);
+  assert.equal(resolveThreadSubscriptionCursor(73, 52), 73);
+});
+
+test("live and archived records reconcile without changing the logical mount key", () => {
+  const live: ConversationRecord = {
+    id: "web-assistant-item-1",
+    itemId: "item-1",
+    type: "assistant",
+    threadId: "thread-1",
+    turnId: "turn-1",
+    timestamp: "2026-07-17T00:00:02.000Z",
+    text: "live text",
+    meta: { itemId: "item-1", ephemeral: true, webChatLive: true },
+  };
+  const archived: ConversationRecord = {
+    id: "archive-assistant-1",
+    itemId: "item-1",
+    sourceKey: "claudecode|session|9|assistant",
+    type: "assistant",
+    threadId: "thread-1",
+    turnId: "turn-1",
+    timestamp: "2026-07-17T00:00:02.000Z",
+    text: "canonical text",
+    meta: { itemId: "item-1", sourceKey: "claudecode|session|9|assistant" },
+  };
+  const beforeKeys = new Set([getConversationRenderId(live)]);
+  const reconciled = mergeConversationRecords([archived, live], "thread-1");
+  const afterKeys = new Set(reconciled.map((record) => getConversationRenderId(record, "thread-1")));
+
+  assert.equal(reconciled.length, 1);
+  assert.deepEqual(afterKeys, beforeKeys);
+  assert.equal(reconciled[0].id, "archive-assistant-1");
+  assert.equal(reconciled[0].text, "canonical text");
+  assert.equal(reconciled[0].meta?.webChatLive, undefined);
+  assert.equal(reconciled[0].meta?.uiMergeKey, undefined);
+});
+
+test("legacy compatibility matching adopts itemId instead of content as identity", () => {
+  const archivedLegacy: ConversationRecord = {
+    id: "archive-legacy",
+    sourceKey: "claudecode|session|10|assistant",
+    type: "assistant",
+    threadId: "thread-2",
+    turnId: "turn-2",
+    timestamp: "2026-07-17T00:00:02.000Z",
+    text: "same text",
+    meta: { sourceKey: "claudecode|session|10|assistant" },
+  };
+  const live: ConversationRecord = {
+    id: "web-assistant-item-2",
+    itemId: "item-2",
+    type: "assistant",
+    threadId: "thread-2",
+    turnId: "turn-2",
+    timestamp: "2026-07-17T00:00:02.100Z",
+    text: "same text",
+    meta: { itemId: "item-2", ephemeral: true },
+  };
+  const reconciled = mergeConversationRecords([archivedLegacy, live], "thread-2");
+
+  assert.equal(reconciled.length, 1);
+  assert.equal(getConversationRenderId(reconciled[0]), "assistant:thread-2:turn-2:item-2");
+  assert.equal(getConversationRenderId(reconciled[0]).includes("same text"), false);
 });

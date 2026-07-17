@@ -12,6 +12,7 @@ import {
 } from "./conversationIdentity";
 import {
   createWebChatDraftRecord,
+  resolveThreadSubscriptionCursor,
   settleWebChatDrafts,
 } from "./webChatRecords";
 import type { ConversationRecord } from "../types/conversation";
@@ -93,7 +94,7 @@ export function useWebChat({
   onThreadCreated?: (input: { draftThreadId: string; threadId: string; clientId?: string }) => void;
 }) {
   const clientIdRef = useRef(createClientId());
-  const cursorRef = useRef(0);
+  const cursorByThreadRef = useRef(new Map<string, number>());
   const currentThreadIdRef = useRef(threadId);
   const [messagesByThread, setMessagesByThread] = useState<Record<string, ConversationRecord[]>>({});
   const [usageByThread, setUsageByThread] = useState<Record<string, WebChatUsage>>({});
@@ -106,9 +107,20 @@ export function useWebChat({
 
   const handleEvent = useCallback(
     (event: WebChatEvent) => {
-      cursorRef.current = Math.max(cursorRef.current, Number(event.cursor) || 0);
       const selectedThreadId = currentThreadIdRef.current;
       const eventThreadId = String(event.threadId || "");
+      const previousThreadId = String(event.previousThreadId || "");
+      const eventCursor = Number(event.cursor) || 0;
+      for (const cursorThreadId of new Set([
+        selectedThreadId,
+        eventThreadId,
+        previousThreadId,
+      ].filter(Boolean))) {
+        cursorByThreadRef.current.set(
+          cursorThreadId,
+          Math.max(cursorByThreadRef.current.get(cursorThreadId) || 0, eventCursor),
+        );
+      }
 
       if (event.kind === "thread.created" && eventThreadId) {
         const draftThreadId = String(event.previousThreadId || selectedThreadId || "");
@@ -212,26 +224,47 @@ export function useWebChat({
       setConnection("idle");
       return undefined;
     }
+    let cancelled = false;
+    let stopSubscription: (() => void) | undefined;
     setConnection("connecting");
-    const stop = subscribeToWebChat({
-      threadId,
-      after: cursorRef.current,
-      clientId: clientIdRef.current,
-      onEvent: handleEvent,
-      onConnectionChange: (connected) => setConnection(connected ? "open" : "offline"),
-    });
-    return stop;
+    void fetchWebChatStatus(threadId)
+      .then((nextStatus) => {
+        if (cancelled) return;
+        const snapshotCursor = resolveThreadSubscriptionCursor(
+          cursorByThreadRef.current.get(threadId),
+          nextStatus.eventCursor,
+        );
+        cursorByThreadRef.current.set(threadId, snapshotCursor);
+        setStatus(nextStatus);
+        setError("");
+        stopSubscription = subscribeToWebChat({
+          threadId,
+          after: snapshotCursor,
+          clientId: clientIdRef.current,
+          onEvent: handleEvent,
+          onConnectionChange: (connected) => {
+            if (!cancelled) setConnection(connected ? "open" : "offline");
+          },
+        });
+      })
+      .catch((nextError) => {
+        if (cancelled) return;
+        setConnection("offline");
+        setError(String(nextError?.message || nextError));
+      });
+    return () => {
+      cancelled = true;
+      stopSubscription?.();
+    };
   }, [enabled, threadId, handleEvent]);
 
   useEffect(() => {
     if (!enabled) return undefined;
     let cancelled = false;
-    Promise.all([fetchWebChatStatus(threadId), fetchWebChatModels()])
-      .then(([nextStatus, nextModels]) => {
+    fetchWebChatModels()
+      .then((nextModels) => {
         if (cancelled) return;
-        setStatus(nextStatus);
         setModels(nextModels);
-        setError("");
       })
       .catch((nextError) => {
         if (!cancelled) setError(String(nextError?.message || nextError));
@@ -239,7 +272,7 @@ export function useWebChat({
     return () => {
       cancelled = true;
     };
-  }, [enabled, threadId]);
+  }, [enabled]);
 
   const sendMessages = useCallback(
     async ({ messages, model = "", modelProvider = "", newThread = false }: {

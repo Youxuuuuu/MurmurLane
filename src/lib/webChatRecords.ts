@@ -7,6 +7,13 @@ import {
 
 export type WebChatRecordsByThread = Record<string, ConversationRecord[]>;
 
+export function resolveThreadSubscriptionCursor(
+  currentCursor: number | undefined,
+  statusCursor: number | undefined,
+) {
+  return Math.max(Number(currentCursor) || 0, Number(statusCursor) || 0);
+}
+
 export function createWebChatDraftRecord(
   message: WebChatMessageInput & { messageId: string },
   threadId: string,
