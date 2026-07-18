@@ -820,6 +820,7 @@ export function ConversationPage({
               setQuoteMessage(nextMessage);
               setActiveAction(null);
             }}
+            onRetry={webChat?.retryMessage}
             activeActionId={activeAction?.id || null}
             onActionOpen={setActiveAction}
             onActionClose={() => setActiveAction(null)}

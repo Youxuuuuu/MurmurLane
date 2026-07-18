@@ -51,7 +51,8 @@ export interface ConversationRecordMeta {
     attachments?: ConversationMediaItem[];
   }>;
   sourceKey?: string;
-  deliveryState?: "sending" | "sent" | "failed" | string;
+  deliveryState?: "staging" | "submitting" | "sent" | "failed" | "unknown" | string;
+  deliveryError?: string;
   visibleAs?: string;
   displayText?: string;
   quote?: ConversationQuote;

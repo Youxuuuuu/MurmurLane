@@ -14,6 +14,24 @@ const CHAT_API_BASE_URL = String(
     (env?.DEV ? "http://127.0.0.1:8791" : API_BASE_URL),
 ).replace(/\/+$/, "");
 const CHAT_TOKEN = String(env?.VITE_MURMURLANE_CHAT_TOKEN || "").trim();
+export const WEB_CHAT_SEND_TIMEOUT_MS = 15_000;
+
+export class WebChatHttpError extends Error {
+  statusCode: number;
+
+  constructor(statusCode: number, message: string) {
+    super(message);
+    this.name = "WebChatHttpError";
+    this.statusCode = statusCode;
+  }
+}
+
+export class WebChatSendTimeoutError extends Error {
+  constructor() {
+    super("Web Chat send timed out");
+    this.name = "WebChatSendTimeoutError";
+  }
+}
 
 function buildChatUrl(path: string) {
   return `${CHAT_API_BASE_URL}${path}`;
@@ -35,14 +53,20 @@ async function requestChatJson<T>(path: string, init: RequestInit = {}) {
   });
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(body || `Web Chat request failed: ${response.status}`);
+    throw new WebChatHttpError(
+      response.status,
+      body || `Web Chat request failed: ${response.status}`,
+    );
   }
   return response.json() as Promise<T>;
 }
 
-export function fetchWebChatStatus(threadId = "") {
-  const query = threadId ? `?threadId=${encodeURIComponent(threadId)}` : "";
-  return requestChatJson<WebChatStatus>(`/api/chat/status${query}`);
+export function fetchWebChatStatus(threadId = "", requestId = "") {
+  const query = new URLSearchParams();
+  if (threadId) query.set("threadId", threadId);
+  if (requestId) query.set("requestId", requestId);
+  const suffix = query.size ? `?${query.toString()}` : "";
+  return requestChatJson<WebChatStatus>(`/api/chat/status${suffix}`);
 }
 
 export function fetchWebChatModels() {
@@ -65,12 +89,53 @@ export function selectWebChatThread(threadId: string, clientId = "") {
   });
 }
 
-export function sendWebChatMessages(envelope: WebChatSendEnvelope) {
-  return requestChatJson<WebChatSendResult>("/api/chat/messages", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(envelope),
-  });
+export async function sendWebChatMessages(
+  envelope: WebChatSendEnvelope,
+  { timeoutMs = WEB_CHAT_SEND_TIMEOUT_MS }: { timeoutMs?: number } = {},
+) {
+  const timeout = createSendTimeout(timeoutMs);
+  try {
+    return await requestChatJson<WebChatSendResult>("/api/chat/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(envelope),
+      signal: timeout.signal,
+    });
+  } catch (error) {
+    if (timeout.signal.aborted) {
+      throw new WebChatSendTimeoutError();
+    }
+    throw error;
+  } finally {
+    timeout.dispose();
+  }
+}
+
+export function isAmbiguousWebChatSendError(error: unknown) {
+  if (error instanceof WebChatHttpError) return false;
+  if (error instanceof WebChatSendTimeoutError) return true;
+  if (typeof DOMException !== "undefined" && error instanceof DOMException) {
+    return error.name === "AbortError" || error.name === "TimeoutError";
+  }
+  return error instanceof TypeError;
+}
+
+function createSendTimeout(timeoutMs: number) {
+  const duration = Math.max(1, Number(timeoutMs) || WEB_CHAT_SEND_TIMEOUT_MS);
+  const timeoutFactory = (AbortSignal as typeof AbortSignal & {
+    timeout?: (milliseconds: number) => AbortSignal;
+  }).timeout;
+  if (typeof timeoutFactory === "function") {
+    return { signal: timeoutFactory(duration), dispose() {} };
+  }
+  const controller = new AbortController();
+  const timer = globalThis.setTimeout(() => controller.abort(), duration);
+  return {
+    signal: controller.signal,
+    dispose() {
+      globalThis.clearTimeout(timer);
+    },
+  };
 }
 
 function readFileAsDataUrl(file: Blob) {

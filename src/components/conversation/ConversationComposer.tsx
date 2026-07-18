@@ -97,11 +97,11 @@ export function ConversationComposer({
   const [queuedMessages, setQueuedMessages] = useState<WebChatMessageInput[]>([]);
   const [uploading, setUploading] = useState(false);
   const [recording, setRecording] = useState(false);
-  const [sendingQueue, setSendingQueue] = useState(false);
+  const [stagingSend, setStagingSend] = useState(false);
   const [localError, setLocalError] = useState("");
   const [panel, setPanel] = useState<"more" | "stickers" | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const composerRef = useRef<HTMLElement | null>(null);
+  const composerRef = useRef<HTMLFormElement | null>(null);
   const detailsRef = useRef<HTMLDivElement | null>(null);
   const galleryInputRef = useRef<HTMLInputElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
@@ -145,7 +145,7 @@ export function ConversationComposer({
     ? `${Math.round((cacheReadValue / cacheEligibleInput) * 1_000) / 10}%`
     : "0%";
   const compactStatus = `${currentModel} · context ${formatTokens(usage?.currentTokens || usage?.inputTokens)} · cache ${formatTokens(cacheValue)}`;
-  const canSend = Boolean(queuedMessages.length || text.trim() || attachments.length) && !uploading && !sendingQueue;
+  const canSend = Boolean(queuedMessages.length || text.trim() || attachments.length) && !uploading && !stagingSend;
 
   useEffect(() => {
     if (!detailsOpen && !panel) return undefined;
@@ -190,7 +190,7 @@ export function ConversationComposer({
     if (!messages.length) return;
     sendingRef.current = true;
     setLocalError("");
-    setSendingQueue(true);
+    setStagingSend(true);
     try {
       await onSendMessages({ messages, newThread: isNewThread });
       setQueuedMessages([]);
@@ -200,7 +200,7 @@ export function ConversationComposer({
       setLocalError(String(nextError?.message || nextError));
     } finally {
       sendingRef.current = false;
-      setSendingQueue(false);
+      setStagingSend(false);
     }
   };
 
@@ -314,8 +314,12 @@ export function ConversationComposer({
     : { duration: 0.1, ease: [0.4, 0, 1, 1] as const };
 
   return (
-      <section
+      <form
         ref={composerRef}
+        onSubmit={(event) => {
+          event.preventDefault();
+          void sendAll();
+        }}
         className={`conversation-composer z-40 bg-transparent px-3 pb-[calc(10px+env(safe-area-inset-bottom))] pt-2 ${panel ? "fixed inset-x-0 bottom-0 z-[90] max-h-[calc(100dvh-16px)] overflow-visible" : "absolute inset-x-0 bottom-0"}`}
         style={{ transform: panel ? undefined : "translateY(calc(var(--app-keyboard-inset, 0px) * -1))" }}
       >
@@ -367,7 +371,7 @@ export function ConversationComposer({
           </div>
           <button type="button" onClick={() => { setPanel((value) => value === "stickers" ? null : "stickers"); setDetailsOpen(false); }} className={`composer-icon-button ${panel === "stickers" ? "bg-[#eee9f3] text-[#725f87]" : "text-black/48"}`} aria-label="表情包"><Icon name="smile" /></button>
           <button type="button" onClick={() => void toggleRecording()} className={`composer-icon-button ${recording ? "bg-[#d8868c] text-white" : "text-black/48"}`} aria-label={recording ? "停止录音" : "录制语音"}><Icon name="mic" /></button>
-          <motion.button type="button" whileTap={reduceMotion ? undefined : { transform: "scale(0.97)" }} onClick={() => void sendAll()} disabled={!canSend} className="composer-icon-button bg-[#d8c9e6] text-white transition-colors disabled:bg-[#ebe6ef] disabled:text-white/75" aria-label={queuedMessages.length ? "合并发送" : "发送"}><Icon name="send" /></motion.button>
+          <motion.button type="submit" whileTap={reduceMotion ? undefined : { transform: "scale(0.97)" }} disabled={!canSend} aria-busy={stagingSend} className="composer-icon-button bg-[#d8c9e6] text-white transition-colors disabled:bg-[#ebe6ef] disabled:text-white/75" aria-label={queuedMessages.length ? "合并发送" : "发送"}><Icon name="send" /></motion.button>
         </div>
         {displayError ? <div className="mt-1.5 px-3 text-[10px] text-[#b45f68]" role="alert">{displayError}</div> : null}
       </div>
@@ -418,11 +422,9 @@ export function ConversationComposer({
                 key={message.segmentId}
                 type="button"
                 initial={{ opacity: 0, transform: "translate(14px, 6px)" }}
-                animate={sendingQueue
-                  ? { opacity: 0, transform: "translate(40px, -4px) scale(0.96)" }
-                  : { opacity: 0.9, transform: "translate(0px, 0px) scale(1)" }}
+                animate={{ opacity: 0.9, transform: "translate(0px, 0px) scale(1)" }}
                 exit={{ opacity: 0, transform: "translateX(8px) scale(0.94)" }}
-                transition={sendingQueue ? { duration: 0.2, delay: index * 0.05, ease: [0.22, 0.8, 0.2, 1] } : spring}
+                transition={spring}
                 onPointerDown={(event) => {
                   event.preventDefault();
                   event.stopPropagation();
@@ -440,6 +442,6 @@ export function ConversationComposer({
       <input ref={galleryInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(event) => { void uploadFiles(event.target.files, "image"); event.currentTarget.value = ""; }} />
       <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(event) => { void uploadFiles(event.target.files, "image"); event.currentTarget.value = ""; }} />
       <input ref={fileInputRef} type="file" className="hidden" onChange={(event) => { void uploadFiles(event.target.files, "file"); event.currentTarget.value = ""; }} />
-    </section>
+    </form>
   );
 }

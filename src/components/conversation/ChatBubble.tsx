@@ -16,7 +16,7 @@ import { TinyIcon } from "../common/TinyIcon";
 import { MusicShareCard } from "./MusicShareCard";
 import { ConversationAvatar } from "./ConversationAvatar";
 import { ConversationPhotoGallery } from "./PhotoStack";
-import { createBubbleId, getConversationRenderId } from "../../lib/conversationIdentity";
+import { createBubbleId, getConversationMessageId, getConversationRenderId } from "../../lib/conversationIdentity";
 import { ThinkingPanel } from "./ThinkingPanel";
 import { bubbleRevealLedger, type BubbleRevealSlot } from "../../lib/BubbleRevealLedger";
 import { useBubbleRevealLedger } from "../../lib/useBubbleRevealLedger";
@@ -203,6 +203,7 @@ function ChatBubbleContent({
   threadProfile,
   onEditThread,
   onQuote = undefined,
+  onRetry = undefined,
   animateBubbleSequence = false,
 }) {
   const visualKind = getConversationVisualKind(message);
@@ -343,6 +344,20 @@ function ChatBubbleContent({
           {onQuote ? (
             <button type="button" onClick={() => onQuote(message)} className="text-[9px] font-semibold text-black/30 underline-offset-2 hover:underline">
               引用这组消息
+            </button>
+          ) : null}
+          {message.meta?.deliveryState === "staging" || message.meta?.deliveryState === "submitting" ? (
+            <span className="px-1 text-[9px] font-semibold text-black/28" aria-live="polite">
+              发送中…
+            </span>
+          ) : null}
+          {message.meta?.deliveryState === "failed" || message.meta?.deliveryState === "unknown" ? (
+            <button
+              type="button"
+              className="rounded-full border border-[#b86c75]/20 bg-white/70 px-2.5 py-1 text-[9px] font-semibold text-[#a4535d]"
+              onClick={() => onRetry?.(getConversationMessageId(message))}
+            >
+              {message.meta?.deliveryState === "unknown" ? "发送状态未知 · 重试" : "发送失败 · 重试"}
             </button>
           ) : null}
         </div>

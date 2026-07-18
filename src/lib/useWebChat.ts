@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import {
   fetchWebChatModels,
   fetchWebChatStatus,
+  isAmbiguousWebChatSendError,
   sendWebChatMessages,
   setWebChatModel,
   subscribeToWebChat,
@@ -18,11 +20,17 @@ import {
   settleWebChatDrafts,
 } from "./webChatRecords";
 import { resolveWebChatActivityStatus } from "./webChatStatus";
+import {
+  createWebChatSendTransaction,
+  transitionWebChatSendTransaction,
+  type WebChatSendTransaction,
+} from "./webChatSendTransaction";
 import type { ConversationRecord } from "../types/conversation";
 import type {
   WebChatEvent,
   WebChatMessageInput,
   WebChatModelResponse,
+  WebChatSendResult,
   WebChatStatus,
   WebChatUsage,
 } from "../types/webChat";
@@ -99,6 +107,8 @@ export function useWebChat({
   const clientIdRef = useRef(createClientId());
   const cursorByThreadRef = useRef(new Map<string, number>());
   const currentThreadIdRef = useRef(threadId);
+  const transactionsByRequestIdRef = useRef(new Map<string, WebChatSendTransaction>());
+  const requestIdByMessageIdRef = useRef(new Map<string, string>());
   const [messagesByThread, setMessagesByThread] = useState<Record<string, ConversationRecord[]>>({});
   const [usageByThread, setUsageByThread] = useState<Record<string, WebChatUsage>>({});
   const [status, setStatus] = useState<WebChatStatus | null>(null);
@@ -267,6 +277,115 @@ export function useWebChat({
     };
   }, [enabled]);
 
+  const executeTransaction = useCallback(async (
+    requestId: string,
+    retry = false,
+  ) => {
+    const current = transactionsByRequestIdRef.current.get(requestId);
+    if (!current) return;
+    let transaction: WebChatSendTransaction;
+    try {
+      transaction = transitionWebChatSendTransaction(
+        current,
+        { type: retry ? "retry" : "submit" },
+      );
+    } catch {
+      return;
+    }
+    transactionsByRequestIdRef.current.set(requestId, transaction);
+    const envelope = transaction.envelope;
+    const draftThreadId = String(envelope.threadId || "");
+    const messageIds = [envelope.messageId];
+
+    setMessagesByThread((messages) => settleWebChatDrafts(messages, {
+      sourceThreadId: draftThreadId,
+      messageIds,
+      deliveryState: "submitting",
+    }));
+
+    const accept = (result: WebChatSendResult) => {
+      const latest = transactionsByRequestIdRef.current.get(requestId);
+      if (!latest || latest.state === "accepted") return;
+      const accepted = transitionWebChatSendTransaction(latest, {
+        type: "accepted",
+        result,
+      });
+      transactionsByRequestIdRef.current.set(requestId, accepted);
+      const targetThreadId = String(result.threadId || draftThreadId);
+      setMessagesByThread((messages) => settleWebChatDrafts(messages, {
+        sourceThreadId: draftThreadId,
+        targetThreadId,
+        messageIds,
+        turnId: String(result.turnId || ""),
+        deliveryState: "sent",
+      }));
+      setError("");
+      if (targetThreadId && targetThreadId !== draftThreadId && envelope.newThread) {
+        onThreadCreated?.({
+          draftThreadId,
+          threadId: targetThreadId,
+          clientId: result.clientId || clientIdRef.current,
+        });
+      }
+    };
+
+    const markTerminal = (state: "failed" | "unknown", nextError: unknown) => {
+      const latest = transactionsByRequestIdRef.current.get(requestId);
+      if (!latest || latest.state !== "submitting") return;
+      const errorText = String(
+        nextError instanceof Error ? nextError.message : nextError || "",
+      );
+      const next = transitionWebChatSendTransaction(latest, {
+        type: state,
+        error: errorText,
+      });
+      transactionsByRequestIdRef.current.set(requestId, next);
+      setMessagesByThread((messages) => settleWebChatDrafts(messages, {
+        sourceThreadId: draftThreadId,
+        messageIds,
+        deliveryState: state,
+        deliveryError: errorText,
+      }));
+      if (state === "failed") setError(errorText || "发送失败");
+    };
+
+    try {
+      const result = await sendWebChatMessages(envelope);
+      if (result.accepted) {
+        accept(result);
+      } else if (result.status === "unknown") {
+        markTerminal("unknown", "服务端正在确认这次发送");
+      } else {
+        markTerminal("failed", result.status || "发送失败");
+      }
+    } catch (nextError) {
+      if (!isAmbiguousWebChatSendError(nextError)) {
+        markTerminal("failed", nextError);
+        return;
+      }
+      let snapshot: WebChatStatus | null = null;
+      try {
+        snapshot = await fetchWebChatStatus(draftThreadId, requestId);
+        setStatus(snapshot);
+      } catch {
+        // The request and the recovery query are both ambiguous. Preserve the
+        // existing bubble and let an explicit retry reuse the same requestId.
+      }
+      if (snapshot?.sendRequest?.status === "accepted") {
+        accept(snapshot.sendRequest.result || {
+          accepted: true,
+          status: "accepted",
+          requestId,
+          messageId: envelope.messageId,
+          logicalTurnId: envelope.logicalTurnId,
+          threadId: draftThreadId,
+        });
+        return;
+      }
+      markTerminal("unknown", nextError);
+    }
+  }, [onThreadCreated]);
+
   const sendMessages = useCallback(
     async ({ messages, model = "", modelProvider = "", newThread = false }: {
       messages: WebChatMessageInput[];
@@ -293,45 +412,38 @@ export function useWebChat({
         modelProvider,
         messages: identifiedSegments,
       });
-      const messageIds = [messageId];
-      setMessagesByThread((current) => {
-        const draft = createWebChatDraftRecord(
-          envelope.messages[0],
-          draftThreadId,
-          { requestId: envelope.requestId, logicalTurnId: envelope.logicalTurnId },
-        );
-        return appendRecord(current, draftThreadId, draft);
-      });
+      const transaction = createWebChatSendTransaction(envelope);
+      transactionsByRequestIdRef.current.set(requestId, transaction);
+      requestIdByMessageIdRef.current.set(messageId, requestId);
 
-      try {
-        const result = await sendWebChatMessages(envelope);
-        const targetThreadId = String(result.threadId || draftThreadId);
-        setMessagesByThread((current) => settleWebChatDrafts(current, {
-          sourceThreadId: draftThreadId,
-          targetThreadId,
-          messageIds,
-          turnId: String(result.turnId || ""),
-          deliveryState: "sent",
-        }));
-        if (targetThreadId && targetThreadId !== draftThreadId && newThread) {
-          onThreadCreated?.({
+      flushSync(() => {
+        setMessagesByThread((current) => {
+          const draft = createWebChatDraftRecord(
+            envelope.messages[0],
             draftThreadId,
-            threadId: targetThreadId,
-            clientId: result.clientId || clientIdRef.current,
-          });
-        }
-        return result;
-      } catch (nextError) {
-        setMessagesByThread((current) => settleWebChatDrafts(current, {
-          sourceThreadId: draftThreadId,
-          messageIds,
-          deliveryState: "failed",
-        }));
-        throw nextError;
-      }
+            { requestId: envelope.requestId, logicalTurnId: envelope.logicalTurnId },
+          );
+          return appendRecord(current, draftThreadId, draft);
+        });
+      });
+      void executeTransaction(requestId);
+      return {
+        accepted: false,
+        status: "submitting",
+        requestId,
+        messageId,
+        logicalTurnId: envelope.logicalTurnId,
+        threadId: draftThreadId,
+      } satisfies WebChatSendResult;
     },
-    [onThreadCreated],
+    [executeTransaction],
   );
+
+  const retryMessage = useCallback((messageId: string) => {
+    const requestId = requestIdByMessageIdRef.current.get(String(messageId || "").trim());
+    if (!requestId) return Promise.resolve();
+    return executeTransaction(requestId, true);
+  }, [executeTransaction]);
 
   const refreshModels = useCallback(async () => {
     const result = await fetchWebChatModels();
@@ -356,6 +468,7 @@ export function useWebChat({
     connection,
     error,
     sendMessages,
+    retryMessage,
     refreshModels,
     chooseModel,
   };

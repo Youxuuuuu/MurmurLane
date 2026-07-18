@@ -53,7 +53,7 @@ export function createWebChatDraftRecord(
       bubbleSegments,
       ...(message.quote ? { quote: message.quote } : {}),
       ...(message.attachments?.length ? { attachments: message.attachments } : {}),
-      deliveryState: "sending",
+      deliveryState: "staging",
       ephemeral: true,
       webChatLive: true,
       draft: true,
@@ -135,12 +135,14 @@ export function settleWebChatDrafts(
     messageIds,
     turnId = "",
     deliveryState,
+    deliveryError = "",
   }: {
     sourceThreadId: string;
     targetThreadId?: string;
     messageIds: string[];
     turnId?: string;
-    deliveryState: "sent" | "failed";
+    deliveryState: "submitting" | "sent" | "failed" | "unknown";
+    deliveryError?: string;
   },
 ) {
   const identitySet = new Set(messageIds.filter(Boolean));
@@ -164,7 +166,8 @@ export function settleWebChatDrafts(
         meta: {
           ...(record.meta || {}),
           deliveryState,
-          draft: deliveryState === "failed",
+          deliveryError,
+          draft: deliveryState === "failed" || deliveryState === "unknown",
         },
       };
       destination = upsertConversationRecordByIdentity(

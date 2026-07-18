@@ -65,6 +65,11 @@ export interface WebChatStatus {
   pendingApproval?: unknown;
   webClients?: number;
   eventCursor?: number;
+  sendRequest?: {
+    requestId?: string;
+    status?: "accepted" | "failed" | "unknown" | string;
+    result?: WebChatSendResult;
+  } | null;
 }
 
 export interface WebChatModel {
