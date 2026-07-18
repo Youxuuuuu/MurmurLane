@@ -1,5 +1,9 @@
 import type { ConversationRecord } from "../types/conversation";
-import type { WebChatEvent, WebChatMessageInput } from "../types/webChat";
+import type {
+  WebChatEvent,
+  WebChatLogicalMessageInput,
+  WebChatMessageInput,
+} from "../types/webChat";
 import {
   getConversationMessageId,
   upsertConversationRecordByIdentity,
@@ -15,10 +19,21 @@ export function resolveThreadSubscriptionCursor(
 }
 
 export function createWebChatDraftRecord(
-  message: WebChatMessageInput & { messageId: string },
+  message: (WebChatMessageInput & { messageId: string }) | WebChatLogicalMessageInput,
   threadId: string,
+  identity: { requestId?: string; logicalTurnId?: string } = {},
 ): ConversationRecord {
   const timestamp = message.receivedAt || new Date().toISOString();
+  const bubbleSegments = Array.isArray((message as WebChatLogicalMessageInput).bubbleSegments)
+    ? (message as WebChatLogicalMessageInput).bubbleSegments
+    : [{
+        segmentId: String((message as WebChatMessageInput).segmentId || message.messageId),
+        text: message.text,
+        ...((message as WebChatMessageInput).quote ? { quote: (message as WebChatMessageInput).quote } : {}),
+        ...((message as WebChatMessageInput).attachments?.length
+          ? { attachments: (message as WebChatMessageInput).attachments }
+          : {}),
+      }];
   return {
     id: `web-user-${message.messageId}`,
     messageId: message.messageId,
@@ -30,6 +45,12 @@ export function createWebChatDraftRecord(
     text: message.text,
     meta: {
       messageId: message.messageId,
+      ...(identity.requestId ? { requestId: identity.requestId } : {}),
+      ...(identity.logicalTurnId ? {
+        logicalTurnId: identity.logicalTurnId,
+        displayTurnId: identity.logicalTurnId,
+      } : {}),
+      bubbleSegments,
       ...(message.quote ? { quote: message.quote } : {}),
       ...(message.attachments?.length ? { attachments: message.attachments } : {}),
       deliveryState: "sending",

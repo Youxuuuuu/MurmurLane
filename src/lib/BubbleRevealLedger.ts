@@ -59,8 +59,21 @@ export class BubbleRevealLedger {
     renderId: string,
     totalCount: number,
     requestedMode: BubbleRevealMode,
+    stableSlotIds?: readonly string[],
   ) {
     const normalizedCount = Math.max(0, Math.floor(Number(totalCount) || 0));
+    const explicitSlotIds = Array.isArray(stableSlotIds)
+      ? stableSlotIds.slice(0, normalizedCount).map((value) => String(value || "").trim())
+      : [];
+    if (explicitSlotIds.length) {
+      if (
+        explicitSlotIds.length !== normalizedCount
+        || explicitSlotIds.some((slotId) => !slotId)
+        || new Set(explicitSlotIds).size !== explicitSlotIds.length
+      ) {
+        throw new Error("bubble reveal stable slot ids must be complete and unique");
+      }
+    }
     let state = this.states.get(renderId);
     if (!state) {
       state = {
@@ -80,7 +93,7 @@ export class BubbleRevealLedger {
       this.states.set(renderId, state);
     }
     while (state.slots.length < normalizedCount) {
-      const slotId = this.createSlotToken();
+      const slotId = explicitSlotIds[state.slots.length] || this.createSlotToken();
       state.slots.push({
         slotId,
         bubbleId: createBubbleId(renderId, slotId),

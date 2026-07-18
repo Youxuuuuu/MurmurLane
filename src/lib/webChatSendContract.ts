@@ -48,6 +48,9 @@ export function buildWebChatSendEnvelope({
     ...(message.attachments?.length ? { attachments: message.attachments } : {}),
   }));
   if (!segments.length) throw new Error("web chat send contract requires at least one segment");
+  if (new Set(segments.map((segment) => segment.segmentId)).size !== segments.length) {
+    throw new Error("web chat send contract requires unique segmentId values");
+  }
 
   const timestamp = String(
     receivedAt

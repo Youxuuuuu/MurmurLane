@@ -7,6 +7,7 @@ import {
   subscribeToWebChat,
 } from "../data/chatApi";
 import { mergeConversationRecords } from "./conversationMerge";
+import { buildWebChatSendEnvelope } from "./webChatSendContract";
 import {
   upsertConversationRecordByIdentity,
 } from "./conversationIdentity";
@@ -275,30 +276,35 @@ export function useWebChat({
     }) => {
       setError("");
       const draftThreadId = currentThreadIdRef.current;
-      const identifiedMessages = messages.map((message) => ({
+      const identifiedSegments = messages.map((message) => ({
         ...message,
-        messageId: String(message.messageId || createMessageId()),
+        segmentId: String(message.segmentId || message.messageId || createMessageId()),
         receivedAt: message.receivedAt || new Date().toISOString(),
       }));
-      const messageIds = identifiedMessages.map((message) => message.messageId);
+      const requestId = createMessageId();
+      const messageId = createMessageId();
+      const envelope = buildWebChatSendEnvelope({
+        requestId,
+        messageId,
+        clientId: clientIdRef.current,
+        threadId: draftThreadId,
+        newThread,
+        model,
+        modelProvider,
+        messages: identifiedSegments,
+      });
+      const messageIds = [messageId];
       setMessagesByThread((current) => {
-        let next = current;
-        for (const message of identifiedMessages) {
-          const draft = createWebChatDraftRecord(message, draftThreadId);
-          next = appendRecord(next, draftThreadId, draft);
-        }
-        return next;
+        const draft = createWebChatDraftRecord(
+          envelope.messages[0],
+          draftThreadId,
+          { requestId: envelope.requestId, logicalTurnId: envelope.logicalTurnId },
+        );
+        return appendRecord(current, draftThreadId, draft);
       });
 
       try {
-        const result = await sendWebChatMessages({
-          threadId: draftThreadId,
-          clientId: clientIdRef.current,
-          newThread,
-          model,
-          modelProvider,
-          messages: identifiedMessages,
-        });
+        const result = await sendWebChatMessages(envelope);
         const targetThreadId = String(result.threadId || draftThreadId);
         setMessagesByThread((current) => settleWebChatDrafts(current, {
           sourceThreadId: draftThreadId,

@@ -25,10 +25,10 @@ const FALLBACK_MODEL_IDS = [
   "qwen3.5-plus",
 ];
 
-function makeMessageId() {
+function makeSegmentId() {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
-    : `message-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    : `segment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function formatTokens(value: unknown) {
@@ -167,7 +167,7 @@ export function ConversationComposer({
   const buildCurrentMessage = () => {
     const nextText = text.trim();
     if (!nextText && !attachments.length) return null;
-    return { messageId: makeMessageId(), text: nextText, quote, attachments } satisfies WebChatMessageInput;
+    return { segmentId: makeSegmentId(), text: nextText, quote, attachments } satisfies WebChatMessageInput;
   };
 
   const resetCurrent = () => {
@@ -234,7 +234,7 @@ export function ConversationComposer({
       const media = await uploadWebChatFile(blob, sticker.fileName, "sticker");
       await onSendMessages({
         newThread: isNewThread,
-        messages: [{ messageId: makeMessageId(), text: "", quote, attachments: [{ ...media, stickerId: sticker.id, label: sticker.name }] }],
+        messages: [{ segmentId: makeSegmentId(), text: "", quote, attachments: [{ ...media, stickerId: sticker.id, label: sticker.name }] }],
       });
       onClearQuote?.();
       setPanel(null);
@@ -415,7 +415,7 @@ export function ConversationComposer({
           >
             {queuedMessages.map((message, index) => (
               <motion.button
-                key={message.messageId}
+                key={message.segmentId}
                 type="button"
                 initial={{ opacity: 0, transform: "translate(14px, 6px)" }}
                 animate={sendingQueue

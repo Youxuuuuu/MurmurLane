@@ -2,8 +2,8 @@ import { API_BASE_URL } from "./api";
 import type {
   WebChatEvent,
   WebChatMedia,
-  WebChatMessageInput,
   WebChatModelResponse,
+  WebChatSendEnvelope,
   WebChatSendResult,
   WebChatStatus,
 } from "../types/webChat";
@@ -65,32 +65,11 @@ export function selectWebChatThread(threadId: string, clientId = "") {
   });
 }
 
-export function sendWebChatMessages({
-  threadId = "",
-  clientId,
-  newThread = false,
-  model = "",
-  modelProvider = "",
-  messages,
-}: {
-  threadId?: string;
-  clientId: string;
-  newThread?: boolean;
-  model?: string;
-  modelProvider?: string;
-  messages: WebChatMessageInput[];
-}) {
+export function sendWebChatMessages(envelope: WebChatSendEnvelope) {
   return requestChatJson<WebChatSendResult>("/api/chat/messages", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      threadId,
-      clientId,
-      newThread,
-      model,
-      modelProvider,
-      messages,
-    }),
+    body: JSON.stringify(envelope),
   });
 }
 

@@ -2,6 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { buildWebChatSendEnvelope } from "../src/lib/webChatSendContract";
+import { createWebChatDraftRecord } from "../src/lib/webChatRecords";
+import { getConversationRenderId } from "../src/lib/conversationIdentity";
+import { getStableUserBubbleSegments } from "../src/lib/conversationBubbleSegments";
 
 test("one click produces one request, one logical message, and one segment", () => {
   const envelope = buildWebChatSendEnvelope({
@@ -44,6 +47,25 @@ test("three staged drafts remain segments of one logical user message", () => {
   assert.ok(envelope.messages[0].bubbleSegments.every(
     (segment) => !Object.hasOwn(segment, "messageId"),
   ));
+
+  const draft = createWebChatDraftRecord(
+    envelope.messages[0],
+    "thread-3",
+    {
+      requestId: envelope.requestId,
+      logicalTurnId: envelope.logicalTurnId,
+    },
+  );
+  assert.equal(getConversationRenderId(draft), "user:message-3");
+  assert.equal(draft.meta?.bubbleSegments?.length, 3);
+  assert.deepEqual(
+    draft.meta?.bubbleSegments?.map((segment) => segment.segmentId),
+    ["segment-a", "segment-b", "segment-c"],
+  );
+  assert.deepEqual(
+    getStableUserBubbleSegments(draft).map((segment) => segment.segmentId),
+    ["segment-a", "segment-b", "segment-c"],
+  );
 });
 
 test("content cannot replace required stable identities", () => {
@@ -53,4 +75,16 @@ test("content cannot replace required stable identities", () => {
     clientId: "client-1",
     messages: [{ text: "same text is not an identity" }],
   }), /segmentId/);
+});
+
+test("one logical message cannot contain duplicate segment identities", () => {
+  assert.throws(() => buildWebChatSendEnvelope({
+    requestId: "request-duplicate-segment",
+    messageId: "message-duplicate-segment",
+    clientId: "client-1",
+    messages: [
+      { segmentId: "segment-1", text: "first" },
+      { segmentId: "segment-1", text: "second" },
+    ],
+  }), /unique segmentId/);
 });

@@ -8,8 +8,14 @@ export function useBubbleRevealLedger(
   renderId: string,
   totalCount: number,
   mode: BubbleRevealMode,
+  stableSlotIds?: readonly string[],
 ) {
-  const prepared = bubbleRevealLedger.prepareMessage(renderId, totalCount, mode);
+  const prepared = bubbleRevealLedger.prepareMessage(
+    renderId,
+    totalCount,
+    mode,
+    stableSlotIds,
+  );
   const subscribe = useCallback(
     (listener: () => void) => bubbleRevealLedger.subscribe(renderId, listener),
     [renderId],

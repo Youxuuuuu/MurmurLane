@@ -20,6 +20,7 @@ import { createBubbleId, getConversationRenderId } from "../../lib/conversationI
 import { ThinkingPanel } from "./ThinkingPanel";
 import { bubbleRevealLedger, type BubbleRevealSlot } from "../../lib/BubbleRevealLedger";
 import { useBubbleRevealLedger } from "../../lib/useBubbleRevealLedger";
+import { getStableUserBubbleSegments } from "../../lib/conversationBubbleSegments";
 import {
   bubbleRevealInitial,
   bubbleRevealTarget,
@@ -97,6 +98,25 @@ function parseInlineQuote(value) {
     quote: String(match[1] || "").trim(),
     text: [before, after].filter(Boolean).join("\n"),
   };
+}
+
+function quoteValueText(value: unknown) {
+  if (typeof value === "string") return value.trim();
+  if (!value || typeof value !== "object") return "";
+  const quote = value as { text?: unknown; title?: unknown };
+  return String(quote.text || quote.title || "").trim();
+}
+
+function stableMediaKey(media: Record<string, unknown>, segmentId: string) {
+  return String(
+    media.mediaKey
+      || media.relativePath
+      || media.path
+      || media.url
+      || media.fileName
+      || media.stickerId
+      || `${segmentId}:attachment:${media.kind || "file"}`,
+  );
 }
 
 function RevealedBubblePart({
@@ -207,22 +227,31 @@ function ChatBubbleContent({
       getConversationRenderId(message),
   );
   const isAnimatingBubbleSequence = animateOnMountRef.current && !reduceMotion;
-  const messageTextParts = displayText ? splitBubbleText(displayText) : [];
-  const rendersTextBubbles = ![
+  const stableUserSegments = fromUser ? getStableUserBubbleSegments(message) : [];
+  const hasStableUserSegments = stableUserSegments.length > 0;
+  const messageTextParts = hasStableUserSegments
+    ? stableUserSegments.map((segment) => segment.text)
+    : (displayText ? splitBubbleText(displayText) : []);
+  const rendersTextBubbles = hasStableUserSegments || ![
     "hidden",
     "system",
     "music",
     "operation",
     "thinking",
   ].includes(visualKind);
-  const textBubbleCount = rendersTextBubbles ? messageTextParts.length : 0;
-  const hasAuxiliaryBubble = Boolean(
+  const textBubbleCount = hasStableUserSegments
+    ? stableUserSegments.length
+    : (rendersTextBubbles ? messageTextParts.length : 0);
+  const hasAuxiliaryBubble = !hasStableUserSegments && Boolean(
     quoteText || ["voice", "file", "image", "sticker"].includes(visualKind),
   );
   const revealSnapshot = useBubbleRevealLedger(
     bubbleKeyRoot,
     textBubbleCount + (hasAuxiliaryBubble ? 1 : 0),
     !fromUser && isAnimatingBubbleSequence ? "sequential" : "rest",
+    hasStableUserSegments
+      ? stableUserSegments.map((segment) => segment.segmentId)
+      : undefined,
   );
   const visibleTextSlots = revealSnapshot.visibleSlots.slice(0, textBubbleCount);
   const auxiliarySlot = revealSnapshot.visibleSlots[textBubbleCount];
@@ -247,6 +276,79 @@ function ChatBubbleContent({
         </RevealedBubblePart>
       );
     });
+
+  if (hasStableUserSegments) {
+    return (
+      <BubbleRow
+        message={message}
+        side="right"
+        avatar={userProfile?.avatar}
+        name={userProfile?.name}
+      >
+        <div
+          className="flex max-w-[min(78vw,360px)] flex-col items-end gap-2"
+          data-user-message-row={bubbleKeyRoot}
+        >
+          {visibleTextSlots.map((slot, position) => {
+            const segment = stableUserSegments[position];
+            if (!segment) return null;
+            const segmentQuote = quoteValueText(segment.quote);
+            const segmentAttachments = segment.attachments || [];
+            return (
+              <RevealedBubblePart
+                key={slot.bubbleId}
+                renderId={bubbleKeyRoot}
+                slot={slot}
+                bubbleText={segment.text}
+                className="w-fit max-w-full overflow-hidden rounded-[7px] border border-black/[0.06] bg-[#f3f3f2] text-left font-sans text-[14px] font-normal leading-[1.55] text-black/[0.78] shadow-[0_1px_0_rgba(0,0,0,.02)]"
+                style={{ transformOrigin: "right bottom" }}
+              >
+                <div data-segment-id={segment.segmentId}>
+                  {segment.text ? (
+                    <div className="px-3 py-1.5">{segment.text}</div>
+                  ) : null}
+                  {segmentQuote ? (
+                    <div className="mx-2 mb-2 border-l-4 bg-white/45 px-2 py-1.5 font-mono text-[9px] font-semibold leading-[1.35] text-black/55" style={{ borderLeftColor: page.line }}>
+                      {segmentQuote}
+                    </div>
+                  ) : null}
+                  {segmentAttachments.length ? (
+                    <div className="flex max-w-[min(78vw,340px)] flex-col gap-1.5 p-1.5">
+                      {segmentAttachments.map((media) => {
+                        const mediaSrc = getConversationMediaSrc(media);
+                        const mediaKey = stableMediaKey(media, segment.segmentId);
+                        if (isImageLikeMedia(media) && mediaSrc) {
+                          return (
+                            <img
+                              key={mediaKey}
+                              src={mediaSrc}
+                              alt={String(media.label || media.fileName || "图片")}
+                              className="block max-h-[280px] max-w-[220px] rounded-[5px] object-contain"
+                              loading="lazy"
+                            />
+                          );
+                        }
+                        return (
+                          <div key={mediaKey} className="max-w-[220px] rounded-[5px] bg-white/55 px-2.5 py-2 text-[11px] text-black/55">
+                            {String(media.label || media.fileName || media.kind || "附件")}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              </RevealedBubblePart>
+            );
+          })}
+          {onQuote ? (
+            <button type="button" onClick={() => onQuote(message)} className="text-[9px] font-semibold text-black/30 underline-offset-2 hover:underline">
+              引用这组消息
+            </button>
+          ) : null}
+        </div>
+      </BubbleRow>
+    );
+  }
 
   if (visualKind === "hidden") {
     return null;

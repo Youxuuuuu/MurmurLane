@@ -128,6 +128,27 @@ test("bubble identity is independent from text payload changes", () => {
   );
 });
 
+test("explicit user segment ids produce stable message plus segment bubble ids", () => {
+  const ledger = createLedger();
+  const renderId = "user:message-1";
+  const slotIds = ["segment-a", "segment-b", "segment-c"];
+  const draft = ledger.prepareMessage(renderId, slotIds.length, "rest", slotIds);
+  const archived = ledger.prepareMessage(renderId, slotIds.length, "rest", slotIds);
+
+  assert.deepEqual(
+    draft.visibleSlots.map((slot) => slot.bubbleId),
+    [
+      "user:message-1:bubble:segment-a",
+      "user:message-1:bubble:segment-b",
+      "user:message-1:bubble:segment-c",
+    ],
+  );
+  assert.deepEqual(
+    archived.visibleSlots.map((slot) => slot.bubbleId),
+    draft.visibleSlots.map((slot) => slot.bubbleId),
+  );
+});
+
 test("an appended live line emits a pre-mount anchor event before it is exposed", () => {
   const ledger = createLedger();
   const renderId = "assistant:thread:turn:item";
