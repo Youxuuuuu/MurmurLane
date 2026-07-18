@@ -138,30 +138,19 @@ function createSendTimeout(timeoutMs: number) {
   };
 }
 
-function readFileAsDataUrl(file: Blob) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () => reject(reader.error || new Error("file could not be read"));
-    reader.readAsDataURL(file);
-  });
-}
-
 export async function uploadWebChatFile(
   file: File | Blob,
   fileName = "attachment",
   kind = "file",
 ): Promise<WebChatMedia> {
-  const dataUrl = await readFileAsDataUrl(file);
   const result = await requestChatJson<{ media: WebChatMedia }>("/api/chat/uploads", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      dataUrl,
-      fileName,
-      contentType: file.type || "application/octet-stream",
-      kind,
-    }),
+    headers: {
+      "Content-Type": file.type || "application/octet-stream",
+      "X-Cyberboss-File-Name": encodeURIComponent(String(fileName || "attachment")),
+      "X-Cyberboss-Media-Kind": String(kind || "file"),
+    },
+    body: file,
   });
   return result.media;
 }
