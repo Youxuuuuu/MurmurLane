@@ -187,10 +187,24 @@ export function subscribeToWebChat({
   return () => source.close();
 }
 
-export function resolveWebChatAssetUrl(assetPath: string) {
+export function resolveWebChatAssetUrl(
+  assetPath: string,
+  token = CHAT_TOKEN,
+) {
   const normalized = String(assetPath || "").trim();
   if (/^(https?:|data:|blob:)/i.test(normalized)) return normalized;
-  return buildChatUrl(normalized);
+  const assetUrl = buildChatUrl(normalized);
+  if (!token) return assetUrl;
+
+  const hashIndex = assetUrl.indexOf("#");
+  const fragment = hashIndex >= 0 ? assetUrl.slice(hashIndex) : "";
+  const pathAndQuery = hashIndex >= 0 ? assetUrl.slice(0, hashIndex) : assetUrl;
+  const queryIndex = pathAndQuery.indexOf("?");
+  const pathname = queryIndex >= 0 ? pathAndQuery.slice(0, queryIndex) : pathAndQuery;
+  const query = queryIndex >= 0 ? pathAndQuery.slice(queryIndex + 1) : "";
+  const params = new URLSearchParams(query);
+  params.set("token", token);
+  return `${pathname}?${params.toString()}${fragment}`;
 }
 
 export { CHAT_API_BASE_URL };
