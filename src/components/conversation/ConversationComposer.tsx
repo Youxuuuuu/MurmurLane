@@ -87,7 +87,7 @@ export function ConversationComposer({
   connection?: string;
   quoteMessage?: ConversationRecord | null;
   onClearQuote?: () => void;
-  onSendMessages: (input: { messages: WebChatMessageInput[]; newThread: boolean }) => Promise<unknown>;
+  onSendMessages: (input: { messages: WebChatMessageInput[]; newThread: boolean }) => unknown;
   onChooseModel?: (model: string, modelProvider?: string) => Promise<unknown>;
   isNewThread?: boolean;
   error?: string;
@@ -97,7 +97,6 @@ export function ConversationComposer({
   const [queuedMessages, setQueuedMessages] = useState<WebChatMessageInput[]>([]);
   const [uploading, setUploading] = useState(false);
   const [recording, setRecording] = useState(false);
-  const [stagingSend, setStagingSend] = useState(false);
   const [localError, setLocalError] = useState("");
   const [panel, setPanel] = useState<"more" | "stickers" | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -145,7 +144,7 @@ export function ConversationComposer({
     ? `${Math.round((cacheReadValue / cacheEligibleInput) * 1_000) / 10}%`
     : "0%";
   const compactStatus = `${currentModel} · context ${formatTokens(usage?.currentTokens || usage?.inputTokens)} · cache ${formatTokens(cacheValue)}`;
-  const canSend = Boolean(queuedMessages.length || text.trim() || attachments.length) && !uploading && !stagingSend;
+  const canSend = Boolean(queuedMessages.length || text.trim() || attachments.length) && !uploading;
 
   useEffect(() => {
     if (!detailsOpen && !panel) return undefined;
@@ -183,16 +182,15 @@ export function ConversationComposer({
     resetCurrent();
   };
 
-  const sendAll = async () => {
+  const sendAll = () => {
     if (sendingRef.current) return;
     const current = buildCurrentMessage();
     const messages = current ? [...queuedMessages, current] : queuedMessages;
     if (!messages.length) return;
     sendingRef.current = true;
     setLocalError("");
-    setStagingSend(true);
     try {
-      await onSendMessages({ messages, newThread: isNewThread });
+      onSendMessages({ messages, newThread: isNewThread });
       setQueuedMessages([]);
       resetCurrent();
       setPanel(null);
@@ -200,7 +198,6 @@ export function ConversationComposer({
       setLocalError(String(nextError?.message || nextError));
     } finally {
       sendingRef.current = false;
-      setStagingSend(false);
     }
   };
 
@@ -318,7 +315,7 @@ export function ConversationComposer({
         ref={composerRef}
         onSubmit={(event) => {
           event.preventDefault();
-          void sendAll();
+          sendAll();
         }}
         className={`conversation-composer z-40 bg-transparent px-3 pb-[calc(10px+env(safe-area-inset-bottom))] pt-2 ${panel ? "fixed inset-x-0 bottom-0 z-[90] max-h-[calc(100dvh-16px)] overflow-visible" : "absolute inset-x-0 bottom-0"}`}
         style={{ transform: panel ? undefined : "translateY(calc(var(--app-keyboard-inset, 0px) * -1))" }}
@@ -371,7 +368,7 @@ export function ConversationComposer({
           </div>
           <button type="button" onClick={() => { setPanel((value) => value === "stickers" ? null : "stickers"); setDetailsOpen(false); }} className={`composer-icon-button ${panel === "stickers" ? "bg-[#eee9f3] text-[#725f87]" : "text-black/48"}`} aria-label="表情包"><Icon name="smile" /></button>
           <button type="button" onClick={() => void toggleRecording()} className={`composer-icon-button ${recording ? "bg-[#d8868c] text-white" : "text-black/48"}`} aria-label={recording ? "停止录音" : "录制语音"}><Icon name="mic" /></button>
-          <motion.button type="submit" whileTap={reduceMotion ? undefined : { transform: "scale(0.97)" }} disabled={!canSend} aria-busy={stagingSend} className="composer-icon-button bg-[#d8c9e6] text-white transition-colors disabled:bg-[#ebe6ef] disabled:text-white/75" aria-label={queuedMessages.length ? "合并发送" : "发送"}><Icon name="send" /></motion.button>
+          <motion.button type="submit" whileTap={reduceMotion ? undefined : { transform: "scale(0.97)" }} disabled={!canSend} className="composer-icon-button bg-[#d8c9e6] text-white transition-colors disabled:bg-[#ebe6ef] disabled:text-white/75" aria-label={queuedMessages.length ? "合并发送" : "发送"}><Icon name="send" /></motion.button>
         </div>
         {displayError ? <div className="mt-1.5 px-3 text-[10px] text-[#b45f68]" role="alert">{displayError}</div> : null}
       </div>

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { flushSync } from "react-dom";
 import {
   fetchWebChatModels,
   fetchWebChatStatus,
@@ -387,7 +386,7 @@ export function useWebChat({
   }, [onThreadCreated]);
 
   const sendMessages = useCallback(
-    async ({ messages, model = "", modelProvider = "", newThread = false }: {
+    ({ messages, model = "", modelProvider = "", newThread = false }: {
       messages: WebChatMessageInput[];
       model?: string;
       modelProvider?: string;
@@ -416,15 +415,13 @@ export function useWebChat({
       transactionsByRequestIdRef.current.set(requestId, transaction);
       requestIdByMessageIdRef.current.set(messageId, requestId);
 
-      flushSync(() => {
-        setMessagesByThread((current) => {
-          const draft = createWebChatDraftRecord(
-            envelope.messages[0],
-            draftThreadId,
-            { requestId: envelope.requestId, logicalTurnId: envelope.logicalTurnId },
-          );
-          return appendRecord(current, draftThreadId, draft);
-        });
+      setMessagesByThread((current) => {
+        const draft = createWebChatDraftRecord(
+          envelope.messages[0],
+          draftThreadId,
+          { requestId: envelope.requestId, logicalTurnId: envelope.logicalTurnId },
+        );
+        return appendRecord(current, draftThreadId, draft);
       });
       void executeTransaction(requestId);
       return {
