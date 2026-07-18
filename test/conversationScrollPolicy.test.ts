@@ -90,6 +90,16 @@ test("bubble reveal follows the exact height delta only while the user remains n
     wasNearBottom: true,
     currentUserRevision: 4,
   }), null);
+
+  const secondRevealTop = resolveBubbleRevealAnchorTop({
+    wasNearBottom: true,
+    anchorScrollTop: 564,
+    anchorScrollHeight: 1064,
+    currentScrollHeight: 1100,
+    anchorUserRevision: 3,
+    currentUserRevision: 3,
+  });
+  assert.equal(secondRevealTop, 600);
 });
 
 test("initial archived bubbles stay at rest while a new live bubble may animate", () => {

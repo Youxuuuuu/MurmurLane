@@ -29,7 +29,7 @@ export function ThinkingPanel({
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="flex items-center gap-1.5 font-mono text-[10px] font-semibold leading-none tracking-[0.08em] text-black/[0.34]"
+        className="flex origin-left items-center gap-1.5 font-mono text-[10px] font-semibold leading-none tracking-[0.08em] text-black/[0.34] transition-transform duration-100 ease-out active:scale-[0.97] motion-reduce:transform-none motion-reduce:transition-none"
       >
         <span>{face}</span>
         <span className="text-[11px]">{open ? "⌄" : "›"}</span>
