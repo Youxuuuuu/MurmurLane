@@ -6,6 +6,7 @@ export function resolveWebChatActivityStatus(
 ) {
   if (event.kind === "turn.started") return "running";
   if (event.kind === "turn.completed") return "idle";
+  if (event.kind === "turn.failed") return "failed";
   if (event.kind !== "typing") return null;
 
   const rawStatus = event.status;

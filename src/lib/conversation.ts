@@ -399,6 +399,13 @@ export function hasRecordMedia(record: ConversationRecord) {
 export function shouldHideConversationRecord(record: ConversationRecord) {
   if (record?.meta?.visibleAs === "hidden") return true;
 
+  if (
+    record?.type === "error" &&
+    String(record.text || "").trim() === "❌ Runtime process exited unexpectedly"
+  ) {
+    return true;
+  }
+
   if (hasRecordMedia(record)) return false;
 
   if (isAttachmentInputRecord(record)) return true;

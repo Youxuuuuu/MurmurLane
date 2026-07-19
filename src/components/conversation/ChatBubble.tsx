@@ -9,13 +9,11 @@ import {
   getConversationVisualKind,
   getOperationDisplayPaths,
   buildCloudMusicCardData,
-  isImageLikeMedia,
 } from "../../lib/conversation";
 import { formatConversationTime } from "../../lib/conversationPageData";
-import { TinyIcon } from "../common/TinyIcon";
 import { MusicShareCard } from "./MusicShareCard";
 import { ConversationAvatar } from "./ConversationAvatar";
-import { ConversationPhotoGallery } from "./PhotoStack";
+import { ConversationMediaGroup } from "./ConversationMediaGroup";
 import { createBubbleId, getConversationMessageId, getConversationRenderId } from "../../lib/conversationIdentity";
 import { ThinkingPanel } from "./ThinkingPanel";
 import { bubbleRevealLedger, type BubbleRevealSlot } from "../../lib/BubbleRevealLedger";
@@ -105,18 +103,6 @@ function quoteValueText(value: unknown) {
   if (!value || typeof value !== "object") return "";
   const quote = value as { text?: unknown; title?: unknown };
   return String(quote.text || quote.title || "").trim();
-}
-
-function stableMediaKey(media: Record<string, unknown>, segmentId: string) {
-  return String(
-    media.mediaKey
-      || media.relativePath
-      || media.path
-      || media.url
-      || media.fileName
-      || media.stickerId
-      || `${segmentId}:attachment:${media.kind || "file"}`,
-  );
 }
 
 function RevealedBubblePart({
@@ -215,10 +201,9 @@ function ChatBubbleContent({
   const parsedMetaQuote = parseInlineQuote(metaQuote);
   const quoteText = inlineQuote.quote || parsedMetaQuote.quote || metaQuote;
   const primaryMediaItem = getConversationPrimaryMediaItem(message);
-  const imageItems = getConversationMediaItems(message).filter(isImageLikeMedia);
+  const mediaItems = getConversationMediaItems(message);
   const operationPaths = getOperationDisplayPaths(message);
   const [actionOpen, setActionOpen] = useState(false);
-  const [mediaFailed, setMediaFailed] = useState(false);
   const reduceMotion = useReducedMotion();
   // Animation eligibility is decided on the message's first render and stays
   // with that mounted bubble while its live record is replaced by the archive.
@@ -301,41 +286,26 @@ function ChatBubbleContent({
                 renderId={bubbleKeyRoot}
                 slot={slot}
                 bubbleText={segment.text}
-                className="w-fit max-w-full overflow-hidden rounded-[7px] border border-black/[0.06] bg-[#f3f3f2] text-left font-sans text-[14px] font-normal leading-[1.55] text-black/[0.78] shadow-[0_1px_0_rgba(0,0,0,.02)]"
+                className="w-fit max-w-full text-left font-sans text-[14px] font-normal leading-[1.55] text-black/[0.78]"
                 style={{ transformOrigin: "right bottom" }}
               >
-                <div data-segment-id={segment.segmentId}>
+                <div className="flex flex-col items-end gap-1.5" data-segment-id={segment.segmentId}>
                   {segment.text ? (
-                    <div className="px-3 py-1.5">{segment.text}</div>
+                    <div className="max-w-full rounded-[7px] border border-black/[0.06] bg-[#f3f3f2] px-3 py-1.5 shadow-[0_1px_0_rgba(0,0,0,.02)]">
+                      {segment.text}
+                    </div>
                   ) : null}
                   {segmentQuote ? (
-                    <div className="mx-2 mb-2 border-l-4 bg-white/45 px-2 py-1.5 font-mono text-[9px] font-semibold leading-[1.35] text-black/55" style={{ borderLeftColor: page.line }}>
+                    <div className="max-w-full border-l-4 bg-white/45 px-2 py-1.5 font-mono text-[9px] font-semibold leading-[1.35] text-black/55" style={{ borderLeftColor: page.line }}>
                       {segmentQuote}
                     </div>
                   ) : null}
                   {segmentAttachments.length ? (
-                    <div className="flex max-w-[min(78vw,340px)] flex-col gap-1.5 p-1.5">
-                      {segmentAttachments.map((media) => {
-                        const mediaSrc = getConversationMediaSrc(media);
-                        const mediaKey = stableMediaKey(media, segment.segmentId);
-                        if (isImageLikeMedia(media) && mediaSrc) {
-                          return (
-                            <img
-                              key={mediaKey}
-                              src={mediaSrc}
-                              alt={String(media.label || media.fileName || "图片")}
-                              className="block max-h-[280px] max-w-[220px] rounded-[5px] object-contain"
-                              loading="lazy"
-                            />
-                          );
-                        }
-                        return (
-                          <div key={mediaKey} className="max-w-[220px] rounded-[5px] bg-white/55 px-2.5 py-2 text-[11px] text-black/55">
-                            {String(media.label || media.fileName || media.kind || "附件")}
-                          </div>
-                        );
-                      })}
-                    </div>
+                    <ConversationMediaGroup
+                      items={segmentAttachments}
+                      page={page}
+                      align="right"
+                    />
                   ) : null}
                 </div>
               </RevealedBubblePart>
@@ -560,53 +530,6 @@ function ChatBubbleContent({
   }
 
   if (visualKind === "image" || visualKind === "sticker") {
-    if (visualKind === "image" && imageItems.length > 0) {
-      return (
-        <BubbleRow
-          message={message}
-          side={fromUser ? "right" : "left"}
-          avatar={fromUser ? userProfile?.avatar : threadProfile?.avatar}
-          name={fromUser ? userProfile?.name : threadProfile?.name}
-          onAvatarClick={fromUser ? undefined : onEditThread}
-        >
-          <div className={`flex max-w-[min(92vw,360px)] flex-col gap-2 ${fromUser ? "items-end" : "items-start"}`}>
-            {renderMessageTextBubbles()}
-            {auxiliarySlot ? (
-              <RevealedBubblePart
-                key={auxiliarySlot.bubbleId}
-                renderId={bubbleKeyRoot}
-                slot={auxiliarySlot}
-                style={{ transformOrigin: fromUser ? "right bottom" : "left bottom" }}
-              >
-                <div
-                  className={`max-w-[min(92vw,360px)] ${fromUser ? "mr-8 sm:mr-12" : "ml-4 sm:ml-6"}`}
-                >
-                  <ConversationPhotoGallery
-                    items={imageItems}
-                    page={page}
-                    controlSide={fromUser ? "left" : "right"}
-                  />
-                </div>
-              </RevealedBubblePart>
-            ) : null}
-          </div>
-        </BubbleRow>
-      );
-    }
-
-    const mediaItem = primaryMediaItem;
-    const mediaSrc = getConversationMediaSrc(mediaItem);
-    const mediaLabel =
-      visualKind === "sticker"
-        ? mediaItem?.label ||
-          mediaItem?.fileName ||
-          mediaItem?.stickerId ||
-          "表情包"
-        : mediaItem?.label ||
-          mediaItem?.fileName ||
-          mediaItem?.relativePath ||
-          "图片";
-
     return (
       <BubbleRow
         message={message}
@@ -624,32 +547,11 @@ function ChatBubbleContent({
               slot={auxiliarySlot}
               style={{ transformOrigin: fromUser ? "right bottom" : "left bottom" }}
             >
-              <div className={visualKind === "sticker" ? "max-w-[96px]" : "max-w-[220px]"}>
-                <div
-                  className={
-                    visualKind === "sticker"
-                      ? "flex h-[92px] w-[92px] items-center justify-center overflow-hidden rounded-xl bg-white/30"
-                      : "inline-flex max-w-[220px] overflow-hidden rounded-[6px] bg-black/5"
-                  }
-                  title={mediaLabel}
-                >
-                  {mediaSrc && !mediaFailed ? (
-                    <img
-                      className={
-                        visualKind === "sticker"
-                          ? "h-full w-full object-contain"
-                          : "block max-h-[280px] max-w-[220px] object-contain"
-                      }
-                      src={mediaSrc}
-                      alt={mediaLabel}
-                      loading="lazy"
-                      onError={() => setMediaFailed(true)}
-                    />
-                  ) : (
-                    <TinyIcon color="rgba(0,0,0,.38)" />
-                  )}
-                </div>
-              </div>
+              <ConversationMediaGroup
+                items={mediaItems}
+                page={page}
+                align={fromUser ? "right" : "left"}
+              />
             </RevealedBubblePart>
           ) : null}
         </div>

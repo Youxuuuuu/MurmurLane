@@ -6,10 +6,15 @@ import {
   getConversationPrimaryMediaItem,
   getConversationVisualKind,
 } from "../../lib/conversation";
-import { uploadWebChatFile } from "../../data/chatApi";
 import type { StickerAsset } from "../../data/api";
 import type { ConversationQuoteObject, ConversationRecord } from "../../types/conversation";
-import type { WebChatMedia, WebChatMessageInput, WebChatModel, WebChatModelResponse, WebChatStatus } from "../../types/webChat";
+import type {
+  WebChatComposerAttachment,
+  WebChatComposerMessageInput,
+  WebChatModel,
+  WebChatModelResponse,
+  WebChatStatus,
+} from "../../types/webChat";
 import { StickerPanel } from "./StickerPanel";
 import {
   createBubbleId,
@@ -18,6 +23,10 @@ import {
   getConversationRenderId,
   getLegacyStableId,
 } from "../../lib/conversationIdentity";
+import {
+  createWebChatPendingUpload,
+  isWebChatPendingUpload,
+} from "../../lib/webChatPendingUploads";
 
 const FALLBACK_MODEL_IDS = [
   "qwen3.6-flash",
@@ -52,14 +61,16 @@ function Icon({ name }: { name: "plus" | "smile" | "mic" | "send" | "photo" | "c
   return <svg viewBox="0 0 24 24" className="h-[21px] w-[21px]" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 }
 
-function mediaLabel(media: WebChatMedia) {
+function mediaLabel(media: WebChatComposerAttachment) {
   if (media.kind === "voice") return "语音";
   if (media.kind === "sticker") return "表情包";
   if (media.kind === "image") return "图片";
+  if (isWebChatPendingUpload(media)) return String(media.fileName || "文件");
   return String(media.fileName || media.sourceFileName || "文件");
 }
 
-function mediaIdentity(media: WebChatMedia) {
+function mediaIdentity(media: WebChatComposerAttachment) {
+  if (isWebChatPendingUpload(media)) return media.uploadId;
   return String(
     media.mediaKey
     || media.absolutePath
@@ -87,20 +98,19 @@ export function ConversationComposer({
   connection?: string;
   quoteMessage?: ConversationRecord | null;
   onClearQuote?: () => void;
-  onSendMessages: (input: { messages: WebChatMessageInput[]; newThread: boolean }) => unknown;
+  onSendMessages: (input: { messages: WebChatComposerMessageInput[]; newThread: boolean }) => unknown;
   onChooseModel?: (model: string, modelProvider?: string) => Promise<unknown>;
   isNewThread?: boolean;
   error?: string;
 }) {
   const [text, setText] = useState("");
-  const [attachments, setAttachments] = useState<WebChatMedia[]>([]);
-  const [queuedMessages, setQueuedMessages] = useState<WebChatMessageInput[]>([]);
-  const [uploading, setUploading] = useState(false);
+  const [attachments, setAttachments] = useState<WebChatComposerAttachment[]>([]);
+  const [queuedMessages, setQueuedMessages] = useState<WebChatComposerMessageInput[]>([]);
   const [recording, setRecording] = useState(false);
   const [localError, setLocalError] = useState("");
   const [panel, setPanel] = useState<"more" | "stickers" | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const composerRef = useRef<HTMLFormElement | null>(null);
+  const composerRef = useRef<HTMLElement | null>(null);
   const detailsRef = useRef<HTMLDivElement | null>(null);
   const galleryInputRef = useRef<HTMLInputElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
@@ -108,6 +118,7 @@ export function ConversationComposer({
   const recorderRef = useRef<MediaRecorder | null>(null);
   const voiceChunksRef = useRef<Blob[]>([]);
   const sendingRef = useRef(false);
+  const stickerSendingRef = useRef(false);
   const reduceMotion = useReducedMotion();
   const displayError = localError || (error && !/failed to fetch/i.test(error) ? error : "");
 
@@ -144,7 +155,7 @@ export function ConversationComposer({
     ? `${Math.round((cacheReadValue / cacheEligibleInput) * 1_000) / 10}%`
     : "0%";
   const compactStatus = `${currentModel} · context ${formatTokens(usage?.currentTokens || usage?.inputTokens)} · cache ${formatTokens(cacheValue)}`;
-  const canSend = Boolean(queuedMessages.length || text.trim() || attachments.length) && !uploading;
+  const canSend = Boolean(queuedMessages.length || text.trim() || attachments.length);
 
   useEffect(() => {
     if (!detailsOpen && !panel) return undefined;
@@ -166,7 +177,7 @@ export function ConversationComposer({
   const buildCurrentMessage = () => {
     const nextText = text.trim();
     if (!nextText && !attachments.length) return null;
-    return { segmentId: makeSegmentId(), text: nextText, quote, attachments } satisfies WebChatMessageInput;
+    return { segmentId: makeSegmentId(), text: nextText, quote, attachments } satisfies WebChatComposerMessageInput;
   };
 
   const resetCurrent = () => {
@@ -197,49 +208,51 @@ export function ConversationComposer({
     } catch (nextError) {
       setLocalError(String(nextError?.message || nextError));
     } finally {
-      sendingRef.current = false;
+      window.setTimeout(() => {
+        sendingRef.current = false;
+      }, 0);
     }
   };
 
-  const uploadFiles = async (files: FileList | null, kindOverride = "") => {
+  const stageFiles = (files: FileList | null, kindOverride = "") => {
     const selected = Array.from(files ?? []);
     if (!selected.length) return;
-    setUploading(true);
     setLocalError("");
-    try {
-      const uploaded = await Promise.all(selected.map((file) => {
-        const kind = kindOverride || (file.type.startsWith("image/") ? "image" : file.type.startsWith("audio/") ? "voice" : "file");
-        return uploadWebChatFile(file, file.name, kind);
-      }));
-      setAttachments((current) => [...current, ...uploaded]);
-      setPanel(null);
-    } catch (nextError) {
-      setLocalError(String(nextError?.message || nextError));
-    } finally {
-      setUploading(false);
-    }
+    const staged = selected.map((file) => createWebChatPendingUpload(file, {
+      fileName: file.name,
+      kind: kindOverride || (file.type.startsWith("image/") ? "image" : file.type.startsWith("audio/") ? "voice" : "file"),
+    }));
+    setAttachments((current) => [...current, ...staged]);
+    setPanel(null);
   };
 
   const sendSticker = async (sticker: StickerAsset) => {
-    if (sendingRef.current || uploading) return;
-    sendingRef.current = true;
-    setUploading(true);
+    if (stickerSendingRef.current) return;
+    stickerSendingRef.current = true;
     try {
       const response = await fetch(sticker.src);
       if (!response.ok) throw new Error("表情包读取失败");
       const blob = await response.blob();
-      const media = await uploadWebChatFile(blob, sticker.fileName, "sticker");
       await onSendMessages({
         newThread: isNewThread,
-        messages: [{ segmentId: makeSegmentId(), text: "", quote, attachments: [{ ...media, stickerId: sticker.id, label: sticker.name }] }],
+        messages: [{
+          segmentId: makeSegmentId(),
+          text: "",
+          quote,
+          attachments: [createWebChatPendingUpload(blob, {
+            fileName: sticker.fileName,
+            kind: "sticker",
+            stickerId: sticker.id,
+            label: sticker.name,
+          })],
+        }],
       });
       onClearQuote?.();
       setPanel(null);
     } catch (nextError) {
       setLocalError(String(nextError?.message || nextError));
     } finally {
-      sendingRef.current = false;
-      setUploading(false);
+      stickerSendingRef.current = false;
     }
   };
 
@@ -262,15 +275,10 @@ export function ConversationComposer({
         setRecording(false);
         const blob = new Blob(voiceChunksRef.current, { type: recorder.mimeType || "audio/webm" });
         if (!blob.size) return;
-        setUploading(true);
-        try {
-          const media = await uploadWebChatFile(blob, `voice-${Date.now()}.webm`, "voice");
-          setAttachments((current) => [...current, media]);
-        } catch (nextError) {
-          setLocalError(String(nextError?.message || nextError));
-        } finally {
-          setUploading(false);
-        }
+        setAttachments((current) => [...current, createWebChatPendingUpload(blob, {
+          fileName: `voice-${Date.now()}.webm`,
+          kind: "voice",
+        })]);
       };
       recorderRef.current = recorder;
       recorder.start();
@@ -311,12 +319,8 @@ export function ConversationComposer({
     : { duration: 0.1, ease: [0.4, 0, 1, 1] as const };
 
   return (
-      <form
+      <section
         ref={composerRef}
-        onSubmit={(event) => {
-          event.preventDefault();
-          sendAll();
-        }}
         className={`conversation-composer z-40 bg-transparent px-3 pb-[calc(10px+env(safe-area-inset-bottom))] pt-2 ${panel ? "fixed inset-x-0 bottom-0 z-[90] max-h-[calc(100dvh-16px)] overflow-visible" : "absolute inset-x-0 bottom-0"}`}
         style={{ transform: panel ? undefined : "translateY(calc(var(--app-keyboard-inset, 0px) * -1))" }}
       >
@@ -368,7 +372,7 @@ export function ConversationComposer({
           </div>
           <button type="button" onClick={() => { setPanel((value) => value === "stickers" ? null : "stickers"); setDetailsOpen(false); }} className={`composer-icon-button ${panel === "stickers" ? "bg-[#eee9f3] text-[#725f87]" : "text-black/48"}`} aria-label="表情包"><Icon name="smile" /></button>
           <button type="button" onClick={() => void toggleRecording()} className={`composer-icon-button ${recording ? "bg-[#d8868c] text-white" : "text-black/48"}`} aria-label={recording ? "停止录音" : "录制语音"}><Icon name="mic" /></button>
-          <motion.button type="submit" whileTap={reduceMotion ? undefined : { transform: "scale(0.97)" }} disabled={!canSend} className="composer-icon-button bg-[#d8c9e6] text-white transition-colors disabled:bg-[#ebe6ef] disabled:text-white/75" aria-label={queuedMessages.length ? "合并发送" : "发送"}><Icon name="send" /></motion.button>
+          <motion.button type="button" whileTap={reduceMotion ? undefined : { scale: 0.94 }} onClick={sendAll} disabled={!canSend} className="composer-icon-button bg-[#d8c9e6] text-white transition-colors disabled:bg-[#e9e1f0] disabled:text-white" aria-label={queuedMessages.length ? "合并发送" : "发送"}><Icon name="send" /></motion.button>
         </div>
         {displayError ? <div className="mt-1.5 px-3 text-[10px] text-[#b45f68]" role="alert">{displayError}</div> : null}
       </div>
@@ -436,9 +440,9 @@ export function ConversationComposer({
           </motion.div>
         ) : null}
       </AnimatePresence>
-      <input ref={galleryInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(event) => { void uploadFiles(event.target.files, "image"); event.currentTarget.value = ""; }} />
-      <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(event) => { void uploadFiles(event.target.files, "image"); event.currentTarget.value = ""; }} />
-      <input ref={fileInputRef} type="file" className="hidden" onChange={(event) => { void uploadFiles(event.target.files, "file"); event.currentTarget.value = ""; }} />
-    </form>
+      <input ref={galleryInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(event) => { stageFiles(event.target.files, "image"); event.currentTarget.value = ""; }} />
+      <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(event) => { stageFiles(event.target.files, "image"); event.currentTarget.value = ""; }} />
+      <input ref={fileInputRef} type="file" className="hidden" onChange={(event) => { stageFiles(event.target.files, "file"); event.currentTarget.value = ""; }} />
+    </section>
   );
 }

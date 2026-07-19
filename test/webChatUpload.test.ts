@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { uploadWebChatFile } from "../src/data/chatApi";
+import {
+  uploadWebChatFile,
+  WebChatUploadTimeoutError,
+} from "../src/data/chatApi";
 
 test("web chat uploads a Blob as binary without base64 or JSON expansion", async (t) => {
   const originalFetch = globalThis.fetch;
@@ -40,4 +43,26 @@ test("web chat uploads a Blob as binary without base64 or JSON expansion", async
   );
   assert.equal(headers.get("X-Cyberboss-Media-Kind"), "file");
   assert.equal(media.fileName, "小诗.txt");
+});
+
+test("web chat attachment upload has a terminal timeout", async (t) => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_input, init) => new Promise<Response>((_resolve, reject) => {
+    init?.signal?.addEventListener("abort", () => {
+      reject(new DOMException("aborted", "AbortError"));
+    }, { once: true });
+  });
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  await assert.rejects(
+    uploadWebChatFile(
+      new Blob(["wait"], { type: "text/plain" }),
+      "wait.txt",
+      "file",
+      { timeoutMs: 5 },
+    ),
+    WebChatUploadTimeoutError,
+  );
 });

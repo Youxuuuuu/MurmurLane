@@ -15,6 +15,7 @@ const CHAT_API_BASE_URL = String(
 ).replace(/\/+$/, "");
 const CHAT_TOKEN = String(env?.VITE_MURMURLANE_CHAT_TOKEN || "").trim();
 export const WEB_CHAT_SEND_TIMEOUT_MS = 15_000;
+export const WEB_CHAT_UPLOAD_TIMEOUT_MS = 120_000;
 
 export class WebChatHttpError extends Error {
   statusCode: number;
@@ -30,6 +31,13 @@ export class WebChatSendTimeoutError extends Error {
   constructor() {
     super("Web Chat send timed out");
     this.name = "WebChatSendTimeoutError";
+  }
+}
+
+export class WebChatUploadTimeoutError extends Error {
+  constructor() {
+    super("附件上传超时");
+    this.name = "WebChatUploadTimeoutError";
   }
 }
 
@@ -142,17 +150,29 @@ export async function uploadWebChatFile(
   file: File | Blob,
   fileName = "attachment",
   kind = "file",
+  { timeoutMs = WEB_CHAT_UPLOAD_TIMEOUT_MS }: { timeoutMs?: number } = {},
 ): Promise<WebChatMedia> {
-  const result = await requestChatJson<{ media: WebChatMedia }>("/api/chat/uploads", {
-    method: "POST",
-    headers: {
-      "Content-Type": file.type || "application/octet-stream",
-      "X-Cyberboss-File-Name": encodeURIComponent(String(fileName || "attachment")),
-      "X-Cyberboss-Media-Kind": String(kind || "file"),
-    },
-    body: file,
-  });
-  return result.media;
+  const timeout = createSendTimeout(timeoutMs);
+  try {
+    const result = await requestChatJson<{ media: WebChatMedia }>("/api/chat/uploads", {
+      method: "POST",
+      headers: {
+        "Content-Type": file.type || "application/octet-stream",
+        "X-Cyberboss-File-Name": encodeURIComponent(String(fileName || "attachment")),
+        "X-Cyberboss-Media-Kind": String(kind || "file"),
+      },
+      body: file,
+      signal: timeout.signal,
+    });
+    return result.media;
+  } catch (error) {
+    if (timeout.signal.aborted) {
+      throw new WebChatUploadTimeoutError();
+    }
+    throw error;
+  } finally {
+    timeout.dispose();
+  }
 }
 
 export function subscribeToWebChat({

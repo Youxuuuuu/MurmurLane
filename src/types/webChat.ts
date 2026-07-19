@@ -14,6 +14,24 @@ export interface WebChatMessageInput {
   receivedAt?: string;
 }
 
+export interface WebChatPendingUpload {
+  pendingUpload: true;
+  uploadId: string;
+  file: Blob;
+  fileName: string;
+  contentType: string;
+  kind: string;
+  stickerId?: string;
+  label?: string;
+}
+
+export type WebChatComposerAttachment = WebChatMedia | WebChatPendingUpload;
+
+export interface WebChatComposerMessageInput
+  extends Omit<WebChatMessageInput, "attachments"> {
+  attachments?: WebChatComposerAttachment[];
+}
+
 export interface WebChatBubbleSegment {
   segmentId: string;
   text: string;

@@ -17,6 +17,7 @@ test("typing status one and legacy status-less events are running", () => {
 test("turn lifecycle remains authoritative and typing zero preserves failure", () => {
   assert.equal(resolveWebChatActivityStatus({ kind: "turn.started" }), "running");
   assert.equal(resolveWebChatActivityStatus({ kind: "turn.completed" }), "idle");
+  assert.equal(resolveWebChatActivityStatus({ kind: "turn.failed" }), "failed");
   assert.equal(resolveWebChatActivityStatus({ kind: "typing", status: 0 }, "failed"), "failed");
   assert.equal(resolveWebChatActivityStatus({ kind: "message" }), null);
 });
