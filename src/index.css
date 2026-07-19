@@ -17,6 +17,7 @@ body,
   height: var(--app-shell-height);
   min-height: var(--app-shell-height);
   overflow: hidden;
+  touch-action: pan-x pan-y;
 }
 
 .app-shell {
@@ -71,33 +72,28 @@ textarea,
   -webkit-text-size-adjust: 100%;
 }
 
-/* iOS 仍按 16px 计算聚焦字号，但视觉上缩回原来的 12px。
-   这样既不会触发自动放大，也不需要禁止用户手动缩放页面。 */
 /* Android Chrome 的动态视口会随键盘缩短；iOS WebKit 的 PWA 外壳则需要
-   固定 100vh 才能填满 Home Indicator 区域。 */
+   固定 100vh 才能填满 Home Indicator 区域。
+
+   iOS Safari 会在聚焦小于 16px 的可编辑控件时放大视觉视口。这里必须让
+   控件保持真实的 16px；不要用 transform 缩回 12px，也不要依赖 pointer
+   媒体查询，因为浏览器标签页和主屏 standalone 的输入环境报告可能不同。 */
 @supports (-webkit-touch-callout: none) {
   :root {
     --app-shell-height: 100vh;
   }
 
-  @media (hover: none) and (pointer: coarse) {
-    .conversation-composer-input-shell {
-      height: 42px;
-      overflow: hidden;
-    }
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+  select,
+  textarea,
+  [contenteditable]:not([contenteditable="false"]),
+  .conversation-composer-textarea {
+    font-size: 16px !important;
+  }
 
-    .conversation-composer-textarea {
-      font-size: 16px !important;
-      font-weight: 700 !important;
-      width: 133.333333% !important;
-      min-height: 56px !important;
-      max-height: 149px !important;
-      padding-top: 14.666667px !important;
-      padding-bottom: 14.666667px !important;
-      line-height: 26.666667px !important;
-      transform: scale(0.75);
-      transform-origin: left top;
-    }
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"])::placeholder,
+  textarea::placeholder {
+    font-size: 16px !important;
   }
 }
 
