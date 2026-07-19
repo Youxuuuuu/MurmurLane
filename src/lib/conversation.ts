@@ -310,12 +310,29 @@ export function getConversationMediaItems(
 }
 
 export function getConversationMediaPath(item: ConversationMediaItem) {
+  const directUrl = String(item?.url || "").trim();
+
+  if (/^(https?:|data:|blob:)/i.test(directUrl)) {
+    return directUrl;
+  }
+
   return (
-    item?.url ||
-    item?.path ||
     item?.relativePath ||
+    item?.path ||
+    item?.absolutePath ||
+    directUrl ||
     ""
   );
+}
+
+function getWebChatMediaFilePath(mediaPath: string) {
+  try {
+    const parsed = new URL(mediaPath, "http://murmurlane.local");
+    if (parsed.pathname !== "/api/chat/media") return "";
+    return String(parsed.searchParams.get("path") || "").trim();
+  } catch {
+    return "";
+  }
 }
 
 export function isImageLikeMedia(item: ConversationMediaItem) {
@@ -366,6 +383,11 @@ export function getConversationMediaSrc(item: ConversationMediaItem) {
 
   if (!mediaPath) {
     return "";
+  }
+
+  const webChatMediaFilePath = getWebChatMediaFilePath(mediaPath);
+  if (webChatMediaFilePath) {
+    return resolveApiFileUrl(webChatMediaFilePath);
   }
 
   if (/^(https?:|data:|blob:)/i.test(mediaPath)) {

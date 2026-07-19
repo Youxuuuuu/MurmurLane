@@ -22,6 +22,7 @@ export type ConversationQuote = string | ConversationQuoteObject;
 export interface ConversationMediaItem {
   label?: string;
   fileName?: string;
+  absolutePath?: string;
   relativePath?: string;
   path?: string;
   url?: string;
