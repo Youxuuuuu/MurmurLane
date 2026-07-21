@@ -56,6 +56,7 @@ function StickerMedia({
           src={src}
           alt={label}
           loading="lazy"
+          decoding="async"
           onError={() => setFailed(true)}
         />
       ) : (

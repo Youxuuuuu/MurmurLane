@@ -39,6 +39,10 @@ function isAssistantTurnRecord(record: ConversationRecord) {
   return type === "thinking" || type === "assistant" || type === "operation";
 }
 
+function getRecordConversationDate(record: ConversationRecord) {
+  return String(record.conversationDate || "").replace(/-/g, ".");
+}
+
 export function getRecordAssistantTurnRenderId(
   record: ConversationRecord,
   selectedThreadId = "",
@@ -71,21 +75,25 @@ export function buildAssistantTurnDisplayModel(
       return;
     }
 
-    let turn = turns.get(turnRenderId);
+    const conversationDate = getRecordConversationDate(record);
+    const datedTurnRenderId = conversationDate
+      ? `${turnRenderId}:date:${conversationDate}`
+      : turnRenderId;
+    let turn = turns.get(datedTurnRenderId);
     if (!turn) {
       const threadId = getConversationThreadId(record, selectedThreadId);
       const turnId = getConversationDisplayTurnId(record);
       turn = {
         kind: "assistant-turn",
-        renderId: turnRenderId,
-        thinkingPanelId: createBubbleId(turnRenderId, "thinking-panel"),
+        renderId: datedTurnRenderId,
+        thinkingPanelId: createBubbleId(datedTurnRenderId, "thinking-panel"),
         threadId,
         turnId,
         entries: [],
         thinkingRecords: [],
         firstIndex: index,
       };
-      turns.set(turnRenderId, turn);
+      turns.set(datedTurnRenderId, turn);
       items.push(turn);
     }
     turn.entries.push({ record, index });
@@ -107,20 +115,29 @@ export function expandRangeToAssistantTurnBoundaries(
   const startTurn = start < records.length
     ? getRecordAssistantTurnRenderId(records[start], selectedThreadId)
     : "";
+  const startDate = start < records.length
+    ? getRecordConversationDate(records[start])
+    : "";
   while (
     startTurn
     && start > 0
     && getRecordAssistantTurnRenderId(records[start - 1], selectedThreadId) === startTurn
+    && (
+      !startDate
+      || getRecordConversationDate(records[start - 1]) === startDate
+    )
   ) {
     start -= 1;
   }
   const endTurn = end > 0
     ? getRecordAssistantTurnRenderId(records[end - 1], selectedThreadId)
     : "";
+  const endDate = end > 0 ? getRecordConversationDate(records[end - 1]) : "";
   while (
     endTurn
     && end < records.length
     && getRecordAssistantTurnRenderId(records[end], selectedThreadId) === endTurn
+    && (!endDate || getRecordConversationDate(records[end]) === endDate)
   ) {
     end += 1;
   }

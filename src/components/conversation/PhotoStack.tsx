@@ -308,6 +308,7 @@ function PhotoViewer({
                 className="block max-h-[84vh] max-w-[92vw] object-contain"
                 src={active.src}
                 alt={active.label}
+                decoding="async"
                 draggable={false}
                 onError={() => onImageError(active.key)}
               />
@@ -576,7 +577,7 @@ function PhotoStackCollection({
 
   const control = (
     <div
-      className={`pointer-events-auto absolute z-[115] -translate-y-1/2 ${controlSide === "left" ? "right-full mr-2" : "left-full ml-2"} top-1/2`}
+      className={`pointer-events-auto absolute z-[115] -translate-y-1/2 ${controlSide === "left" ? "right-full mr-4" : "left-full ml-4"} top-1/2`}
     >
       <PhotoControl
         page={page}
@@ -698,9 +699,8 @@ function PhotoStackCollection({
                   }
                   src={entry.src}
                   alt={entry.label}
-                  loading={
-                    expanded || index === currentIndex ? "eager" : "lazy"
-                  }
+                  loading={expanded ? "eager" : "lazy"}
+                  decoding="async"
                   draggable={false}
                   onError={() => onImageError(entry.key)}
                 />
@@ -784,6 +784,7 @@ export function ConversationPhotoGallery({
               src={entries[0].src}
               alt={entries[0].label}
               loading="lazy"
+              decoding="async"
               onError={() => markImageBroken(entries[0].key)}
             />
           ) : (

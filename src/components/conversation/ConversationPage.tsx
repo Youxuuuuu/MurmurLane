@@ -1,5 +1,13 @@
 // @ts-nocheck
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  memo,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useReducedMotion } from "framer-motion";
 import {
   shouldHideConversationRecord,
@@ -13,7 +21,14 @@ import { bubbleRevealLedger } from "../../lib/BubbleRevealLedger";
 import {
   ConversationEntryMetrics,
   ConversationScrollCauseLedger,
+  createConversationRenderWindow,
+  expandConversationRangeEarlier,
+  expandConversationRangeLater,
+  getConversationHistoryPrefetchThreshold,
+  shouldPrefetchConversationHistory,
   resolveBubbleRevealAnchorTop,
+  resolveConversationRenderWindow,
+  resolveConversationViewportAnchorTop,
   shouldAnimateConversationBubble,
   shouldShowFloatingDate,
 } from "../../lib/conversationScrollPolicy";
@@ -33,8 +48,9 @@ import {
   expandRangeToAssistantTurnBoundaries,
 } from "../../lib/assistantTurnModel";
 
-const CONVERSATION_RECENT_RENDER_LIMIT = 200;
+const CONVERSATION_RECENT_RENDER_LIMIT = 120;
 const CONVERSATION_HIT_CONTEXT_LIMIT = 80;
+const CONVERSATION_WINDOW_SHIFT = 30;
 const CONVERSATION_SCROLL_EDGE_THRESHOLD = 80;
 const FLOATING_DATE_HIDE_DELAY_MS = 1200;
 const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -64,7 +80,7 @@ function getBubbleAnimationEntries(messages, selectedThreadId) {
   return Array.from(byKey.values());
 }
 
-export function ConversationPage({
+export const ConversationPage = memo(function ConversationPage({
   page,
   selectedThreadId,
   highlightResult,
@@ -75,13 +91,21 @@ export function ConversationPage({
   onTargetDateHandled,
   onLoadEarlier,
   hasEarlierDate,
+  onLoadLater,
+  hasLaterDate,
   earlierDateLoading,
+  laterDateLoading = earlierDateLoading,
   onFloatingDateChange,
   liveMessages = [],
   webChat = null,
 }) {
   const [quoteMessage, setQuoteMessage] = useState(null);
   const [activeAction, setActiveAction] = useState(null);
+  const handleQuote = useCallback((nextMessage) => {
+    setQuoteMessage(nextMessage);
+    setActiveAction(null);
+  }, []);
+  const handleActionClose = useCallback(() => setActiveAction(null), []);
   const reduceMotion = useReducedMotion();
   const bubbleAnimationThreadRef = useRef(null);
   const observedBubbleKeysRef = useRef(new Set());
@@ -110,13 +134,35 @@ export function ConversationPage({
     () => getBubbleAnimationEntries(visibleMessages, selectedThreadId),
     [visibleMessages, selectedThreadId],
   );
+  const visibleMessageIds = useMemo(
+    () => visibleMessages.map((message) =>
+      getConversationRenderId(message, selectedThreadId)),
+    [selectedThreadId, visibleMessages],
+  );
+  const visibleMessageIndexById = useMemo(
+    () => new Map(visibleMessageIds.map((id, index) => [id, index])),
+    [visibleMessageIds],
+  );
   const pageHasEntry = Boolean(page.hasEntry || visibleMessages.length);
-  const [visibleRange, setVisibleRange] = useState(() => ({
-    start: Math.max(0, visibleMessages.length - CONVERSATION_RECENT_RENDER_LIMIT),
-    end: visibleMessages.length,
-  }));
-  const visibleRangeRef = useRef(visibleRange);
-  const topScrollAdjustmentRef = useRef(null);
+  const [visibleWindow, setVisibleWindow] = useState(() =>
+    createConversationRenderWindow({
+      messageIds: visibleMessageIds,
+      scopeKey: selectedThreadId,
+      range: {
+        start: Math.max(
+          0,
+          visibleMessages.length - CONVERSATION_RECENT_RENDER_LIMIT,
+        ),
+        end: visibleMessages.length,
+      },
+      maximumSize: CONVERSATION_RECENT_RENDER_LIMIT,
+    }),
+  );
+  const visibleRangeRef = useRef({
+    start: visibleWindow.start,
+    end: visibleWindow.end,
+  });
+  const pendingViewportAnchorRef = useRef(null);
   const shouldStickToBottomRef = useRef(false);
   const shouldStickToBottomCauseRef = useRef(null);
   const shouldResetToBottomRef = useRef(false);
@@ -124,7 +170,12 @@ export function ConversationPage({
   const pendingHighlightTargetRef = useRef(null);
   const pendingDateTargetRef = useRef(null);
   const pendingEarlierAnchorRef = useRef(null);
+  const pendingLaterAnchorRef = useRef(null);
   const floatingDateTimerRef = useRef(null);
+  const floatingDateFrameRef = useRef(null);
+  const floatingDateScrollBoxRef = useRef(null);
+  const lastFloatingDateRef = useRef("");
+  const lastTouchYRef = useRef(null);
   const conversationKeyRef = useRef(null);
   const pendingBubbleRevealAnchorsRef = useRef(new Map());
   const scrollCauseLedgerRef = useRef(new ConversationScrollCauseLedger());
@@ -176,6 +227,28 @@ export function ConversationPage({
     scrollBox.scrollTo({ top: plan.targetTop, behavior: "auto" });
     return true;
   };
+  const captureViewportAnchor = (scrollBox, expectedRange) => {
+    const boxRect = scrollBox.getBoundingClientRect();
+    const anchors = Array.from(
+      scrollBox.querySelectorAll("[data-message-render-id]"),
+    );
+    const anchor = anchors.find(
+      (element) => element.getBoundingClientRect().bottom > boxRect.top + 1,
+    ) || anchors[0];
+    const renderId = anchor?.getAttribute("data-message-render-id");
+    if (!anchor || !renderId) {
+      pendingViewportAnchorRef.current = null;
+      return false;
+    }
+
+    pendingViewportAnchorRef.current = {
+      renderId,
+      viewportOffset: anchor.getBoundingClientRect().top - boxRect.top,
+      scrollHeight: scrollBox.scrollHeight,
+      expectedRange,
+    };
+    return true;
+  };
   const hasConversationHit =
     highlightResult?.mode === "Conversation" &&
     highlightResult.threadId === selectedThreadId;
@@ -189,17 +262,21 @@ export function ConversationPage({
         ),
     );
   }, [hasConversationHit, visibleMessages, highlightResult?.targetId]);
-  const clampedVisibleRange = useMemo(() => {
-    const end = Math.min(
-      visibleMessages.length,
-      Math.max(0, visibleRange.end),
-    );
-    const start = Math.min(
-      end,
-      Math.max(0, Math.min(visibleRange.start, visibleMessages.length)),
-    );
-    return { start, end };
-  }, [visibleMessages.length, visibleRange]);
+  const clampedVisibleRange = useMemo(
+    () => resolveConversationRenderWindow({
+      window: visibleWindow,
+      messageIds: visibleMessageIds,
+      messageIndexById: visibleMessageIndexById,
+      scopeKey: selectedThreadId,
+      maximumSize: CONVERSATION_RECENT_RENDER_LIMIT,
+    }),
+    [
+      selectedThreadId,
+      visibleMessageIds,
+      visibleMessageIndexById,
+      visibleWindow,
+    ],
+  );
   const renderedRange = useMemo(
     () => expandRangeToAssistantTurnBoundaries(
       visibleMessages,
@@ -236,7 +313,7 @@ export function ConversationPage({
     );
   }, [targetDate, visibleMessages]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     visibleRangeRef.current = clampedVisibleRange;
   }, [clampedVisibleRange]);
 
@@ -245,11 +322,23 @@ export function ConversationPage({
       if (floatingDateTimerRef.current) {
         window.clearTimeout(floatingDateTimerRef.current);
       }
+      if (floatingDateFrameRef.current) {
+        window.cancelAnimationFrame(floatingDateFrameRef.current);
+      }
+      floatingDateFrameRef.current = null;
+      floatingDateScrollBoxRef.current = null;
+      lastFloatingDateRef.current = "";
       onFloatingDateChange?.("");
       return () => {
         if (floatingDateTimerRef.current) {
           window.clearTimeout(floatingDateTimerRef.current);
         }
+        if (floatingDateFrameRef.current) {
+          window.cancelAnimationFrame(floatingDateFrameRef.current);
+        }
+        floatingDateFrameRef.current = null;
+        floatingDateScrollBoxRef.current = null;
+        lastFloatingDateRef.current = "";
         onFloatingDateChange?.("");
       };
     },
@@ -314,43 +403,90 @@ export function ConversationPage({
 
   useLayoutEffect(() => {
     if (!targetDate || targetDateIndex < 0) return;
+    const start = Math.max(0, targetDateIndex - 20);
     const nextRange = {
-      start: Math.max(0, targetDateIndex - 20),
+      start,
       end: Math.min(
         visibleMessages.length,
-        targetDateIndex + CONVERSATION_RECENT_RENDER_LIMIT,
+        start + CONVERSATION_RECENT_RENDER_LIMIT,
       ),
     };
     pendingDateTargetRef.current = String(targetDate).replace(/-/g, ".");
+    pendingViewportAnchorRef.current = null;
     shouldResetToBottomRef.current = false;
     resetVisibleRangeRef.current = null;
-    setVisibleRange(nextRange);
-  }, [targetDate, targetDateIndex, visibleMessages.length]);
+    setVisibleWindow(createConversationRenderWindow({
+      messageIds: visibleMessageIds,
+      scopeKey: selectedThreadId,
+      range: nextRange,
+      maximumSize: CONVERSATION_RECENT_RENDER_LIMIT,
+    }));
+  }, [
+    selectedThreadId,
+    targetDate,
+    targetDateIndex,
+    visibleMessageIds,
+    visibleMessages.length,
+  ]);
 
   useLayoutEffect(() => {
     const pending = pendingEarlierAnchorRef.current;
     if (!pending || visibleMessages.length <= pending.messageCount) return;
-    const anchorIndex = visibleMessages.findIndex(
-      (message) => message.id === pending.messageId,
-    );
-    if (anchorIndex < 0) return;
-
-    pendingEarlierAnchorRef.current = null;
-    setVisibleRange({
-      start: Math.max(0, anchorIndex - CONVERSATION_RECENT_RENDER_LIMIT),
-      end: Math.min(
-        visibleMessages.length,
-        anchorIndex + pending.renderedCount,
-      ),
+    const nextRange = expandConversationRangeEarlier({
+      range: clampedVisibleRange,
+      total: visibleMessages.length,
+      step: CONVERSATION_WINDOW_SHIFT,
+      maximumSize: CONVERSATION_RECENT_RENDER_LIMIT,
     });
-  }, [visibleMessages]);
+    const scrollBox = document.getElementById("conversation-message-scroll");
+    if (!scrollBox || !captureViewportAnchor(scrollBox, nextRange)) return;
+    pendingEarlierAnchorRef.current = null;
+    setVisibleWindow(createConversationRenderWindow({
+      messageIds: visibleMessageIds,
+      scopeKey: selectedThreadId,
+      range: nextRange,
+      maximumSize: CONVERSATION_RECENT_RENDER_LIMIT,
+    }));
+  }, [
+    clampedVisibleRange,
+    selectedThreadId,
+    visibleMessageIds,
+    visibleMessages.length,
+  ]);
+
+  useLayoutEffect(() => {
+    const pending = pendingLaterAnchorRef.current;
+    if (!pending || visibleMessages.length <= pending.messageCount) return;
+    const nextRange = expandConversationRangeLater({
+      range: clampedVisibleRange,
+      total: visibleMessages.length,
+      step: CONVERSATION_WINDOW_SHIFT,
+      maximumSize: CONVERSATION_RECENT_RENDER_LIMIT,
+    });
+    const scrollBox = document.getElementById("conversation-message-scroll");
+    if (!scrollBox || !captureViewportAnchor(scrollBox, nextRange)) return;
+    pendingLaterAnchorRef.current = null;
+    setVisibleWindow(createConversationRenderWindow({
+      messageIds: visibleMessageIds,
+      scopeKey: selectedThreadId,
+      range: nextRange,
+      maximumSize: CONVERSATION_RECENT_RENDER_LIMIT,
+    }));
+  }, [
+    clampedVisibleRange,
+    selectedThreadId,
+    visibleMessageIds,
+    visibleMessages.length,
+  ]);
 
   useLayoutEffect(() => {
     const keyChanged = conversationKeyRef.current !== conversationKey;
 
     if (keyChanged) {
       conversationKeyRef.current = conversationKey;
-      topScrollAdjustmentRef.current = null;
+      pendingEarlierAnchorRef.current = null;
+      pendingLaterAnchorRef.current = null;
+      pendingViewportAnchorRef.current = null;
       pendingHighlightTargetRef.current = null;
       shouldStickToBottomRef.current = false;
       shouldStickToBottomCauseRef.current = null;
@@ -359,20 +495,26 @@ export function ConversationPage({
     }
 
     if (hasConversationHit) {
-      topScrollAdjustmentRef.current = null;
+      pendingViewportAnchorRef.current = null;
       shouldStickToBottomRef.current = false;
       shouldStickToBottomCauseRef.current = null;
       shouldResetToBottomRef.current = false;
       resetVisibleRangeRef.current = null;
 
       if (hitIndex !== -1) {
-        setVisibleRange({
-          start: Math.max(0, hitIndex - CONVERSATION_HIT_CONTEXT_LIMIT),
-          end: Math.min(
-            visibleMessages.length,
-            hitIndex + CONVERSATION_HIT_CONTEXT_LIMIT + 1,
-          ),
-        });
+        const start = Math.max(0, hitIndex - CONVERSATION_HIT_CONTEXT_LIMIT);
+        setVisibleWindow(createConversationRenderWindow({
+          messageIds: visibleMessageIds,
+          scopeKey: selectedThreadId,
+          range: {
+            start,
+            end: Math.min(
+              visibleMessages.length,
+              start + CONVERSATION_RECENT_RENDER_LIMIT,
+            ),
+          },
+          maximumSize: CONVERSATION_RECENT_RENDER_LIMIT,
+        }));
         pendingHighlightTargetRef.current = visibleMessages[hitIndex].id;
       }
       return;
@@ -382,7 +524,7 @@ export function ConversationPage({
       return;
     }
 
-    topScrollAdjustmentRef.current = null;
+    pendingViewportAnchorRef.current = null;
     pendingHighlightTargetRef.current = null;
     shouldStickToBottomRef.current = false;
     shouldStickToBottomCauseRef.current = null;
@@ -398,7 +540,12 @@ export function ConversationPage({
       threadId: selectedThreadId,
       ...nextRange,
     };
-    setVisibleRange(nextRange);
+    setVisibleWindow(createConversationRenderWindow({
+      messageIds: visibleMessageIds,
+      scopeKey: selectedThreadId,
+      range: nextRange,
+      maximumSize: CONVERSATION_RECENT_RENDER_LIMIT,
+    }));
     shouldResetToBottomRef.current = true;
   }, [
     conversationKey,
@@ -408,6 +555,7 @@ export function ConversationPage({
     hasConversationHit,
     hitIndex,
     highlightResult?.targetId,
+    visibleMessageIds,
   ]);
 
   useLayoutEffect(() => {
@@ -499,19 +647,30 @@ export function ConversationPage({
     if (isNearBottomRef.current) {
       shouldStickToBottomRef.current = true;
       shouldStickToBottomCauseRef.current = "new-message";
-      setVisibleRange({
-        start: Math.max(
-          0,
-          visibleMessages.length - CONVERSATION_RECENT_RENDER_LIMIT,
-        ),
-        end: visibleMessages.length,
-      });
+      setVisibleWindow(createConversationRenderWindow({
+        messageIds: visibleMessageIds,
+        scopeKey: selectedThreadId,
+        range: {
+          start: Math.max(
+            0,
+            visibleMessages.length - CONVERSATION_RECENT_RENDER_LIMIT,
+          ),
+          end: visibleMessages.length,
+        },
+        maximumSize: CONVERSATION_RECENT_RENDER_LIMIT,
+      }));
       setNewMessageCount(0);
       return;
     }
 
     setNewMessageCount((current) => current + addedCount);
-  }, [conversationKey, visibleMessages.length, hasConversationHit]);
+  }, [
+    conversationKey,
+    hasConversationHit,
+    selectedThreadId,
+    visibleMessageIds,
+    visibleMessages.length,
+  ]);
 
   useLayoutEffect(() => {
     const scrollBox = document.getElementById("conversation-message-scroll");
@@ -528,7 +687,7 @@ export function ConversationPage({
       ) {
         shouldResetToBottomRef.current = false;
         resetVisibleRangeRef.current = null;
-        topScrollAdjustmentRef.current = null;
+        pendingViewportAnchorRef.current = null;
         shouldStickToBottomRef.current = false;
         shouldStickToBottomCauseRef.current = null;
         return;
@@ -541,7 +700,7 @@ export function ConversationPage({
         return;
       }
 
-      topScrollAdjustmentRef.current = null;
+      pendingViewportAnchorRef.current = null;
       shouldStickToBottomRef.current = false;
       shouldStickToBottomCauseRef.current = null;
       if (!entryMetricsRef.current.claimInitialBottomPositioning()) {
@@ -556,19 +715,37 @@ export function ConversationPage({
       return;
     }
 
-    const topScrollAdjustment = topScrollAdjustmentRef.current;
-    if (topScrollAdjustment) {
-      topScrollAdjustmentRef.current = null;
-
+    const viewportAnchor = pendingViewportAnchorRef.current;
+    if (viewportAnchor) {
       if (
-        topScrollAdjustment.date === page.date &&
-        topScrollAdjustment.threadId === selectedThreadId
+        viewportAnchor.expectedRange
+        && (
+          viewportAnchor.expectedRange.start !== clampedVisibleRange.start
+          || viewportAnchor.expectedRange.end !== clampedVisibleRange.end
+        )
       ) {
+        return;
+      }
+      pendingViewportAnchorRef.current = null;
+      const target = Array.from(
+        scrollBox.querySelectorAll("[data-message-render-id]"),
+      ).find(
+        (element) =>
+          element.getAttribute("data-message-render-id")
+          === viewportAnchor.renderId,
+      );
+      if (target) {
+        const boxRect = scrollBox.getBoundingClientRect();
         scrollWithCause(
           scrollBox,
-          scrollBox.scrollHeight -
-            topScrollAdjustment.scrollHeight +
-            topScrollAdjustment.scrollTop,
+          resolveConversationViewportAnchorTop({
+            currentScrollTop: scrollBox.scrollTop,
+            previousScrollHeight: viewportAnchor.scrollHeight,
+            currentScrollHeight: scrollBox.scrollHeight,
+            previousAnchorOffset: viewportAnchor.viewportOffset,
+            currentAnchorOffset:
+              target.getBoundingClientRect().top - boxRect.top,
+          }),
           "history-prepend",
         );
         return;
@@ -616,6 +793,8 @@ export function ConversationPage({
     renderedMessages.length,
     page.date,
     selectedThreadId,
+    targetDate,
+    highlightResult?.targetId,
   ]);
 
   const updateFloatingDate = (scrollBox) => {
@@ -628,14 +807,158 @@ export function ConversationPage({
         (element) => element.getBoundingClientRect().bottom > boxTop + 8,
       ) || messageElements[messageElements.length - 1];
     const date = current?.getAttribute("data-conversation-date") || "";
-    onFloatingDateChange?.(formatFloatingDate(date));
+    const formattedDate = formatFloatingDate(date);
+    if (formattedDate !== lastFloatingDateRef.current) {
+      lastFloatingDateRef.current = formattedDate;
+      onFloatingDateChange?.(formattedDate);
+    }
     if (floatingDateTimerRef.current) {
       window.clearTimeout(floatingDateTimerRef.current);
     }
     floatingDateTimerRef.current = window.setTimeout(
-      () => onFloatingDateChange?.(""),
+      () => {
+        lastFloatingDateRef.current = "";
+        onFloatingDateChange?.("");
+      },
       FLOATING_DATE_HIDE_DELAY_MS,
     );
+  };
+
+  const scheduleFloatingDateUpdate = (scrollBox) => {
+    floatingDateScrollBoxRef.current = scrollBox;
+    if (floatingDateFrameRef.current) return;
+    floatingDateFrameRef.current = window.requestAnimationFrame(() => {
+      floatingDateFrameRef.current = null;
+      const currentScrollBox = floatingDateScrollBoxRef.current;
+      if (currentScrollBox?.isConnected) updateFloatingDate(currentScrollBox);
+    });
+  };
+
+  const revealEarlierConversationHistory = (scrollBox, projectedDelta = 0) => {
+    const edgeThreshold = getConversationHistoryPrefetchThreshold(
+      scrollBox.clientHeight,
+    );
+    if (!shouldPrefetchConversationHistory(
+      scrollBox.scrollTop,
+      edgeThreshold,
+      projectedDelta,
+    )) return false;
+    if (pendingViewportAnchorRef.current) return true;
+    const currentRange = visibleRangeRef.current;
+
+    if (currentRange.start > 0) {
+      const nextRange = expandConversationRangeEarlier({
+        range: currentRange,
+        total: visibleMessages.length,
+        step: CONVERSATION_WINDOW_SHIFT,
+        maximumSize: CONVERSATION_RECENT_RENDER_LIMIT,
+      });
+      if (!captureViewportAnchor(scrollBox, nextRange)) return false;
+      setVisibleWindow(createConversationRenderWindow({
+        messageIds: visibleMessageIds,
+        scopeKey: selectedThreadId,
+        range: nextRange,
+        maximumSize: CONVERSATION_RECENT_RENDER_LIMIT,
+      }));
+      return true;
+    }
+
+    if (
+      !hasEarlierDate
+      || earlierDateLoading
+      || historyLoadInFlightRef.current
+      || renderedMessages.length === 0
+    ) {
+      return false;
+    }
+
+    pendingEarlierAnchorRef.current = {
+      messageCount: visibleMessages.length,
+    };
+    isNearBottomRef.current = false;
+    historyLoadInFlightRef.current = true;
+    const request = onLoadEarlier?.();
+    if (request && typeof request.then === "function") {
+      request.then((loaded) => {
+        // Keep the guard through the React commit when an earlier date was
+        // actually added. The message-count effect clears it after the
+        // prepended records land, so they cannot become a false "new" badge.
+        if (!loaded) {
+          pendingEarlierAnchorRef.current = null;
+          historyLoadInFlightRef.current = false;
+        }
+      }, () => {
+        pendingEarlierAnchorRef.current = null;
+        historyLoadInFlightRef.current = false;
+      });
+    } else {
+      pendingEarlierAnchorRef.current = null;
+      historyLoadInFlightRef.current = false;
+    }
+    return true;
+  };
+
+  const revealLaterConversationHistory = (scrollBox, projectedDelta = 0) => {
+    const distanceFromBottom =
+      scrollBox.scrollHeight - scrollBox.scrollTop - scrollBox.clientHeight;
+    const edgeThreshold = getConversationHistoryPrefetchThreshold(
+      scrollBox.clientHeight,
+    );
+    if (!shouldPrefetchConversationHistory(
+      distanceFromBottom,
+      edgeThreshold,
+      projectedDelta,
+    )) return false;
+    if (pendingViewportAnchorRef.current) return true;
+    const currentRange = visibleRangeRef.current;
+
+    if (currentRange.end < visibleMessages.length) {
+      const nextRange = expandConversationRangeLater({
+        range: currentRange,
+        total: visibleMessages.length,
+        step: CONVERSATION_WINDOW_SHIFT,
+        maximumSize: CONVERSATION_RECENT_RENDER_LIMIT,
+      });
+      if (!captureViewportAnchor(scrollBox, nextRange)) return false;
+      setVisibleWindow(createConversationRenderWindow({
+        messageIds: visibleMessageIds,
+        scopeKey: selectedThreadId,
+        range: nextRange,
+        maximumSize: CONVERSATION_RECENT_RENDER_LIMIT,
+      }));
+      return true;
+    }
+
+    if (
+      !hasLaterDate
+      || laterDateLoading
+      || historyLoadInFlightRef.current
+      || renderedMessages.length === 0
+    ) {
+      return false;
+    }
+
+    pendingLaterAnchorRef.current = {
+      messageCount: visibleMessages.length,
+    };
+    isNearBottomRef.current = false;
+    historyLoadInFlightRef.current = true;
+    const request = onLoadLater?.();
+    if (request && typeof request.then === "function") {
+      request.then((loaded) => {
+        if (!loaded) {
+          pendingLaterAnchorRef.current = null;
+          historyLoadInFlightRef.current = false;
+        }
+      }, () => {
+        pendingLaterAnchorRef.current = null;
+        historyLoadInFlightRef.current = false;
+      });
+    } else {
+      pendingLaterAnchorRef.current = null;
+      historyLoadInFlightRef.current = false;
+    }
+    return true;
   };
 
   const noteUserScrollIntent = () => {
@@ -646,12 +969,78 @@ export function ConversationPage({
     if (event.target === event.currentTarget) noteUserScrollIntent();
   };
 
+  const handleScrollWheel = (event) => {
+    noteUserScrollIntent();
+    const deltaScale = event.deltaMode === 1
+      ? 16
+      : event.deltaMode === 2
+        ? event.currentTarget.clientHeight
+        : 1;
+    const projectedDelta = Math.abs(event.deltaY) * deltaScale;
+    const revealed = event.deltaY < 0
+      ? revealEarlierConversationHistory(event.currentTarget, projectedDelta)
+      : event.deltaY > 0
+        ? revealLaterConversationHistory(event.currentTarget, projectedDelta)
+        : false;
+    if (revealed) {
+      scrollCauseLedgerRef.current.clearUserScrollIntent();
+    }
+  };
+
+  const handleScrollTouchStart = (event) => {
+    lastTouchYRef.current = event.touches?.[0]?.clientY ?? null;
+    noteUserScrollIntent();
+  };
+
+  const handleScrollTouchMove = (event) => {
+    const nextY = event.touches?.[0]?.clientY ?? null;
+    const previousY = lastTouchYRef.current;
+    lastTouchYRef.current = nextY;
+    noteUserScrollIntent();
+    const revealed = nextY !== null && previousY !== null
+      ? nextY > previousY + 2
+        ? revealEarlierConversationHistory(
+          event.currentTarget,
+          nextY - previousY,
+        )
+        : nextY < previousY - 2
+          ? revealLaterConversationHistory(
+            event.currentTarget,
+            previousY - nextY,
+          )
+          : false
+      : false;
+    if (revealed) {
+      scrollCauseLedgerRef.current.clearUserScrollIntent();
+    }
+  };
+
+  const handleScrollTouchEnd = () => {
+    lastTouchYRef.current = null;
+  };
+
   const handleScrollKeyDown = (event) => {
     if (
       ["ArrowDown", "ArrowUp", "End", "Home", "PageDown", "PageUp", " "]
         .includes(event.key)
     ) {
       noteUserScrollIntent();
+      const projectedDelta = event.key === "Home" || event.key === "End"
+        ? Number.POSITIVE_INFINITY
+        : ["PageDown", "PageUp", " "].includes(event.key)
+          ? event.currentTarget.clientHeight
+          : 40;
+      if (
+        ["ArrowUp", "Home", "PageUp"].includes(event.key)
+        && revealEarlierConversationHistory(event.currentTarget, projectedDelta)
+      ) {
+        scrollCauseLedgerRef.current.clearUserScrollIntent();
+      } else if (
+        ["ArrowDown", "End", "PageDown", " "].includes(event.key)
+        && revealLaterConversationHistory(event.currentTarget, projectedDelta)
+      ) {
+        scrollCauseLedgerRef.current.clearUserScrollIntent();
+      }
     }
   };
 
@@ -661,100 +1050,42 @@ export function ConversationPage({
       scrollBox.scrollTop,
     );
     if (cause) scrollBox.dataset.scrollCause = cause;
-    const currentRange = visibleRangeRef.current;
     const distanceFromBottom =
       scrollBox.scrollHeight - scrollBox.scrollTop - scrollBox.clientHeight;
     isNearBottomRef.current =
       distanceFromBottom <= CONVERSATION_SCROLL_EDGE_THRESHOLD;
     if (isNearBottomRef.current && newMessageCount) setNewMessageCount(0);
-    if (shouldShowFloatingDate(cause)) updateFloatingDate(scrollBox);
+    if (shouldShowFloatingDate(cause)) scheduleFloatingDateUpdate(scrollBox);
     if (cause !== "user") return;
 
-    if (
-      scrollBox.scrollTop <= CONVERSATION_SCROLL_EDGE_THRESHOLD &&
-      currentRange.start > 0
-    ) {
-      topScrollAdjustmentRef.current = {
-        date: page.date,
-        threadId: selectedThreadId,
-        scrollHeight: scrollBox.scrollHeight,
-        scrollTop: scrollBox.scrollTop,
-      };
-      setVisibleRange((current) => ({
-        start: Math.max(0, current.start - CONVERSATION_RECENT_RENDER_LIMIT),
-        end: current.end,
-      }));
-      return;
-    }
-
-    if (
-      scrollBox.scrollTop <= CONVERSATION_SCROLL_EDGE_THRESHOLD &&
-      currentRange.start === 0 &&
-      hasEarlierDate &&
-      !earlierDateLoading &&
-      renderedMessages.length > 0
-    ) {
-      topScrollAdjustmentRef.current = {
-        date: page.date,
-        threadId: selectedThreadId,
-        scrollHeight: scrollBox.scrollHeight,
-        scrollTop: scrollBox.scrollTop,
-      };
-      pendingEarlierAnchorRef.current = {
-        messageId: renderedMessages[0].id,
-        messageCount: visibleMessages.length,
-        renderedCount: renderedMessages.length,
-      };
-      isNearBottomRef.current = false;
-      historyLoadInFlightRef.current = true;
-      const request = onLoadEarlier?.();
-      if (request && typeof request.then === "function") {
-        request.then((loaded) => {
-          // Keep the guard through the React commit when an earlier date was
-          // actually added. The message-count effect clears it after the
-          // prepended records land, so they cannot become a false "new" badge.
-          if (!loaded) historyLoadInFlightRef.current = false;
-        }, () => {
-          historyLoadInFlightRef.current = false;
-        });
-      } else {
-        historyLoadInFlightRef.current = false;
-      }
-      return;
-    }
-
-    if (
-      distanceFromBottom <= CONVERSATION_SCROLL_EDGE_THRESHOLD &&
-      currentRange.end < visibleMessages.length
-    ) {
-      setVisibleRange((current) => ({
-        start: current.start,
-        end: Math.min(
-          visibleMessages.length,
-          current.end + CONVERSATION_RECENT_RENDER_LIMIT,
-        ),
-      }));
-    }
+    if (revealEarlierConversationHistory(scrollBox)) return;
+    revealLaterConversationHistory(scrollBox);
   };
 
   const handleShowNewMessages = () => {
     pendingDateTargetRef.current = null;
     pendingHighlightTargetRef.current = null;
     pendingEarlierAnchorRef.current = null;
-    topScrollAdjustmentRef.current = null;
+    pendingLaterAnchorRef.current = null;
+    pendingViewportAnchorRef.current = null;
     resetVisibleRangeRef.current = null;
     shouldResetToBottomRef.current = false;
     isNearBottomRef.current = true;
     shouldStickToBottomRef.current = true;
     shouldStickToBottomCauseRef.current = "new-message";
     setNewMessageCount(0);
-    setVisibleRange({
-      start: Math.max(
-        0,
-        visibleMessages.length - CONVERSATION_RECENT_RENDER_LIMIT,
-      ),
-      end: visibleMessages.length,
-    });
+    setVisibleWindow(createConversationRenderWindow({
+      messageIds: visibleMessageIds,
+      scopeKey: selectedThreadId,
+      range: {
+        start: Math.max(
+          0,
+          visibleMessages.length - CONVERSATION_RECENT_RENDER_LIMIT,
+        ),
+        end: visibleMessages.length,
+      },
+      maximumSize: CONVERSATION_RECENT_RENDER_LIMIT,
+    }));
   };
 
   const renderRecordEntry = (entry, showDateDivider = true) => {
@@ -790,7 +1121,10 @@ export function ConversationPage({
       ) &&
       highlightResult?.threadId === selectedThreadId;
     return (
-      <div key={animationKey} data-message-render-id={animationKey}>
+      <div
+        key={animationKey}
+        data-message-render-id={animationKey}
+      >
         {shouldShowDateDivider && (
           <div
             id={`conversation-date-${date}`}
@@ -816,14 +1150,11 @@ export function ConversationPage({
             userProfile={userProfile}
             threadProfile={threadProfile}
             onEditThread={onEditThread}
-            onQuote={(nextMessage) => {
-              setQuoteMessage(nextMessage);
-              setActiveAction(null);
-            }}
+            onQuote={handleQuote}
             onRetry={webChat?.retryMessage}
             activeActionId={activeAction?.id || null}
             onActionOpen={setActiveAction}
-            onActionClose={() => setActiveAction(null)}
+            onActionClose={handleActionClose}
             animateBubbleSequence={animateBubbleSequence}
           />
         </div>
@@ -854,8 +1185,11 @@ export function ConversationPage({
             id="conversation-message-scroll"
             className="z-10 px-3 pb-[122px] pt-[184px]"
             onScroll={handleConversationScroll}
-            onWheel={noteUserScrollIntent}
-            onTouchMove={noteUserScrollIntent}
+            onWheel={handleScrollWheel}
+            onTouchStart={handleScrollTouchStart}
+            onTouchMove={handleScrollTouchMove}
+            onTouchEnd={handleScrollTouchEnd}
+            onTouchCancel={handleScrollTouchEnd}
             onPointerDown={handleScrollPointerDown}
             onKeyDown={handleScrollKeyDown}
             style={{
@@ -925,4 +1259,4 @@ export function ConversationPage({
       ) : null}
     </PageCard>
   );
-}
+});

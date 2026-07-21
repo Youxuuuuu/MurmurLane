@@ -41,18 +41,18 @@ export function ConversationHeader({
 }) {
   return (
     <header
-      className="absolute inset-x-0 top-0 z-30 px-3 pb-3 pt-2 backdrop-blur-[3px]"
+      className="absolute inset-x-0 top-0 z-30 px-4 pb-3 pt-2 backdrop-blur-[3px]"
       style={{
         backgroundColor: `color-mix(in srgb, ${threadProfile.background || "#f7f2f6"} 68%, transparent)`,
       }}
     >
-      <div className="relative -mx-3 -mt-2 bg-white px-3 pt-2">
+      <div className="relative -mx-4 -mt-2 bg-white px-4 pt-2">
         <ConversationNavBar
           title={floatingDate || threadProfile.name}
           subtitle={floatingDate ? "SELECT DATE" : threadProfile.handle}
           onBack={onBack}
           backLabel="返回对话列表"
-          onTitleClick={floatingDate ? onOpenDatePicker : undefined}
+          onTitleClick={onOpenDatePicker}
           trailing={
             <button
               type="button"

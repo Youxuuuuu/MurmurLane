@@ -35,7 +35,9 @@ import { useStableViewport } from "./lib/useStableViewport";
 import {
   buildConversationThreadPage,
   defaultConversationThreadId,
+  getAdjacentConversationDateToLoad,
   getAllConversationThreadIds,
+  getContiguousLoadedConversationDates,
   getLatestConversationThreadId,
   getConversationThreadSummaries,
   groupConversationRecordsByThread,
@@ -190,6 +192,9 @@ export default function InsDiaryPrototype() {
   const [conversationMoments, setConversationMoments] = useState([]);
   const [conversationDateLoading, setConversationDateLoading] = useState(false);
   const [conversationJumpDate, setConversationJumpDate] = useState(null);
+  const [conversationCalendarDate, setConversationCalendarDate] = useState(
+    () => getTodayDateText(),
+  );
   const [conversationFloatingDate, setConversationFloatingDate] = useState("");
   const [selectedThreadId, setSelectedThreadId] = useState(
     defaultConversationThreadId,
@@ -259,6 +264,7 @@ export default function InsDiaryPrototype() {
   const loadedConversationDatesRef = useRef(new Set());
   const conversationDateLoadingRef = useRef(new Set());
   const conversationEarlierLoadInFlightRef = useRef(false);
+  const conversationLaterLoadInFlightRef = useRef(false);
   const conversationBaselineReadyRef = useRef(false);
   const initialLiveRefreshCompleteRef = useRef(false);
   const liveSearchActiveRef = useRef(false);
@@ -715,18 +721,32 @@ export default function InsDiaryPrototype() {
     [remoteDateIndexState],
   );
   const loadedSelectedThreadDates = useMemo(
-    () =>
-      selectedThreadDates.filter(
-        (date) =>
-          Boolean(remoteConversationsState[date]?.[selectedThreadId]) ||
-          Boolean(remoteSearchCacheState.conversations[date]?.[selectedThreadId]),
-      ),
-    [
-      selectedThreadDates,
+    () => getContiguousLoadedConversationDates(
       selectedThreadId,
-      remoteConversationsState,
-      remoteSearchCacheState.conversations,
+      remoteData,
+      conversationCalendarDate,
+    ),
+    [
+      conversationCalendarDate,
+      selectedThreadId,
+      remoteData,
     ],
+  );
+  const earlierConversationDateToLoad = useMemo(
+    () => getAdjacentConversationDateToLoad(
+      selectedThreadDates,
+      loadedSelectedThreadDates,
+      "earlier",
+    ),
+    [loadedSelectedThreadDates, selectedThreadDates],
+  );
+  const laterConversationDateToLoad = useMemo(
+    () => getAdjacentConversationDateToLoad(
+      selectedThreadDates,
+      loadedSelectedThreadDates,
+      "later",
+    ),
+    [loadedSelectedThreadDates, selectedThreadDates],
   );
   const latestConversationThreadId = useMemo(
     () => getLatestConversationThreadId(remoteData),
@@ -777,16 +797,30 @@ export default function InsDiaryPrototype() {
     ])));
     threadSelectionTouchedRef.current = true;
     setSelectedThreadId(threadId);
-    setSelectedDate(getTodayDateText());
+    setConversationCalendarDate(getTodayDateText());
     setConversationJumpDate(null);
     setConversationView("chat");
   }, []);
 
-  const webChat = useWebChat({
+  const webChatState = useWebChat({
     enabled: activeSection === "Conversation" && conversationView === "chat" && !conversationPlaceholder,
     threadId: selectedThreadId,
     onThreadCreated: handleWebThreadCreated,
   });
+  const webChat = useMemo(() => webChatState, [
+    webChatState.clientId,
+    webChatState.messages,
+    webChatState.messagesByThread,
+    webChatState.usage,
+    webChatState.status,
+    webChatState.models,
+    webChatState.connection,
+    webChatState.error,
+    webChatState.sendMessages,
+    webChatState.retryMessage,
+    webChatState.refreshModels,
+    webChatState.chooseModel,
+  ]);
 
   const openNewConversationThread = useCallback(() => {
     const draftThreadId = `draft-${typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`}`;
@@ -800,7 +834,7 @@ export default function InsDiaryPrototype() {
     setWebThreadIds((current) => Array.from(new Set([...current, draftThreadId])));
     threadSelectionTouchedRef.current = true;
     setSelectedThreadId(draftThreadId);
-    setSelectedDate(getTodayDateText());
+    setConversationCalendarDate(getTodayDateText());
     setConversationJumpDate(null);
     setConversationPlaceholder(null);
     setConversationView("chat");
@@ -1696,7 +1730,12 @@ export default function InsDiaryPrototype() {
   const pageScrollMode = activeSection === "Timeline" ? "page" : "contained";
   const page = useMemo(() => {
     if (activeSection === "Conversation")
-      return buildConversationThreadPage(styleTheme, selectedThreadId, remoteData);
+      return buildConversationThreadPage(
+        styleTheme,
+        selectedThreadId,
+        remoteData,
+        conversationCalendarDate,
+      );
     if (activeSection === "Timeline")
       return buildTimelinePage(timelineStyleTheme, selectedDate, remoteData);
     if (archiveShowsXiaoye)
@@ -1715,6 +1754,7 @@ export default function InsDiaryPrototype() {
     selectedXiaoyeMode,
     activeSection,
     archiveSubject,
+    conversationCalendarDate,
     selectedThreadId,
     remoteConversationsState,
     remoteTimelineStateValue,
@@ -1772,7 +1812,10 @@ export default function InsDiaryPrototype() {
       .map(toDotDate)
       .sort();
     const latestDate = indexedDates[indexedDates.length - 1] || toDotDate(summary.latestDate || "");
-    if (latestDate) setSelectedDate(latestDate);
+    if (latestDate) {
+      setConversationCalendarDate(latestDate);
+      void loadConversationThreadDate(latestDate, summary.threadId);
+    }
     // Opening a thread should land at its newest message. Date jumps are only
     // for explicit date/search navigation, where the first message is desired.
     setConversationJumpDate(null);
@@ -1783,13 +1826,16 @@ export default function InsDiaryPrototype() {
   const handleOpenMessageNotification = (notification) => {
     setActiveSection("Conversation");
     handleSelectThread(notification.threadId);
-    if (notification.date) setSelectedDate(notification.date);
+    if (notification.date) {
+      setConversationCalendarDate(notification.date);
+      void loadConversationThreadDate(notification.date, notification.threadId);
+    }
     setConversationJumpDate(null);
     setConversationPlaceholder(null);
     setConversationView("chat");
   };
 
-  const loadConversationThreadDate = async (
+  const loadConversationThreadDate = useCallback(async (
     dateText,
     threadId = selectedThreadId,
   ) => {
@@ -1831,33 +1877,54 @@ export default function InsDiaryPrototype() {
       conversationDateLoadingRef.current.delete(loadingKey);
       setConversationDateLoading(conversationDateLoadingRef.current.size > 0);
     }
-  };
+  }, [
+    remoteConversationsState,
+    remoteSearchCacheState.conversations,
+    selectedThreadId,
+  ]);
 
-  const handleLoadEarlierConversationDate = async () => {
-    if (conversationEarlierLoadInFlightRef.current) return;
-    const earliestLoaded = loadedSelectedThreadDates[0];
-    const earliestIndex = selectedThreadDates.indexOf(earliestLoaded);
-    if (earliestIndex <= 0) return;
+  const handleLoadEarlierConversationDate = useCallback(async () => {
+    if (
+      conversationEarlierLoadInFlightRef.current
+      || !earlierConversationDateToLoad
+    ) {
+      return false;
+    }
     conversationEarlierLoadInFlightRef.current = true;
     try {
-      return await loadConversationThreadDate(selectedThreadDates[earliestIndex - 1]);
+      return await loadConversationThreadDate(earlierConversationDateToLoad);
     } finally {
       conversationEarlierLoadInFlightRef.current = false;
     }
-  };
+  }, [earlierConversationDateToLoad, loadConversationThreadDate]);
+
+  const handleLoadLaterConversationDate = useCallback(async () => {
+    if (
+      conversationLaterLoadInFlightRef.current
+      || !laterConversationDateToLoad
+    ) {
+      return false;
+    }
+    conversationLaterLoadInFlightRef.current = true;
+    try {
+      return await loadConversationThreadDate(laterConversationDateToLoad);
+    } finally {
+      conversationLaterLoadInFlightRef.current = false;
+    }
+  }, [laterConversationDateToLoad, loadConversationThreadDate]);
 
   const handleSelectConversationDate = async (dateText) => {
     const date = toDotDate(dateText);
-    setSelectedDate(date);
-    setConversationJumpDate(date);
     await loadConversationThreadDate(date);
+    setConversationCalendarDate(date);
+    setConversationJumpDate(date);
   };
 
   const handleSelectConversationSearchResult = async (record) => {
     const date = toDotDate(record?.conversationDate || record?.timestamp?.slice(0, 10));
     handleSelectThread(selectedThreadId);
     await loadConversationThreadDate(date);
-    setSelectedDate(date);
+    setConversationCalendarDate(date);
     setConversationJumpDate(null);
     setHighlightResult({
       mode: "Conversation",
@@ -1876,7 +1943,7 @@ export default function InsDiaryPrototype() {
     );
     handleSelectThread(threadId);
     await loadConversationThreadDate(date, threadId);
-    setSelectedDate(date);
+    setConversationCalendarDate(date);
     setConversationJumpDate(null);
     setHighlightResult({
       mode: "Conversation",
@@ -1888,9 +1955,21 @@ export default function InsDiaryPrototype() {
     setConversationView("chat");
   };
 
-  const hasEarlierConversationDate =
-    loadedSelectedThreadDates.length > 0 &&
-    selectedThreadDates.indexOf(loadedSelectedThreadDates[0]) > 0;
+  const hasEarlierConversationDate = Boolean(earlierConversationDateToLoad);
+  const hasLaterConversationDate = Boolean(laterConversationDateToLoad);
+
+  const handleOpenConversationDatePicker = useCallback(
+    () => setDatePickerOpen(true),
+    [],
+  );
+  const handleEditSelectedConversationThread = useCallback(
+    () => setConversationSettingsMode("thread"),
+    [],
+  );
+  const handleConversationTargetDateHandled = useCallback(
+    () => setConversationJumpDate(null),
+    [],
+  );
 
   const closeDiaryShare = () => {
     setDiaryShareOpen(false);
@@ -1913,11 +1992,11 @@ export default function InsDiaryPrototype() {
                   userProfile={userProfile}
                   threadProfile={effectiveThreadProfiles[selectedThreadId]}
                   onBack={() => setConversationView("list")}
-                  onEditThread={() => setConversationSettingsMode("thread")}
+                  onEditThread={handleEditSelectedConversationThread}
                   onOpenSearch={() => setConversationView("search")}
                   isTyping={webChat.status?.status === "running" || webChat.status?.status === "streaming"}
                   floatingDate={conversationFloatingDate}
-                  onOpenDatePicker={() => setDatePickerOpen(true)}
+                  onOpenDatePicker={handleOpenConversationDatePicker}
                 />
               ) : null
             ) : (
@@ -2052,7 +2131,7 @@ export default function InsDiaryPrototype() {
                 userProfile={userProfile}
                 threadProfile={effectiveThreadProfiles[selectedThreadId]}
                 onBack={() => setConversationView("chat")}
-                onEditThread={() => setConversationSettingsMode("thread")}
+                onEditThread={handleEditSelectedConversationThread}
                 onSelectResult={handleSelectConversationSearchResult}
               />
             ) : (
@@ -2062,12 +2141,15 @@ export default function InsDiaryPrototype() {
                 highlightResult={highlightResult}
                 userProfile={userProfile}
                 threadProfile={effectiveThreadProfiles[selectedThreadId]}
-                onEditThread={() => setConversationSettingsMode("thread")}
+                onEditThread={handleEditSelectedConversationThread}
                 targetDate={conversationJumpDate}
-                onTargetDateHandled={() => setConversationJumpDate(null)}
+                onTargetDateHandled={handleConversationTargetDateHandled}
                 onLoadEarlier={handleLoadEarlierConversationDate}
                 hasEarlierDate={hasEarlierConversationDate}
+                onLoadLater={handleLoadLaterConversationDate}
+                hasLaterDate={hasLaterConversationDate}
                 earlierDateLoading={conversationDateLoading}
+                laterDateLoading={conversationDateLoading}
                 onFloatingDateChange={setConversationFloatingDate}
                 liveMessages={webChat.messages}
                 webChat={webChat}
@@ -2201,7 +2283,7 @@ export default function InsDiaryPrototype() {
             <DatePickerModal
               page={
                 activeSection === "Conversation"
-                  ? { ...page, date: selectedDate }
+                  ? { ...page, date: conversationCalendarDate }
                   : page
               }
               onClose={() => setDatePickerOpen(false)}

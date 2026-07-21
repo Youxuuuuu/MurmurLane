@@ -11,7 +11,7 @@ export function ConversationBackButton({
     <button
       type="button"
       onClick={onClick}
-      className="flex h-11 min-w-11 items-center justify-start text-black/70"
+      className="flex h-11 min-w-11 items-center justify-start font-sans text-black/70"
       aria-label={label}
     >
       <span className="text-[34px] font-light leading-none" aria-hidden="true">‹</span>

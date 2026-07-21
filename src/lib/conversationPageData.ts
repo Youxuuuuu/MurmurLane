@@ -144,6 +144,89 @@ export function getRemoteConversationThreadIndex(
   return remoteData.dateIndex?.conversationThreads ?? {};
 }
 
+function hasLoadedConversationThreadDate(
+  dateText: string,
+  threadId: string,
+  remoteData: RemoteData,
+) {
+  const date = toDotDate(dateText);
+  return Boolean(
+    Object.prototype.hasOwnProperty.call(
+      remoteData.conversationEntries[date] ?? {},
+      threadId,
+    )
+    || Object.prototype.hasOwnProperty.call(
+      remoteData.searchCache.conversations[date] ?? {},
+      threadId,
+    ),
+  );
+}
+
+export function getContiguousLoadedConversationDates(
+  threadId: string,
+  remoteData: RemoteData = emptyRemoteData,
+  anchorDateText: string | null = null,
+) {
+  const indexedDates = (
+    getRemoteConversationThreadIndex(remoteData)[threadId] ?? []
+  ).map(toDotDate);
+  const cachedDates = [
+    ...Object.keys(remoteData.conversationEntries ?? {}),
+    ...Object.keys(remoteData.searchCache.conversations ?? {}),
+  ]
+    .map(toDotDate)
+    .filter((date) =>
+      hasLoadedConversationThreadDate(date, threadId, remoteData));
+  const orderedDates = Array.from(
+    new Set([...indexedDates, ...cachedDates]),
+  ).sort();
+  const loadedDates = new Set(
+    orderedDates.filter((date) =>
+      hasLoadedConversationThreadDate(date, threadId, remoteData)),
+  );
+
+  const latestIndex = orderedDates.length - 1;
+  if (latestIndex < 0) return [];
+  const requestedAnchor = anchorDateText ? toDotDate(anchorDateText) : "";
+  const requestedAnchorIndex = requestedAnchor
+    ? orderedDates.indexOf(requestedAnchor)
+    : -1;
+  const anchorIndex = requestedAnchorIndex >= 0
+    && loadedDates.has(orderedDates[requestedAnchorIndex])
+    ? requestedAnchorIndex
+    : latestIndex;
+  if (!loadedDates.has(orderedDates[anchorIndex])) return [];
+
+  let start = anchorIndex;
+  while (start > 0 && loadedDates.has(orderedDates[start - 1])) start -= 1;
+  let end = anchorIndex;
+  while (
+    end < orderedDates.length - 1
+    && loadedDates.has(orderedDates[end + 1])
+  ) {
+    end += 1;
+  }
+  return orderedDates.slice(start, end + 1);
+}
+
+export function getAdjacentConversationDateToLoad(
+  indexedDateTexts: readonly string[],
+  loadedDateTexts: readonly string[],
+  direction: "earlier" | "later",
+) {
+  if (!loadedDateTexts.length) return "";
+  const indexedDates = Array.from(
+    new Set(indexedDateTexts.map(toDotDate)),
+  ).sort();
+  const loadedDates = loadedDateTexts.map(toDotDate).sort();
+  const edgeDate = direction === "earlier"
+    ? loadedDates[0]
+    : loadedDates[loadedDates.length - 1];
+  const edgeIndex = indexedDates.indexOf(edgeDate);
+  if (edgeIndex < 0) return "";
+  return indexedDates[edgeIndex + (direction === "earlier" ? -1 : 1)] || "";
+}
+
 export function getRealConversationThreadIds(
   remoteData: RemoteData = emptyRemoteData,
 ): string[] {
@@ -316,10 +399,15 @@ export function formatConversationTime(timestamp: string | null | undefined) {
 export function getConversationRecordsForThread(
   threadId: string,
   remoteData: RemoteData = emptyRemoteData,
+  allowedDates: readonly string[] | null = null,
 ): ConversationRecord[] {
   const records: ConversationRecord[] = [];
+  const allowedDateSet = allowedDates
+    ? new Set(allowedDates.map(toDotDate))
+    : null;
   const collect = (dateGroups: ConversationDateEntries) => {
     Object.entries(dateGroups ?? {}).forEach(([dateText, threads]) => {
+      if (allowedDateSet && !allowedDateSet.has(toDotDate(dateText))) return;
       (threads?.[threadId] ?? []).forEach((record) => {
         const date = toDotDate(dateText);
         records.push({ ...record, conversationDate: date });
@@ -330,7 +418,7 @@ export function getConversationRecordsForThread(
   collect(remoteData.searchCache.conversations);
   collect(remoteData.conversationEntries);
 
-  if (!records.length) {
+  if (!records.length && !allowedDateSet) {
     Object.entries(conversationEntries ?? {}).forEach(([dateText, threads]) => {
       (threads?.[threadId] ?? []).forEach((message) => {
         const date = toDotDate(dateText);
@@ -381,8 +469,20 @@ export function buildConversationThreadPage(
   styleTheme: Record<string, unknown>,
   threadId: string,
   remoteData: RemoteData = emptyRemoteData,
+  anchorDateText: string | null = null,
 ) {
-  const messages = getConversationRecordsForThread(threadId, remoteData);
+  const indexedDates = getRemoteConversationThreadIndex(remoteData)[threadId] ?? [];
+  const messages = indexedDates.length
+    ? getConversationRecordsForThread(
+      threadId,
+      remoteData,
+      getContiguousLoadedConversationDates(
+        threadId,
+        remoteData,
+        anchorDateText,
+      ),
+    )
+    : getConversationRecordsForThread(threadId, remoteData);
   const latestDate = String(
     messages[messages.length - 1]?.conversationDate ?? toDotDate(new Date().toISOString().slice(0, 10)),
   );

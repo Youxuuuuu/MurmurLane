@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type SyntheticEvent } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type SyntheticEvent } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import {
   getConversationDisplayText,
@@ -40,7 +40,12 @@ export function BubbleRow({
       <div className="flex flex-col items-end">
         <div className="flex items-start justify-end gap-2">
           <MessageTime message={message} align="right" read />
-          <ConversationAvatar src={avatar} name={name || "我"} size="sm" />
+          <ConversationAvatar
+            src={avatar}
+            name={name || "我"}
+            size="sm"
+            loading="lazy"
+          />
         </div>
         <div className="mt-1 min-w-0 text-right">{children}</div>
       </div>
@@ -51,7 +56,12 @@ export function BubbleRow({
     <div className="flex items-start justify-start gap-2">
       <div className="flex shrink-0 flex-col items-center">
         <button type="button" onClick={onAvatarClick} className="shrink-0">
-          <ConversationAvatar src={avatar} name={name || "对方"} size="sm" />
+          <ConversationAvatar
+            src={avatar}
+            name={name || "对方"}
+            size="sm"
+            loading="lazy"
+          />
         </button>
         <MessageTime message={message} align="center" />
       </div>
@@ -676,7 +686,7 @@ function LongPressBubble({
   );
 }
 
-export function ChatBubble(props: any) {
+export const ChatBubble = memo(function ChatBubble(props: any) {
   return (
     <LongPressBubble
       message={props.message}
@@ -688,4 +698,4 @@ export function ChatBubble(props: any) {
       <ChatBubbleContent {...props} onQuote={undefined} />
     </LongPressBubble>
   );
-}
+});

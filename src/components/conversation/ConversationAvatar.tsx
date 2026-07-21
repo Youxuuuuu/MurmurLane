@@ -3,11 +3,13 @@ export function ConversationAvatar({
   name,
   size = "md",
   className = "",
+  loading = "eager",
 }: {
   src?: string;
   name: string;
   size?: "sm" | "md" | "lg" | "xl";
   className?: string;
+  loading?: "eager" | "lazy";
 }) {
   const sizeClass = {
     sm: "h-9 w-9 text-[12px]",
@@ -29,6 +31,8 @@ export function ConversationAvatar({
           alt={name}
           width={sizePixels}
           height={sizePixels}
+          loading={loading}
+          decoding="async"
         />
       ) : (
         <span>{String(name || "?").slice(0, 1).toUpperCase()}</span>

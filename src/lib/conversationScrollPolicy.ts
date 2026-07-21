@@ -9,6 +9,189 @@ export const conversationScrollCauses = [
 
 export type ConversationScrollCause = typeof conversationScrollCauses[number];
 
+export type ConversationVisibleRange = {
+  start: number;
+  end: number;
+};
+
+export type ConversationRenderWindow = ConversationVisibleRange & {
+  scopeKey: string;
+  anchorId: string;
+};
+
+export function getConversationHistoryPrefetchThreshold(clientHeight: number) {
+  return Math.max(320, Math.round(Math.max(0, clientHeight) * 1.5));
+}
+
+export function shouldPrefetchConversationHistory(
+  distanceToEdge: number,
+  threshold: number,
+  projectedDelta = 0,
+) {
+  const safeDistance = Math.max(0, Number(distanceToEdge) || 0);
+  const safeThreshold = Math.max(0, Number(threshold) || 0);
+  const safeProjectedDelta = Math.max(0, Number(projectedDelta) || 0);
+  return safeDistance <= safeThreshold + safeProjectedDelta;
+}
+
+function clampRange(
+  range: ConversationVisibleRange,
+  total: number,
+  maximumSize: number,
+) {
+  const safeTotal = Math.max(0, Number(total) || 0);
+  const safeMaximumSize = Math.max(1, Number(maximumSize) || 1);
+  const requestedSize = Math.max(1, range.end - range.start);
+  const size = Math.min(safeMaximumSize, requestedSize, safeTotal || 1);
+  let start = Math.max(0, Math.min(safeTotal, Number(range.start) || 0));
+  let end = Math.min(safeTotal, start + size);
+  if (end - start < size) start = Math.max(0, end - size);
+  return { start, end };
+}
+
+export function createConversationRenderWindow({
+  messageIds,
+  scopeKey,
+  range,
+  maximumSize,
+}: {
+  messageIds: string[];
+  scopeKey: string;
+  range: ConversationVisibleRange;
+  maximumSize: number;
+}): ConversationRenderWindow {
+  const resolved = clampRange(range, messageIds.length, maximumSize);
+  return {
+    ...resolved,
+    scopeKey,
+    anchorId: messageIds[resolved.start] || "",
+  };
+}
+
+export function resolveConversationRenderWindow({
+  window,
+  messageIds,
+  messageIndexById,
+  scopeKey,
+  maximumSize,
+}: {
+  window: ConversationRenderWindow;
+  messageIds: string[];
+  messageIndexById: ReadonlyMap<string, number>;
+  scopeKey: string;
+  maximumSize: number;
+}): ConversationVisibleRange {
+  const total = messageIds.length;
+  if (!total) return { start: 0, end: 0 };
+  if (window.scopeKey !== scopeKey) {
+    return {
+      start: Math.max(0, total - maximumSize),
+      end: total,
+    };
+  }
+
+  const anchoredStart = window.anchorId
+    ? messageIndexById.get(window.anchorId)
+    : undefined;
+  if (anchoredStart === undefined && window.end <= window.start) {
+    return {
+      start: Math.max(0, total - maximumSize),
+      end: total,
+    };
+  }
+
+  return clampRange(
+    {
+      start: anchoredStart ?? window.start,
+      end:
+        (anchoredStart ?? window.start)
+        + Math.max(1, window.end - window.start),
+    },
+    total,
+    maximumSize,
+  );
+}
+
+export function expandConversationRangeEarlier({
+  range,
+  total,
+  step,
+  maximumSize,
+}: {
+  range: ConversationVisibleRange;
+  total: number;
+  step: number;
+  maximumSize?: number;
+}): ConversationVisibleRange {
+  const currentSize = Math.max(0, range.end - range.start);
+  const size = Math.min(
+    total,
+    maximumSize === undefined
+      ? currentSize
+      : Math.max(currentSize, maximumSize),
+  );
+  const start = Math.max(0, Math.min(total, range.start) - step);
+  return {
+    start,
+    end: Math.min(total, start + size),
+  };
+}
+
+export function expandConversationRangeLater({
+  range,
+  total,
+  step,
+  maximumSize,
+}: {
+  range: ConversationVisibleRange;
+  total: number;
+  step: number;
+  maximumSize?: number;
+}): ConversationVisibleRange {
+  const currentSize = Math.max(0, range.end - range.start);
+  const size = Math.min(
+    total,
+    maximumSize === undefined
+      ? currentSize
+      : Math.max(currentSize, maximumSize),
+  );
+  const end = Math.min(total, Math.max(0, range.end) + step);
+  return {
+    start: Math.max(0, end - size),
+    end,
+  };
+}
+
+export function resolveConversationViewportAnchorTop({
+  currentScrollTop,
+  previousScrollHeight,
+  currentScrollHeight,
+  previousAnchorOffset,
+  currentAnchorOffset,
+}: {
+  currentScrollTop: number;
+  previousScrollHeight: number;
+  currentScrollHeight: number;
+  previousAnchorOffset?: number;
+  currentAnchorOffset?: number;
+}) {
+  if (
+    Number.isFinite(previousAnchorOffset)
+    && Number.isFinite(currentAnchorOffset)
+  ) {
+    return (
+      Number(currentScrollTop)
+      + Number(currentAnchorOffset)
+      - Number(previousAnchorOffset)
+    );
+  }
+  return (
+    Number(currentScrollTop)
+    + Number(currentScrollHeight)
+    - Number(previousScrollHeight)
+  );
+}
+
 export function clampConversationScrollTop(
   requestedTop: number,
   scrollHeight: number,

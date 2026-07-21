@@ -4,8 +4,15 @@ import {
   ConversationEntryMetrics,
   ConversationScrollCauseLedger,
   conversationScrollCauses,
+  createConversationRenderWindow,
+  expandConversationRangeEarlier,
+  expandConversationRangeLater,
+  getConversationHistoryPrefetchThreshold,
+  resolveConversationRenderWindow,
   resolveBubbleRevealAnchorTop,
+  resolveConversationViewportAnchorTop,
   shouldAnimateConversationBubble,
+  shouldPrefetchConversationHistory,
   shouldShowFloatingDate,
 } from "../src/lib/conversationScrollPolicy";
 import { PageViewport } from "../src/components/layout/PageViewport";
@@ -113,6 +120,81 @@ test("initial archived bubbles stay at rest while a new live bubble may animate"
 
   assert.equal(shouldAnimateConversationBubble({ ...common, isLive: false }), false);
   assert.equal(shouldAnimateConversationBubble({ ...common, isLive: true }), true);
+});
+
+test("history windowing keeps a bounded overlapping render range", () => {
+  const earlier = expandConversationRangeEarlier({
+    range: { start: 800, end: 1000 },
+    total: 1000,
+    step: 80,
+  });
+  const later = expandConversationRangeLater({
+    range: { start: 0, end: 200 },
+    total: 1000,
+    step: 80,
+  });
+
+  assert.deepEqual(earlier, { start: 720, end: 920 });
+  assert.deepEqual(later, { start: 80, end: 280 });
+  assert.equal(earlier.end - earlier.start, 200);
+  assert.equal(later.end - later.start, 200);
+});
+
+test("history windows preload before the user reaches a hard edge", () => {
+  assert.equal(getConversationHistoryPrefetchThreshold(720), 1080);
+  assert.equal(getConversationHistoryPrefetchThreshold(120), 320);
+  assert.equal(shouldPrefetchConversationHistory(5000, 1080, 5000), true);
+  assert.equal(shouldPrefetchConversationHistory(5000, 1080, 0), false);
+});
+
+test("a short initial window grows as contiguous history becomes available", () => {
+  const next = expandConversationRangeEarlier({
+    range: { start: 14, end: 64 },
+    total: 64,
+    step: 80,
+    maximumSize: 200,
+  });
+
+  assert.deepEqual(next, { start: 0, end: 64 });
+});
+
+test("history insertion preserves the real DOM anchor instead of guessing from scroll height", () => {
+  const nextTop = resolveConversationViewportAnchorTop({
+    currentScrollTop: 0,
+    previousScrollHeight: 14_875,
+    currentScrollHeight: 15_693,
+    previousAnchorOffset: 204,
+    currentAnchorOffset: 10_349,
+  });
+
+  assert.equal(nextTop, 10_145);
+});
+
+test("prepended records do not replace the active render window before anchoring", () => {
+  const currentIds = Array.from({ length: 400 }, (_, index) => `message-${index}`);
+  const currentWindow = createConversationRenderWindow({
+    messageIds: currentIds,
+    scopeKey: "thread-1",
+    range: { start: 200, end: 400 },
+    maximumSize: 200,
+  });
+  const prependedIds = [
+    ...Array.from({ length: 80 }, (_, index) => `older-${index}`),
+    ...currentIds,
+  ];
+  const indexById = new Map(prependedIds.map((id, index) => [id, index]));
+  const resolved = resolveConversationRenderWindow({
+    window: currentWindow,
+    messageIds: prependedIds,
+    messageIndexById: indexById,
+    scopeKey: "thread-1",
+    maximumSize: 200,
+  });
+
+  assert.deepEqual(
+    prependedIds.slice(resolved.start, resolved.end),
+    currentIds.slice(200),
+  );
 });
 
 test("PageViewport changes labels without keying and remounting its root", () => {

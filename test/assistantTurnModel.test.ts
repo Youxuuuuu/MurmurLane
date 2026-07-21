@@ -138,3 +138,45 @@ test("virtual range expands to include the complete AssistantTurn", () => {
     { start: 1, end: 4 },
   );
 });
+
+test("virtual range never expands an AssistantTurn across a date boundary", () => {
+  const records = [
+    {
+      ...record("assistant-1", "assistant", "turn-1", "older"),
+      conversationDate: "2026.07.18",
+      itemId: "item-1",
+    },
+    {
+      ...record("assistant-2", "assistant", "turn-1", "newer"),
+      conversationDate: "2026.07.19",
+      itemId: "item-2",
+    },
+  ];
+
+  assert.deepEqual(
+    expandRangeToAssistantTurnBoundaries(records, { start: 1, end: 2 }, "thread-1"),
+    { start: 1, end: 2 },
+  );
+});
+
+test("one AssistantTurn is split into stable dated groups across midnight", () => {
+  const records = [
+    {
+      ...record("assistant-1", "assistant", "turn-1", "older"),
+      conversationDate: "2026.07.18",
+      itemId: "item-1",
+    },
+    {
+      ...record("assistant-2", "assistant", "turn-1", "newer"),
+      conversationDate: "2026.07.19",
+      itemId: "item-2",
+    },
+  ];
+
+  const items = buildAssistantTurnDisplayModel(records, "thread-1");
+  assert.equal(items.length, 2);
+  assert.deepEqual(items.map((item) => item.renderId), [
+    "assistant-turn:thread-1:turn-1:date:2026.07.18",
+    "assistant-turn:thread-1:turn-1:date:2026.07.19",
+  ]);
+});
