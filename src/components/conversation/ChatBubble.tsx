@@ -487,15 +487,6 @@ function ChatBubbleContent({
   }
 
   if (visualKind === "file") {
-    const firstFile = primaryMediaItem;
-    const fileName =
-      firstFile?.fileName || firstFile?.label || displayText || "文件";
-    const fileMeta =
-      firstFile?.fileMeta ||
-      firstFile?.relativePath ||
-      firstFile?.path ||
-      "FILE";
-
     return (
       <BubbleRow
         message={message}
@@ -513,25 +504,12 @@ function ChatBubbleContent({
               slot={auxiliarySlot}
               style={{ transformOrigin: fromUser ? "right bottom" : "left bottom" }}
             >
-              <div
-                className="flex max-w-[204px] items-center gap-2 border bg-white/[0.72] px-3 py-2 text-left"
-                style={{ borderColor: page.line }}
-              >
-                <div
-                  className="flex h-9 w-8 shrink-0 items-center justify-center border bg-white/50 font-mono text-[9px] uppercase tracking-[0.08em]"
-                  style={{ color: page.color, borderColor: page.line }}
-                >
-                  {String(fileName).split(".").pop()}
-                </div>
-                <div className="min-w-0">
-                  <div className="truncate text-[12px] leading-4 text-black/[0.72]">
-                    {fileName}
-                  </div>
-                  <div className="mt-0.5 font-mono text-[8px] uppercase tracking-[0.1em] text-black/35">
-                    {fileMeta}
-                  </div>
-                </div>
-              </div>
+              <ConversationMediaGroup
+                items={mediaItems}
+                page={page}
+                align={fromUser ? "right" : "left"}
+                fileFallbackName={displayText || "文件"}
+              />
             </RevealedBubblePart>
           ) : null}
         </div>

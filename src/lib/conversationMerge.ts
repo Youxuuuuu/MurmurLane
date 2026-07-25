@@ -318,8 +318,13 @@ function getSourceOrder(message: ConversationRecord) {
       : Number.isFinite(sourceKeyLine) && sourceKeyLine > 0
         ? sourceKeyLine
         : 0;
+  const directOrder = Number(source.sourceOrder);
+  const sourceOrder =
+    Number.isFinite(directOrder) && directOrder >= 0
+      ? directOrder
+      : null;
 
-  return { sourceFile, sourceLine };
+  return { sourceFile, sourceLine, sourceOrder };
 }
 
 function compareMergedRecords(
@@ -346,6 +351,17 @@ function compareMergedRecords(
     leftSource.sourceLine !== rightSource.sourceLine
   ) {
     return leftSource.sourceLine - rightSource.sourceLine;
+  }
+  if (
+    leftSource.sourceFile &&
+    leftSource.sourceFile === rightSource.sourceFile &&
+    leftSource.sourceLine > 0 &&
+    leftSource.sourceLine === rightSource.sourceLine &&
+    leftSource.sourceOrder !== null &&
+    rightSource.sourceOrder !== null &&
+    leftSource.sourceOrder !== rightSource.sourceOrder
+  ) {
+    return leftSource.sourceOrder - rightSource.sourceOrder;
   }
 
   const leftTime = getRecordSortTime(left.message);

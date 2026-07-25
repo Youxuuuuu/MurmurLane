@@ -1,8 +1,12 @@
 import { useState } from "react";
-import { getConversationMediaSrc } from "../../lib/conversation";
+import {
+  getConversationMediaSrc,
+  getConversationStickerFallbackSrc,
+} from "../../lib/conversation";
 import { getConversationMediaDisplayGroups } from "../../lib/conversationMediaDisplay";
 import type { ConversationMediaItem } from "../../types/conversation";
 import { TinyIcon } from "../common/TinyIcon";
+import { ConversationFileCard } from "./ConversationFileCard";
 import { ConversationPhotoGallery } from "./PhotoStack";
 
 type MediaGroupPage = {
@@ -40,7 +44,9 @@ function StickerMedia({
   mediaKey: string;
 }) {
   const [failed, setFailed] = useState(false);
-  const src = getConversationMediaSrc(item);
+  const primarySrc = getConversationMediaSrc(item);
+  const fallbackSrc = getConversationStickerFallbackSrc(item);
+  const [src, setSrc] = useState(primarySrc);
   const label = getMediaLabel(item, "表情包");
 
   return (
@@ -57,7 +63,13 @@ function StickerMedia({
           alt={label}
           loading="lazy"
           decoding="async"
-          onError={() => setFailed(true)}
+          onError={() => {
+            if (fallbackSrc && src !== fallbackSrc) {
+              setSrc(fallbackSrc);
+              return;
+            }
+            setFailed(true);
+          }}
         />
       ) : (
         <TinyIcon color="rgba(0,0,0,.38)" />
@@ -70,10 +82,12 @@ export function ConversationMediaGroup({
   items,
   page,
   align,
+  fileFallbackName = "附件",
 }: {
   items: ConversationMediaItem[];
   page?: MediaGroupPage;
   align: "left" | "right";
+  fileFallbackName?: string;
 }) {
   const groups = getConversationMediaDisplayGroups(items);
 
@@ -102,13 +116,12 @@ export function ConversationMediaGroup({
       ) : null}
 
       {groups.files.map((item, index) => (
-        <div
+        <ConversationFileCard
           key={getMediaKey(item, index)}
-          className="max-w-[220px] rounded-[5px] bg-white/55 px-2.5 py-2 text-[11px] text-black/55"
-          data-conversation-media="file"
-        >
-          {getMediaLabel(item, "附件")}
-        </div>
+          item={item}
+          page={page}
+          fallbackName={fileFallbackName}
+        />
       ))}
     </div>
   );

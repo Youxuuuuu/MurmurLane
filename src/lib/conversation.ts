@@ -401,6 +401,29 @@ export function getConversationMediaSrc(item: ConversationMediaItem) {
   return resolveApiFileUrl(mediaPath);
 }
 
+export function getConversationStickerFallbackSrc(
+  item: ConversationMediaItem,
+) {
+  const relativePath = String(item?.relativePath || "").trim();
+  const fileName = String(item?.fileName || relativePath).trim();
+  const hasStickerIdentity = Boolean(item?.stickerId || item?.fileName);
+  const isBasenameOnly = Boolean(
+    relativePath && !/[\\/]/.test(relativePath),
+  );
+
+  if (
+    item?.kind !== "sticker" ||
+    !hasStickerIdentity ||
+    !isBasenameOnly ||
+    !fileName ||
+    /[\\/]/.test(fileName)
+  ) {
+    return "";
+  }
+
+  return resolveApiFileUrl(`stickers/assets/${fileName}`);
+}
+
 export function getConversationPrimaryMediaItem(
   record: ConversationRecord,
 ): ConversationMediaItem | null {

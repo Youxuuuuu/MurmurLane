@@ -2,11 +2,19 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import React, { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { readFileSync } from "node:fs";
 
+import {
+  getConversationStickerFallbackSrc,
+} from "../src/lib/conversation";
 import { getConversationMediaDisplayGroups } from "../src/lib/conversationMediaDisplay";
 import { getStableUserBubbleSegments } from "../src/lib/conversationBubbleSegments";
+import { ChatBubble } from "../src/components/conversation/ChatBubble";
+import { ConversationFileCard } from "../src/components/conversation/ConversationFileCard";
 import { ConversationMediaGroup } from "../src/components/conversation/ConversationMediaGroup";
-import type { ConversationRecord } from "../src/types/conversation";
+import type {
+  ConversationRecord,
+} from "../src/types/conversation";
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
@@ -94,4 +102,128 @@ test("the shared media group keeps stickers small and routes two images through 
   assert.doesNotMatch(stickerMarkup, /border-black/);
   assert.match(imageMarkup, /data-media-count="2"/);
   assert.match(imageMarkup, /展开 2 张图片/);
+});
+
+function renderFileRecord(record: ConversationRecord) {
+  return renderToStaticMarkup(createElement(ChatBubble, {
+    message: record,
+    messages: [record],
+    page: { color: "#725f87", line: "#ded7e6" },
+    userProfile: { name: "User" },
+    threadProfile: { name: "Assistant" },
+  }));
+}
+
+test("WebChat bubble segment files use the shared file card", () => {
+  const record: ConversationRecord = {
+    id: "webchat-segment-file",
+    type: "user",
+    meta: {
+      bubbleSegments: [{
+        segmentId: "segment-file",
+        text: "",
+        attachments: [{
+          kind: "file",
+          fileName: "segment.txt",
+          relativePath: "inbox/segment.txt",
+          fileMeta: "12 KB",
+        }],
+      }],
+    },
+  };
+
+  const [segment] = getStableUserBubbleSegments(record);
+  const markup = renderToStaticMarkup(createElement(ConversationMediaGroup, {
+    align: "right",
+    items: segment.attachments,
+  }));
+
+  assert.match(markup, /data-conversation-media="file-card"/);
+  assert.match(markup, />segment\.txt</);
+  assert.match(markup, />12 KB</);
+});
+
+test("WebChat canonical, Codex import, and ClaudeCode import files use FileCard", () => {
+  const records: ConversationRecord[] = [
+    {
+      id: "webchat-canonical-file",
+      type: "user",
+      meta: { files: [{ kind: "file", fileName: "canonical.pdf", fileMeta: "PDF" }] },
+    },
+    {
+      id: "codex-import-file",
+      type: "assistant",
+      meta: { files: [{ kind: "file", fileName: "codex.json", relativePath: "inbox/codex.json" }] },
+    },
+    {
+      id: "claudecode-import-file",
+      type: "assistant",
+      meta: { files: [{ kind: "file", fileName: "claude.md", relativePath: "inbox/claude.md" }] },
+    },
+  ];
+
+  records.forEach((record) => {
+    const markup = renderFileRecord(record);
+    assert.match(markup, /data-conversation-media="file-card"/);
+  });
+});
+
+test("user and assistant media files render the identical shared card", () => {
+  const item = {
+    kind: "file",
+    fileName: "parity.zip",
+    relativePath: "inbox/parity.zip",
+    fileMeta: "4 MB",
+  };
+  const userMarkup = renderToStaticMarkup(createElement(ConversationFileCard, {
+    item,
+    page: { color: "#725f87", line: "#ded7e6" },
+  }));
+  const assistantMarkup = renderToStaticMarkup(createElement(ConversationFileCard, {
+    item,
+    page: { color: "#725f87", line: "#ded7e6" },
+  }));
+
+  assert.equal(userMarkup, assistantMarkup);
+  assert.match(userMarkup, /data-conversation-media="file-card"/);
+});
+
+test("canonical sticker paths do not opt into the basename history fallback", () => {
+  assert.equal(getConversationStickerFallbackSrc({
+    kind: "sticker",
+    stickerId: "stk_001",
+    fileName: "stk_001.gif",
+    relativePath: "stickers/assets/stk_001.gif",
+  }), "");
+});
+
+test("legacy basename-only sticker paths can retry through stickers assets", () => {
+  assert.equal(getConversationStickerFallbackSrc({
+    kind: "sticker",
+    stickerId: "stk_001",
+    fileName: "stk_001.gif",
+    relativePath: "stk_001.gif",
+  }), "/api/file?path=stickers%2Fassets%2Fstk_001.gif");
+  assert.equal(getConversationStickerFallbackSrc({
+    kind: "image",
+    fileName: "photo.gif",
+    relativePath: "photo.gif",
+  }), "");
+  assert.equal(getConversationStickerFallbackSrc({
+    kind: "file",
+    fileName: "notes.txt",
+    relativePath: "notes.txt",
+  }), "");
+});
+
+test("conversation file rendering has no runtime or provider visual branch", () => {
+  const componentSources = [
+    "ConversationFileCard.tsx",
+    "ConversationMediaGroup.tsx",
+    "ChatBubble.tsx",
+  ].map((fileName) =>
+    readFileSync(new URL(`../src/components/conversation/${fileName}`, import.meta.url), "utf8"),
+  ).join("\n");
+
+  assert.doesNotMatch(componentSources, /\bruntimeId\b|\bprovider\b/);
 });

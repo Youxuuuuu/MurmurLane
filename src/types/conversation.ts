@@ -86,6 +86,9 @@ export interface ConversationRecord {
   meta?: ConversationRecordMeta;
   source?: {
     sourceKey?: string;
+    sourceFile?: string;
+    sourceLine?: number;
+    sourceOrder?: number;
     [key: string]: unknown;
   };
   [key: string]: unknown;

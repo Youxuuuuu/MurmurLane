@@ -203,3 +203,74 @@ test("legacy compatibility matching adopts itemId instead of content as identity
   assert.equal(getConversationRenderId(reconciled[0]), "assistant:thread-2:item-2");
   assert.equal(getConversationRenderId(reconciled[0]).includes("same text"), false);
 });
+
+test("sourceOrder keeps an operation before its file at the same source line", () => {
+  const records: ConversationRecord[] = [
+    {
+      id: "file",
+      type: "assistant",
+      timestamp: "2026-07-25T12:00:00.000Z",
+      source: {
+        sourceFile: "session.jsonl",
+        sourceLine: 42,
+        sourceOrder: 1,
+      },
+      meta: { files: [{ kind: "file", fileName: "report.txt" }] },
+    },
+    {
+      id: "operation",
+      type: "operation",
+      timestamp: "2026-07-25T12:00:00.000Z",
+      source: {
+        sourceFile: "session.jsonl",
+        sourceLine: 42,
+        sourceOrder: 0,
+      },
+      text: "[cyberboss_channel_send_file]",
+    },
+  ];
+
+  assert.deepEqual(
+    mergeConversationRecords(records).map((record) => record.id),
+    ["operation", "file"],
+  );
+});
+
+test("sourceOrder keeps an operation before its sticker at the same source line", () => {
+  const records: ConversationRecord[] = [
+    {
+      id: "sticker",
+      type: "assistant",
+      timestamp: "2026-07-25T12:00:00.000Z",
+      source: {
+        sourceFile: "session.jsonl",
+        sourceLine: 43,
+        sourceOrder: 2,
+      },
+      meta: {
+        stickers: [{
+          kind: "sticker",
+          stickerId: "stk_001",
+          fileName: "stk_001.gif",
+          relativePath: "stickers/assets/stk_001.gif",
+        }],
+      },
+    },
+    {
+      id: "operation",
+      type: "operation",
+      timestamp: "2026-07-25T12:00:00.000Z",
+      source: {
+        sourceFile: "session.jsonl",
+        sourceLine: 43,
+        sourceOrder: 0,
+      },
+      text: "[cyberboss_sticker_send]",
+    },
+  ];
+
+  assert.deepEqual(
+    mergeConversationRecords(records).map((record) => record.id),
+    ["operation", "sticker"],
+  );
+});

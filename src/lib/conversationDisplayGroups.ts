@@ -111,6 +111,8 @@ function compareConversationRecordOrder(
   const rightSourceFile = String(rightSource?.sourceFile || "").replace(/\\/g, "/").toLowerCase();
   const leftLine = Number(leftSource?.sourceLine);
   const rightLine = Number(rightSource?.sourceLine);
+  const leftOrder = Number(leftSource?.sourceOrder);
+  const rightOrder = Number(rightSource?.sourceOrder);
 
   if (
     leftSourceFile &&
@@ -120,6 +122,18 @@ function compareConversationRecordOrder(
     leftLine !== rightLine
   ) {
     return leftLine - rightLine;
+  }
+  if (
+    leftSourceFile &&
+    leftSourceFile === rightSourceFile &&
+    Number.isFinite(leftLine) &&
+    Number.isFinite(rightLine) &&
+    leftLine === rightLine &&
+    Number.isFinite(leftOrder) &&
+    Number.isFinite(rightOrder) &&
+    leftOrder !== rightOrder
+  ) {
+    return leftOrder - rightOrder;
   }
 
   const leftTime = new Date(left?.timestamp || left?.createdAt || "").getTime();
