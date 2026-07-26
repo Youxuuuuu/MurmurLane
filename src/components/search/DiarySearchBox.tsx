@@ -35,6 +35,7 @@ export function DiarySearchBox({
   onSearchQueryChange,
   searchRemoteData,
   searchDataVersion,
+  workspaceScope,
 }) {
   const [inputQuery, setInputQuery] = useState("");
   const [isComposing, setIsComposing] = useState(false);
@@ -80,6 +81,7 @@ export function DiarySearchBox({
         conversationThreadId: selectedThreadId,
         selectedDate,
         limit: 50,
+        workspaceScope,
       });
 
       if (shouldLog) {
@@ -108,6 +110,7 @@ export function DiarySearchBox({
       selectedDate,
       searchRemoteData,
       searchDataVersion,
+      workspaceScope,
     ],
   );
   const results = searchState.results;

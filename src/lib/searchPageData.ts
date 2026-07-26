@@ -341,7 +341,12 @@ export function buildSearchResultState(
     conversationThreadId = null,
     selectedDate = getTodayDateText(),
     limit = 50,
-  }: SearchFilters & { selectedDate?: string; limit?: number } = {},
+    workspaceScope = "all",
+  }: SearchFilters & {
+    selectedDate?: string;
+    limit?: number;
+    workspaceScope?: "all" | "conversation" | "timeline" | "archive";
+  } = {},
 ): SearchResultState {
   const cleanQuery = String(query ?? "").trim();
   const normalizedQuery = normalizeSearchText(cleanQuery);
@@ -438,6 +443,7 @@ export function buildSearchResultState(
   };
 
   measureSearchBlock("Conversation", () => {
+    if (!["all", "conversation"].includes(workspaceScope)) return;
     const conversationDocsResult = getConversationSearchDocuments(
       remoteData,
       {
@@ -568,6 +574,7 @@ export function buildSearchResultState(
     }
   });
   measureSearchBlock("Timeline", () => {
+    if (!["all", "timeline"].includes(workspaceScope)) return;
     Object.entries(getTimelineStateSource(remoteData)).forEach(([date, day]) =>
       day.events.forEach((event) => {
         const { categoryLabel, subcategoryLabel, eventNodeLabel } =
@@ -599,6 +606,7 @@ export function buildSearchResultState(
     );
   });
   measureSearchBlock("Reminders", () => {
+    if (!["all", "timeline"].includes(workspaceScope)) return;
     getReminderHistorySource(remoteData).forEach((entry) => {
       const dueAt = getReminderDueAt(entry);
 
@@ -640,6 +648,7 @@ export function buildSearchResultState(
     });
   });
   measureSearchBlock("DatedMemory", () => {
+    if (!["all", "archive"].includes(workspaceScope)) return;
     (
       [
         ["Diary", getDatedEntriesSource("Diary", remoteData)],
@@ -680,6 +689,7 @@ export function buildSearchResultState(
     );
   });
   measureSearchBlock("StaticMemory", () => {
+    if (!["all", "archive"].includes(workspaceScope)) return;
     Object.entries({
       Project: getStaticEntryForMode("Project", remoteData),
       Preference: getStaticEntryForMode("Preference", remoteData),
@@ -718,6 +728,7 @@ export function buildSearchResultState(
     });
   });
   measureSearchBlock("Xiaoye", () => {
+    if (!["all", "archive"].includes(workspaceScope)) return;
     xiaoyeModes.forEach((xiaoyeMode) => {
       const entry = remoteData.xiaoyeEntries[xiaoyeMode];
 

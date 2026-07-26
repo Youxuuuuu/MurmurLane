@@ -2113,6 +2113,11 @@ export default function InsDiaryPrototype({
                       onSearchQueryChange={setSearchQuery}
                       searchRemoteData={remoteData}
                       searchDataVersion={searchDataVersion}
+                      workspaceScope={
+                        activeSection === "Timeline"
+                          ? "timeline"
+                          : "archive"
+                      }
                       onSelectResult={(result) => {
                         if (result.mode === "Conversation") {
                           appNavigation.requestNavigation({

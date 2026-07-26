@@ -546,3 +546,26 @@ test/workspaceViewModels.test.ts
 - 切换 Diary、Daily Summary、Letters、Facts、Preference、Open Loops、Project 与 Patterns，确认内容不变。
 - 切换 Xiaoye 模式，确认内容、日期和交互不变。
 - 保存 Memory、切换 Open Loops Checklist，确认草稿、回滚和错误位置不变。
+
+### 阶段 7 执行结果
+
+- `buildSearchResultState(...)` 新增明确的 Workspace Scope。
+- Timeline 搜索只执行 Timeline 与 Reminder 搜索块。
+- Archive 搜索只执行 Diary、Daily Summary、Letters、Static Memory 与 Xiaoye 搜索块。
+- Conversation 的线程内与全局搜索继续只消费 Conversation Records。
+- `DiarySearchBox` 的 JSX、CSS、动画、输入、高亮和结果点击反馈未修改，只接收当前 Workspace Scope。
+- 新增 2 个搜索所有权测试；`npm test` 98/98、严格类型检查、应用类型检查与生产构建通过。
+- 唯一有意行为变化是 Timeline 与 Archive 不再返回 Conversation 或彼此领域的结果。
+- ADR-0004 标记为 `Implementation: Complete`。
+- 完整浏览器和真机验收仍在全部阶段结束后统一执行。
+
+### 阶段 7 实际修改文件
+
+```text
+docs/adr/0004-search-is-owned-by-each-workspace.md
+docs/architecture/migration-plan.md
+src/App.tsx
+src/components/search/DiarySearchBox.tsx
+src/lib/searchPageData.ts
+test/searchOwnership.test.ts
+```

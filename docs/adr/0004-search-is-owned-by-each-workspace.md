@@ -1,6 +1,6 @@
 ---
 Status: Accepted
-Implementation: Pending
+Implementation: Complete
 ---
 
 # 搜索由各自 Workspace 拥有
