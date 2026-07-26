@@ -1,36 +1,33 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { flushSync } from "react-dom";
 import {
-  fetchWebChatModels,
-  fetchWebChatStatus,
-  isAmbiguousWebChatSendError,
-  sendWebChatMessages,
-  setWebChatModel,
-  subscribeToWebChat,
-  uploadWebChatFile,
-} from "../data/chatApi";
-import { mergeConversationRecords } from "./conversationMerge";
-import { buildWebChatSendEnvelope } from "./webChatSendContract";
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { flushSync } from "react-dom";
+import { mergeConversationRecords } from "../../lib/conversationMerge";
+import { buildWebChatSendEnvelope } from "../../lib/webChatSendContract";
 import {
   upsertConversationRecordByIdentity,
-} from "./conversationIdentity";
+} from "../../lib/conversationIdentity";
 import {
   createWebChatLiveRecord,
   createWebChatDraftRecord,
   resolveThreadSubscriptionCursor,
   settleWebChatDrafts,
-} from "./webChatRecords";
-import { resolveWebChatActivityStatus } from "./webChatStatus";
+} from "../../lib/webChatRecords";
+import { resolveWebChatActivityStatus } from "../../lib/webChatStatus";
 import {
   resolvePendingWebChatMessages,
   toOptimisticWebChatMessages,
-} from "./webChatPendingUploads";
+} from "../../lib/webChatPendingUploads";
 import {
   createWebChatSendTransaction,
   transitionWebChatSendTransaction,
   type WebChatSendTransaction,
-} from "./webChatSendTransaction";
-import type { ConversationRecord } from "../types/conversation";
+} from "../../lib/webChatSendTransaction";
+import type { ConversationRecord } from "../../types/conversation";
 import type {
   WebChatComposerMessageInput,
   WebChatEvent,
@@ -39,7 +36,9 @@ import type {
   WebChatSendResult,
   WebChatStatus,
   WebChatUsage,
-} from "../types/webChat";
+} from "../../types/webChat";
+import type { WebChatPort } from "./webChatPort";
+import { createConversationWorkspaceOutput } from "./conversationWorkspaceContract";
 
 interface StagedWebChatSend {
   requestId: string;
@@ -112,11 +111,13 @@ function appendRecord(
   };
 }
 
-export function useWebChat({
+export function useConversationWorkspace({
+  webChat,
   enabled,
   threadId,
   onThreadCreated,
 }: {
+  webChat: WebChatPort;
   enabled: boolean;
   threadId: string;
   onThreadCreated?: (input: { draftThreadId: string; threadId: string; clientId?: string }) => void;
@@ -192,9 +193,9 @@ export function useWebChat({
       }
 
       if (event.kind === "assistant.delta" || event.kind === "assistant.partial") {
-        // Deltas are transport progress, not final chat bubbles. Rendering
-        // both the stream and the completed message caused every reply to play
-        // twice. The complete `message` event below is the single display path.
+        // Delta 只表示传输进度，不是最终聊天气泡。
+        // 同时渲染流式内容和完成消息会让回复播放两次，
+        // 因此下方完整的 message 事件是唯一展示入口。
         return;
       }
 
@@ -250,7 +251,7 @@ export function useWebChat({
     let cancelled = false;
     let stopSubscription: (() => void) | undefined;
     setConnection("connecting");
-    void fetchWebChatStatus(threadId)
+    void webChat.fetchStatus(threadId)
       .then((nextStatus) => {
         if (cancelled) return;
         const snapshotCursor = resolveThreadSubscriptionCursor(
@@ -260,7 +261,7 @@ export function useWebChat({
         cursorByThreadRef.current.set(threadId, snapshotCursor);
         setStatus(nextStatus);
         setError("");
-        stopSubscription = subscribeToWebChat({
+        stopSubscription = webChat.subscribe({
           threadId,
           after: snapshotCursor,
           clientId: clientIdRef.current,
@@ -284,7 +285,7 @@ export function useWebChat({
   useEffect(() => {
     if (!enabled) return undefined;
     let cancelled = false;
-    fetchWebChatModels()
+    webChat.fetchModels()
       .then((nextModels) => {
         if (cancelled) return;
         setModels(nextModels);
@@ -370,7 +371,7 @@ export function useWebChat({
     };
 
     try {
-      const result = await sendWebChatMessages(envelope);
+      const result = await webChat.sendMessages(envelope);
       if (result.accepted) {
         accept(result);
       } else if (result.status === "unknown") {
@@ -384,17 +385,17 @@ export function useWebChat({
         messageId: envelope.messageId,
         error: String(nextError instanceof Error ? nextError.message : nextError || ""),
       });
-      if (!isAmbiguousWebChatSendError(nextError)) {
+      if (!webChat.isAmbiguousSendError(nextError)) {
         markTerminal("failed", nextError);
         return;
       }
       let snapshot: WebChatStatus | null = null;
       try {
-        snapshot = await fetchWebChatStatus(draftThreadId, requestId);
+        snapshot = await webChat.fetchStatus(draftThreadId, requestId);
         setStatus(snapshot);
       } catch {
-        // The request and the recovery query are both ambiguous. Preserve the
-        // existing bubble and let an explicit retry reuse the same requestId.
+        // 请求与恢复查询都无法确认结果时保留现有气泡，
+        // 由用户明确重试并复用同一个 requestId。
       }
       if (snapshot?.sendRequest?.status === "accepted") {
         accept(snapshot.sendRequest.result || {
@@ -424,7 +425,7 @@ export function useWebChat({
     try {
       const uploadedMessages = await resolvePendingWebChatMessages(
         staged.messages,
-        uploadWebChatFile,
+        webChat.uploadFile,
         staged.resolvedUploads,
       );
       const envelope = buildWebChatSendEnvelope({
@@ -556,30 +557,48 @@ export function useWebChat({
   }, [executeTransaction, prepareStagedSend]);
 
   const refreshModels = useCallback(async () => {
-    const result = await fetchWebChatModels();
+    const result = await webChat.fetchModels();
     setModels(result);
     return result;
   }, []);
 
   const chooseModel = useCallback(async (model: string, modelProvider = "") => {
-    const result = await setWebChatModel(model, modelProvider);
+    const result = await webChat.setModel(model, modelProvider);
     setStatus(result);
     setModels((current) => current ? { ...current, currentModel: result.model, currentModelProvider: result.modelProvider } : current);
     return result;
   }, []);
 
-  return {
-    clientId: clientIdRef.current,
-    messages: messagesByThread[threadId] ?? [],
-    messagesByThread,
-    usage: usageByThread[threadId] || status?.usage || null,
-    status,
-    models,
-    connection,
-    error,
-    sendMessages,
-    retryMessage,
-    refreshModels,
-    chooseModel,
-  };
+  const viewModel = useMemo(
+    () => ({
+      clientId: clientIdRef.current,
+      messages: messagesByThread[threadId] ?? [],
+      messagesByThread,
+      usage: usageByThread[threadId] || status?.usage || null,
+      status,
+      models,
+      connection,
+      error,
+    }),
+    [
+      connection,
+      error,
+      messagesByThread,
+      models,
+      status,
+      threadId,
+      usageByThread,
+    ],
+  );
+  const commands = useMemo(
+    () => ({
+      sendMessages,
+      retryMessage,
+      refreshModels,
+      chooseModel,
+    }),
+    [chooseModel, refreshModels, retryMessage, sendMessages],
+  );
+
+  return createConversationWorkspaceOutput(viewModel, commands);
 }

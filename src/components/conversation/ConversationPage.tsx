@@ -90,7 +90,8 @@ export const ConversationPage = memo(function ConversationPage({
   laterDateLoading = earlierDateLoading,
   onFloatingDateChange,
   liveMessages = [],
-  webChat = null,
+  webChatViewModel = null,
+  webChatCommands = null,
 }) {
   const [quoteMessage, setQuoteMessage] = useState(null);
   const [activeAction, setActiveAction] = useState(null);
@@ -1214,15 +1215,15 @@ export const ConversationPage = memo(function ConversationPage({
       )}
       {webChat?.sendMessages ? (
         <ConversationComposer
-          status={webChat.status}
-          models={webChat.models}
-          connection={webChat.connection}
+          status={webChatViewModel.status}
+          models={webChatViewModel.models}
+          connection={webChatViewModel.connection}
           quoteMessage={quoteMessage}
           onClearQuote={() => setQuoteMessage(null)}
-          onSendMessages={({ messages, newThread }) => webChat.sendMessages({ messages, newThread })}
-          onChooseModel={webChat.chooseModel}
+          onSendMessages={({ messages, newThread }) => webChatCommands.sendMessages({ messages, newThread })}
+          onChooseModel={webChatCommands.chooseModel}
           isNewThread={String(selectedThreadId).startsWith("draft-")}
-          error={webChat.error}
+          error={webChatViewModel.error}
         />
       ) : null}
     </PageCard>

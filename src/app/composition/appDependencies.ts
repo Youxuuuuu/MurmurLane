@@ -15,17 +15,9 @@ export interface MurmurLaneDataAdapter {
   readonly subscribeToLiveUpdates: typeof import("../../data/api").subscribeToLiveUpdates;
 }
 
-export interface WebChatAdapter {
-  readonly fetchModels: typeof import("../../data/chatApi").fetchWebChatModels;
-  readonly fetchStatus: typeof import("../../data/chatApi").fetchWebChatStatus;
-  readonly isAmbiguousSendError: typeof import("../../data/chatApi").isAmbiguousWebChatSendError;
-  readonly resolveAssetUrl: typeof import("../../data/chatApi").resolveWebChatAssetUrl;
-  readonly selectThread: typeof import("../../data/chatApi").selectWebChatThread;
-  readonly sendMessages: typeof import("../../data/chatApi").sendWebChatMessages;
-  readonly setModel: typeof import("../../data/chatApi").setWebChatModel;
-  readonly subscribe: typeof import("../../data/chatApi").subscribeToWebChat;
-  readonly uploadFile: typeof import("../../data/chatApi").uploadWebChatFile;
-}
+import type { WebChatPort } from "../../workspaces/conversation/webChatPort";
+
+export type WebChatAdapter = WebChatPort;
 
 export interface AppDependencies {
   readonly murmurLaneData: MurmurLaneDataAdapter;

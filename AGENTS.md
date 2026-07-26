@@ -12,7 +12,7 @@
 - `src/content-sync/` 负责来源读取有效性与文件变化同步机制，不得拥有 Workspace 业务解释。
 - `server/` 负责本地数据访问、文件边界、白名单编辑和前端所需的服务端接口。
 - `src/data/chatApi.ts` 负责消费 Cyberboss WebChat HTTP/SSE 契约。
-- `src/workspaces/conversation/` 提供 Conversation Record 到 Transcript 展示语义的唯一公共 seam。
+- `src/workspaces/conversation/` 拥有 WebChat 领域状态、View Model、Commands，并提供 Conversation Record 到 Transcript 展示语义的唯一公共 seam。
 - `src/lib/conversation*.ts` 负责记录规范化、身份对账、排序和实时/归档合并。
 - `src/components/conversation/ChatBubble.tsx` 是统一消息视觉语义的主要入口。
 - 页面组件负责展示和交互，不应重新组合 Transcript 领域规则，也不应重新定义 Conversation 或 WebChat 契约。

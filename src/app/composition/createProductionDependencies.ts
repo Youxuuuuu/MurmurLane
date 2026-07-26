@@ -40,8 +40,6 @@ function createWebChatAdapter(): WebChatAdapter {
     fetchModels: webChatApi.fetchWebChatModels,
     fetchStatus: webChatApi.fetchWebChatStatus,
     isAmbiguousSendError: webChatApi.isAmbiguousWebChatSendError,
-    resolveAssetUrl: webChatApi.resolveWebChatAssetUrl,
-    selectThread: webChatApi.selectWebChatThread,
     sendMessages: webChatApi.sendWebChatMessages,
     setModel: webChatApi.setWebChatModel,
     subscribe: webChatApi.subscribeToWebChat,

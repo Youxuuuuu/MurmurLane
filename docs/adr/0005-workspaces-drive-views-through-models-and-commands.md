@@ -1,6 +1,6 @@
 ---
 Status: Accepted
-Implementation: Pending
+Implementation: Partial
 ---
 
 # Workspace 通过 View Model 和 Commands 驱动 View

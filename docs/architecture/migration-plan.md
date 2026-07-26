@@ -422,3 +422,51 @@ tsconfig.strict.json
 - 搜索进行时触发文件变化，退出搜索后确认积压事件刷新。
 - 快速切换日期并触发刷新，确认迟到结果不覆盖较新来源数据。
 - 断开并恢复 Server，确认保留最后有效数据并在重连后重新同步。
+
+### 阶段 4 执行结果
+
+- 将 `src/lib/useWebChat.ts` 迁入 `src/workspaces/conversation/useConversationWorkspace.ts`。
+- Conversation Workspace 通过自己声明的 `WebChatPort` 接收状态、模型、发送、上传和订阅能力，不再导入具体 `chatApi.ts`。
+- `WebChatPort` 只声明真实使用的能力，不暴露 Base URL、Token、Header、EventSource 或完整应用依赖。
+- Workspace 输出拆分为 `viewModel` 与 `commands`，`ConversationPage` 分别接收两者。
+- 现有 `requestId`、Message ID、Cursor、Draft Thread、Live Records、Usage、发送事务、上传准备和 `failed/unknown` 恢复流程保持原实现。
+- Hook 继续由持续挂载的 `App.tsx` 无条件调用，View 条件卸载不会清空其领域状态。
+- Thread 选择、日期、Profile、未读和通知等 Conversation 状态仍有一部分保留在 `App.tsx`，ADR-0005 与 ADR-0012 因此为 `Partial`。
+- 新增 1 个 Workspace 输出契约测试，并复用现有 WebChat 事务、上传、状态和身份 Characterization Tests。
+- `npm test`：92/92 通过。
+- `npm run typecheck:strict`：通过。
+- `npx tsc -p tsconfig.app.json --noEmit --incremental false`：通过。
+- `npm run build`：通过。
+- 生产构建仍有既有的 500 kB Chunk Size Warning，本阶段未处理。
+- 本阶段未改变 JSX 生成结果、CSS、DOM 层级、React Key、滚动、窗口化或动画。
+- 迁入 Workspace 文件中的必要代码注释已统一使用中文。
+- 浏览器和真机完整交互验收继续延后到全部架构迁移完成后统一执行。
+
+### 阶段 4 实际修改文件
+
+```text
+AGENTS.md
+docs/adr/0005-workspaces-drive-views-through-models-and-commands.md
+docs/adr/0012-controllers-outlive-views-within-the-app-session.md
+docs/architecture/migration-plan.md
+src/App.tsx
+src/app/composition/appDependencies.ts
+src/app/composition/createProductionDependencies.ts
+src/components/conversation/ConversationPage.tsx
+src/lib/useWebChat.ts（迁出）
+src/workspaces/conversation/conversationWorkspaceContract.ts
+src/workspaces/conversation/index.ts
+src/workspaces/conversation/useConversationWorkspace.ts
+src/workspaces/conversation/webChatPort.ts
+test/conversationWorkspace.test.ts
+```
+
+### 阶段 4 最终人工验收项
+
+- Conversation Chat 激活时确认 WebChat SSE 建立，离开 Chat、进入列表、搜索或 Placeholder 时确认关闭。
+- 返回 Chat 时确认使用已有 Cursor 恢复且不创建重复 EventSource。
+- 发送普通消息，确认 submitting、sent、failed 与 unknown 展示和重试不变。
+- 发送含附件消息，确认上传顺序、失败气泡和重试复用不变。
+- 创建 Draft Thread 并发送，确认迁移到真实 Thread 后选择、Profile 与消息身份不变。
+- 切换到 Timeline 或 Archive 后等待已提交发送完成，再返回确认事务结果未丢失。
+- 确认 Live Record 被 Canonical 替换时气泡不重新挂载或重播动画。

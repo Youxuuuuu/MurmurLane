@@ -1,6 +1,6 @@
 ---
 Status: Accepted
-Implementation: Pending
+Implementation: Partial
 ---
 
 # Workspace Controller 在应用会话内持续存在

@@ -69,7 +69,7 @@ import {
   createDefaultThreadProfile,
   useConversationProfiles,
 } from "./lib/conversationProfiles";
-import { useWebChat } from "./lib/useWebChat";
+import { useConversationWorkspace } from "./workspaces/conversation/useConversationWorkspace";
 import {
   getConversationDisplayText,
   getConversationVisualKind,
@@ -830,25 +830,14 @@ export default function InsDiaryPrototype({
     setConversationView("chat");
   }, []);
 
-  const webChatState = useWebChat({
+  const conversationWorkspace = useConversationWorkspace({
+    webChat: dependencies.webChat,
     enabled: activeSection === "Conversation" && conversationView === "chat" && !conversationPlaceholder,
     threadId: selectedThreadId,
     onThreadCreated: handleWebThreadCreated,
   });
-  const webChat = useMemo(() => webChatState, [
-    webChatState.clientId,
-    webChatState.messages,
-    webChatState.messagesByThread,
-    webChatState.usage,
-    webChatState.status,
-    webChatState.models,
-    webChatState.connection,
-    webChatState.error,
-    webChatState.sendMessages,
-    webChatState.retryMessage,
-    webChatState.refreshModels,
-    webChatState.chooseModel,
-  ]);
+  const webChatViewModel = conversationWorkspace.viewModel;
+  const webChatCommands = conversationWorkspace.commands;
 
   const openNewConversationThread = useCallback(() => {
     const draftThreadId = `draft-${typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`}`;
@@ -2023,7 +2012,7 @@ export default function InsDiaryPrototype({
                   onBack={() => setConversationView("list")}
                   onEditThread={handleEditSelectedConversationThread}
                   onOpenSearch={() => setConversationView("search")}
-                  isTyping={webChat.status?.status === "running" || webChat.status?.status === "streaming"}
+                  isTyping={webChatViewModel.status?.status === "running" || webChatViewModel.status?.status === "streaming"}
                   floatingDate={conversationFloatingDate}
                   onOpenDatePicker={handleOpenConversationDatePicker}
                 />
@@ -2180,8 +2169,9 @@ export default function InsDiaryPrototype({
                 earlierDateLoading={conversationDateLoading}
                 laterDateLoading={conversationDateLoading}
                 onFloatingDateChange={setConversationFloatingDate}
-                liveMessages={webChat.messages}
-                webChat={webChat}
+                liveMessages={webChatViewModel.messages}
+                webChatViewModel={webChatViewModel}
+                webChatCommands={webChatCommands}
               />
             )
           ) : (
