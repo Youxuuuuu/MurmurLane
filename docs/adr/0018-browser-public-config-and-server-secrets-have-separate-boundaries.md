@@ -1,6 +1,6 @@
 ---
 Status: Accepted
-Implementation: Pending
+Implementation: Partial
 Date: 2026-07-27
 ---
 

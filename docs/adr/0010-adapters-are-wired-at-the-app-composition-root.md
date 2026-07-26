@@ -1,6 +1,6 @@
 ---
 Status: Accepted
-Implementation: Pending
+Implementation: Partial
 ---
 
 # 技术 Adapter 在 App Composition Root 组装

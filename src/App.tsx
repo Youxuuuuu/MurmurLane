@@ -1,22 +1,7 @@
 // @ts-nocheck
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, MotionConfig } from "framer-motion";
-import {
-  fetchEditableMemoryDocument,
-  fetchConversations,
-  fetchConversationMoments,
-  fetchDateIndex,
-  fetchMemoryDailySummary,
-  fetchMemoryDiary,
-  fetchMemoryLetters,
-  fetchMemoryStatic,
-  fetchReminderHistory,
-  fetchTimeline,
-  toggleOpenLoopsChecklistItem as toggleOpenLoopsChecklistItemApi,
-  fetchXiaoyeStatic,
-  HAS_EDIT_TOKEN,
-  subscribeToLiveUpdates,
-} from "./data/api";
+import type { AppDependencies } from "./app/composition/appDependencies";
 import { staticModeApiMap } from "./config/contentSources";
 import { xiaoyeModeMeta, xiaoyeModes } from "./config/pageModes";
 import { styleThemes } from "./config/theme";
@@ -178,7 +163,28 @@ const archiveSubjectItems = [
   { id: "Xiaoye", label: "小叶" },
 ];
 
-export default function InsDiaryPrototype() {
+export default function InsDiaryPrototype({
+  dependencies,
+}: {
+  dependencies: AppDependencies;
+}) {
+  const {
+    fetchEditableMemoryDocument,
+    fetchConversations,
+    fetchConversationMoments,
+    fetchDateIndex,
+    fetchMemoryDailySummary,
+    fetchMemoryDiary,
+    fetchMemoryLetters,
+    fetchMemoryStatic,
+    fetchReminderHistory,
+    fetchTimeline,
+    fetchXiaoyeStatic,
+    hasEditCredential,
+    subscribeToLiveUpdates,
+    toggleOpenLoopsChecklistItem:
+      toggleOpenLoopsChecklistItemApi,
+  } = dependencies.murmurLaneData;
   useStableViewport();
   const [selectedStyleId, setSelectedStyleId] = useState("cafe");
   const [selectedDate, setSelectedDate] = useState(() => getTodayDateText());
@@ -939,12 +945,13 @@ export default function InsDiaryPrototype() {
 
       if (editStatusResult.status === "fulfilled") {
         const backendWriteEnabled = editStatusResult.value?.writeEnabled === true;
-        const canWrite = backendWriteEnabled && HAS_EDIT_TOKEN;
+        const canWrite =
+          backendWriteEnabled && hasEditCredential;
         const message = canWrite
           ? ""
-          : backendWriteEnabled && !HAS_EDIT_TOKEN
+          : backendWriteEnabled && !hasEditCredential
             ? "编辑已关闭：未配置前端编辑 token。"
-            : !backendWriteEnabled && HAS_EDIT_TOKEN
+            : !backendWriteEnabled && hasEditCredential
               ? "编辑已关闭：服务端未配置编辑 token。"
               : "编辑已关闭：未配置编辑 token。";
 

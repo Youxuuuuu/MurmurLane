@@ -338,3 +338,46 @@ tsconfig.strict.json
 - 检查连续图片、文件和 Sticker 的分组与顺序。
 - 使用搜索结果定位消息，确认滚动、锚点和高亮不变。
 - 加载更早和更晚日期，确认高度补偿与当前位置保持。
+
+### 阶段 2 执行结果
+
+- 新增 `parseBrowserConfig(...)`，锁定同源 API、开发 WebChat 地址、Token 空白处理和现有 Timeout。
+- 新增只读 `AppDependencies`、`MurmurLaneDataAdapter` 与 `WebChatAdapter`。
+- `main.tsx` 通过 `createProductionDependencies(import.meta.env)` 创建应用依赖。
+- `App.tsx` 改为接收注入的数据 Adapter，不再直接导入 `src/data/api.ts`。
+- 现有 `api.ts` 与 `chatApi.ts` 的 URL、Header、Token、Query、Timeout、上传、媒体 URL 和 SSE 实现未修改。
+- `useWebChat.ts` 和其他旧调用方仍直接导入具体 Adapter，随对应 Workspace seam 迁移；ADR-0010 因此为 `Partial`。
+- `api.ts`、`chatApi.ts` 和现有诊断调用方仍存在模块级 Build Env 读取，待调用方迁移后收口；ADR-0018 因此为 `Partial`。
+- 新增 4 个 Browser Config 与 Composition Root Characterization Tests。
+- `npm test`：88/88 通过。
+- `npm run typecheck:strict`：通过。
+- `npx tsc -p tsconfig.app.json --noEmit --incremental false`：通过。
+- `npm run build`：通过。
+- 生产构建仍有既有的 500 kB Chunk Size Warning，本阶段未处理。
+- 本阶段未修改 JSX、CSS、DOM、滚动、窗口化或动画。
+- 浏览器和真机完整交互验收继续延后到全部架构迁移完成后统一执行。
+
+### 阶段 2 实际修改文件
+
+```text
+AGENTS.md
+docs/adr/0010-adapters-are-wired-at-the-app-composition-root.md
+docs/adr/0018-browser-public-config-and-server-secrets-have-separate-boundaries.md
+docs/architecture/migration-plan.md
+src/App.tsx
+src/app/composition/appDependencies.ts
+src/app/composition/createProductionDependencies.ts
+src/app/config/browserConfig.ts
+src/main.tsx
+test/appComposition.test.ts
+test/browserConfig.test.ts
+tsconfig.strict.json
+```
+
+### 阶段 2 最终人工验收项
+
+- 启动默认开发环境，确认 MurmurLane API 仍使用同源地址。
+- 未设置 WebChat URL 时，确认开发环境仍连接 `http://127.0.0.1:8791`。
+- 设置现有编辑凭据后，确认编辑能力显示条件不变。
+- 进入 Conversation Chat，确认 WebChat 状态、发送、上传、SSE 和媒体 URL 行为不变。
+- 在无凭据环境启动，确认原有只读与错误提示行为不变。

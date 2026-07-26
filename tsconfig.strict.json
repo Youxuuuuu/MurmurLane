@@ -8,6 +8,8 @@
     "types": ["vite/client"]
   },
   "include": [
+    "src/app/**/*.ts",
+    "src/app/**/*.tsx",
     "src/workspaces/**/*.ts",
     "src/workspaces/**/*.tsx"
   ]
