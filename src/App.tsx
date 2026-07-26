@@ -1,7 +1,15 @@
 // @ts-nocheck
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { AnimatePresence, MotionConfig } from "framer-motion";
 import type { AppDependencies } from "./app/composition/appDependencies";
+import { createAppNavigation } from "./app/navigation/appNavigation";
 import {
   createContentSyncGeneration,
   createLiveUpdateCoordinator,
@@ -194,7 +202,31 @@ export default function InsDiaryPrototype({
   const [selectedDate, setSelectedDate] = useState(() => getTodayDateText());
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [selectedMode, setSelectedMode] = useState("Diary");
-  const [activeSection, setActiveSection] = useState("Conversation");
+  const [appNavigation] = useState(() =>
+    createAppNavigation("conversation"),
+  );
+  const navigationSnapshot = useSyncExternalStore(
+    appNavigation.subscribe,
+    appNavigation.getSnapshot,
+  );
+  const activeSection =
+    navigationSnapshot.workspace === "conversation"
+      ? "Conversation"
+      : navigationSnapshot.workspace === "timeline"
+        ? "Timeline"
+        : "Archive";
+  const activateSection = useCallback(
+    (section) => {
+      appNavigation.activate(
+        section === "Conversation"
+          ? "conversation"
+          : section === "Timeline"
+            ? "timeline"
+            : "archive",
+      );
+    },
+    [appNavigation],
+  );
   const [conversationView, setConversationView] = useState("list");
   const [conversationSettingsMode, setConversationSettingsMode] = useState(null);
   const [conversationProfilePreview, setConversationProfilePreview] = useState(null);
@@ -1818,7 +1850,7 @@ export default function InsDiaryPrototype({
     );
 
   const handleSelectSection = (section) => {
-    setActiveSection(section);
+    activateSection(section);
     setHighlightResult(null);
     setConversationPlaceholder(null);
     if (section === "Conversation") setConversationView("list");
@@ -1834,15 +1866,21 @@ export default function InsDiaryPrototype({
       setConversationCalendarDate(latestDate);
       void loadConversationThreadDate(latestDate, summary.threadId);
     }
-    // Opening a thread should land at its newest message. Date jumps are only
-    // for explicit date/search navigation, where the first message is desired.
+    // 打开线程时应落在最新消息；只有明确的日期或搜索跳转
+    // 才定位到目标日期的第一条消息。
     setConversationJumpDate(null);
     setConversationPlaceholder(null);
     setConversationView("chat");
   };
 
   const handleOpenMessageNotification = (notification) => {
-    setActiveSection("Conversation");
+    appNavigation.requestNavigation({
+      workspace: "conversation",
+      target: {
+        threadId: notification.threadId,
+        date: notification.date,
+      },
+    });
     handleSelectThread(notification.threadId);
     if (notification.date) {
       setConversationCalendarDate(notification.date);
@@ -2064,18 +2102,46 @@ export default function InsDiaryPrototype({
                       searchDataVersion={searchDataVersion}
                       onSelectResult={(result) => {
                         if (result.mode === "Conversation") {
-                          setActiveSection("Conversation");
+                          appNavigation.requestNavigation({
+                            workspace: "conversation",
+                            target: {
+                              threadId: result.threadId,
+                              date: result.date,
+                              messageId: result.targetId,
+                            },
+                          });
                           setConversationView("chat");
                           if (result.threadId) handleSelectThread(result.threadId);
                         } else if (result.mode === "Timeline") {
-                          setActiveSection("Timeline");
+                          appNavigation.requestNavigation({
+                            workspace: "timeline",
+                            target: {
+                              date: result.date,
+                              eventId: result.targetId,
+                              view: result.timelineView,
+                            },
+                          });
                           setTimelineView(result.timelineView || "line");
                         } else if (result.mode === "Xiaoye") {
-                          setActiveSection("Archive");
+                          appNavigation.requestNavigation({
+                            workspace: "archive",
+                            target: {
+                              subject: "Xiaoye",
+                              date: result.date,
+                              documentId: result.targetId,
+                            },
+                          });
                           setArchiveSubject("Xiaoye");
                           if (result.xiaoyeMode) setSelectedXiaoyeMode(result.xiaoyeMode);
                         } else {
-                          setActiveSection("Archive");
+                          appNavigation.requestNavigation({
+                            workspace: "archive",
+                            target: {
+                              subject: "Me",
+                              date: result.date,
+                              documentId: result.targetId,
+                            },
+                          });
                           setArchiveSubject("Me");
                           setSelectedMode(result.mode);
                         }
@@ -2103,7 +2169,7 @@ export default function InsDiaryPrototype({
                 threadSummaries={conversationThreadSummaries}
                 unreadCounts={conversationUnreadCounts}
                 moments={conversationMoments}
-                onBack={() => setActiveSection("Timeline")}
+                onBack={() => activateSection("Timeline")}
                 onEditProfile={() => setConversationSettingsMode("user")}
                 onOpenSearch={() => {
                   setConversationPlaceholder(null);

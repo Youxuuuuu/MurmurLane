@@ -1,6 +1,6 @@
 ---
 Status: Accepted
-Implementation: Pending
+Implementation: Partial
 ---
 
 # Workspace 通过导航意图协作

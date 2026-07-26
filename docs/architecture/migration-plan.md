@@ -470,3 +470,42 @@ test/conversationWorkspace.test.ts
 - 创建 Draft Thread 并发送，确认迁移到真实 Thread 后选择、Profile 与消息身份不变。
 - 切换到 Timeline 或 Archive 后等待已提交发送完成，再返回确认事务结果未丢失。
 - 确认 Live Record 被 Canonical 替换时气泡不重新挂载或重播动画。
+
+### 阶段 5 执行结果
+
+- 新增应用会话级 `createAppNavigation()`，发布只读 Navigation Snapshot。
+- Navigation Intent 明确区分 Conversation、Timeline 与 Archive Target。
+- 未知 Workspace 由 `UnknownWorkspaceError` 作为应用级错误拒绝。
+- `App.tsx` 的当前 Workspace 激活状态改为消费 App Navigation Snapshot。
+- Bottom Navigation、Conversation 通知和现有跨页面搜索结果已通过 Navigation Intent 激活目标 Workspace。
+- App Navigation 不校验 Thread、Date、Message、Event 或 Document，也不操作目标 Workspace Store、DOM、滚动或高亮。
+- 目标 Target 的完整消费与清除仍随各 Workspace Controller 迁移，ADR-0003 因此为 `Partial`。
+- 新增 2 个 App Navigation Characterization Tests。
+- `npm test`：94/94 通过。
+- `npm run typecheck:strict`：通过。
+- `npx tsc -p tsconfig.app.json --noEmit --incremental false`：通过。
+- `npm run build`：通过。
+- 生产构建仍有既有的 500 kB Chunk Size Warning，本阶段未处理。
+- 本阶段未改变 JSX 生成结果、CSS、DOM 层级、滚动、窗口化或动画。
+- 本阶段涉及的必要代码注释使用中文。
+- 浏览器和真机完整交互验收继续延后到全部架构迁移完成后统一执行。
+
+### 阶段 5 实际修改文件
+
+```text
+AGENTS.md
+docs/adr/0003-workspaces-coordinate-through-navigation-intents.md
+docs/architecture/migration-plan.md
+src/App.tsx
+src/app/navigation/appNavigation.ts
+test/appNavigation.test.ts
+```
+
+### 阶段 5 最终人工验收项
+
+- 使用 Bottom Navigation 在 Conversation、Timeline 与 Archive 间切换，确认激活结果不变。
+- 从非 Conversation 页面点击消息通知，确认进入正确 Thread 和 Date。
+- 点击 Conversation 搜索结果，确认线程、日期、消息定位和高亮不变。
+- 点击 Timeline 搜索结果，确认日期、视图和 Event 高亮不变。
+- 点击 Archive 或 Xiaoye 搜索结果，确认 Subject、Mode、日期和文档定位不变。
+- 多次往返 Workspace，确认各 Workspace 领域状态不因 View 卸载丢失。

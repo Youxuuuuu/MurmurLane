@@ -9,6 +9,7 @@
 ## 稳定所有权
 
 - `src/app/config/` 负责解析浏览器公开配置，`src/app/composition/` 负责创建并组装具体浏览器 Adapter。
+- `src/app/navigation/` 只负责激活 Workspace 并转交类型明确的 Target，不解释目标领域规则。
 - `src/content-sync/` 负责来源读取有效性与文件变化同步机制，不得拥有 Workspace 业务解释。
 - `server/` 负责本地数据访问、文件边界、白名单编辑和前端所需的服务端接口。
 - `src/data/chatApi.ts` 负责消费 Cyberboss WebChat HTTP/SSE 契约。
