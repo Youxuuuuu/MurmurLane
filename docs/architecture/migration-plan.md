@@ -509,3 +509,40 @@ test/appNavigation.test.ts
 - 点击 Timeline 搜索结果，确认日期、视图和 Event 高亮不变。
 - 点击 Archive 或 Xiaoye 搜索结果，确认 Subject、Mode、日期和文档定位不变。
 - 多次往返 Workspace，确认各 Workspace 领域状态不因 View 卸载丢失。
+
+### 阶段 6 执行结果
+
+- 新增 Timeline 与 Archive Workspace View Model builder。
+- `App.tsx` 不再直接选择并调用 Timeline、Memory 与 Xiaoye 页面 builder，而是通过对应 Workspace seam 生成页面模型。
+- 新 seam 继续复用现有页面构建逻辑，没有复制 Timeline、Diary、Memory、Letters 或 Xiaoye 规则。
+- 通过显式 builder 能力隔离尚未完成 strict 的旧大型纯逻辑文件，避免本阶段夹带一次性类型整改。
+- Timeline 与 Archive 的选择状态、Mutation Overlay 和 Commands 仍在 `App.tsx`，本阶段只完成页面模型所有权入口。
+- 新增 2 个 Workspace View Model 等价 Characterization Tests。
+- `npm test`：96/96 通过。
+- `npm run typecheck:strict`：通过。
+- `npx tsc -p tsconfig.app.json --noEmit --incremental false`：通过。
+- `npm run build`：通过。
+- 生产构建仍有既有的 500 kB Chunk Size Warning，本阶段未处理。
+- 本阶段未修改页面 JSX、CSS、DOM、滚动或动画。
+- 浏览器和真机完整交互验收继续延后到全部架构迁移完成后统一执行。
+
+### 阶段 6 实际修改文件
+
+```text
+AGENTS.md
+docs/architecture/migration-plan.md
+src/App.tsx
+src/workspaces/archive/buildArchiveWorkspaceViewModel.ts
+src/workspaces/archive/index.ts
+src/workspaces/timeline/buildTimelineWorkspaceViewModel.ts
+src/workspaces/timeline/index.ts
+test/workspaceViewModels.test.ts
+```
+
+### 阶段 6 最终人工验收项
+
+- 逐日与逐月切换 Timeline，确认 Event、统计、颜色和布局不变。
+- 保存和删除 Timeline Event，确认页面、日期可用性、搜索与失败回退不变。
+- 切换 Diary、Daily Summary、Letters、Facts、Preference、Open Loops、Project 与 Patterns，确认内容不变。
+- 切换 Xiaoye 模式，确认内容、日期和交互不变。
+- 保存 Memory、切换 Open Loops Checklist，确认草稿、回滚和错误位置不变。

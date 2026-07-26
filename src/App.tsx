@@ -50,6 +50,8 @@ import {
   removeDateIndexDate,
   upsertDateIndexDate,
 } from "./lib/editableMemory";
+import { createArchiveWorkspaceViewModelBuilder } from "./workspaces/archive";
+import { createTimelineWorkspaceViewModelBuilder } from "./workspaces/timeline";
 import { buildTimelinePage } from "./lib/timelinePageData";
 import { DatePickerModal } from "./components/calendar/DatePickerModal";
 import { DiaryShareModal } from "./components/archive/DiaryShareModal";
@@ -174,6 +176,13 @@ const archiveSubjectItems = [
   { id: "Me", label: "我" },
   { id: "Xiaoye", label: "小叶" },
 ];
+const buildTimelineWorkspaceViewModel =
+  createTimelineWorkspaceViewModelBuilder(buildTimelinePage);
+const buildArchiveWorkspaceViewModel =
+  createArchiveWorkspaceViewModelBuilder(
+    buildMemoryPage,
+    buildXiaoyePage,
+  );
 
 export default function InsDiaryPrototype({
   dependencies,
@@ -1787,15 +1796,19 @@ export default function InsDiaryPrototype({
         conversationCalendarDate,
       );
     if (activeSection === "Timeline")
-      return buildTimelinePage(timelineStyleTheme, selectedDate, remoteData);
-    if (archiveShowsXiaoye)
-      return buildXiaoyePage(
-        styleTheme,
+      return buildTimelineWorkspaceViewModel(
+        timelineStyleTheme,
         selectedDate,
-        selectedXiaoyeMode,
         remoteData,
       );
-    return buildMemoryPage(styleTheme, selectedDate, selectedMode, remoteData);
+    return buildArchiveWorkspaceViewModel({
+      theme: styleTheme,
+      date: selectedDate,
+      mode: selectedMode,
+      subject: archiveShowsXiaoye ? "Xiaoye" : "Me",
+      xiaoyeMode: selectedXiaoyeMode,
+      remoteData,
+    });
   }, [
     styleTheme,
     timelineStyleTheme,
