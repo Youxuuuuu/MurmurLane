@@ -2,6 +2,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, MotionConfig } from "framer-motion";
 import type { AppDependencies } from "./app/composition/appDependencies";
+import {
+  createContentSyncGeneration,
+  createLiveUpdateCoordinator,
+} from "./content-sync";
 import { staticModeApiMap } from "./config/contentSources";
 import { xiaoyeModeMeta, xiaoyeModes } from "./config/pageModes";
 import { styleThemes } from "./config/theme";
@@ -274,9 +278,10 @@ export default function InsDiaryPrototype({
   const conversationBaselineReadyRef = useRef(false);
   const initialLiveRefreshCompleteRef = useRef(false);
   const liveSearchActiveRef = useRef(false);
-  const pendingLiveEventsRef = useRef(new Map());
-  const liveRefreshTimerRef = useRef(null);
-  const refreshLiveEventsRef = useRef(null);
+  const liveUpdateCoordinatorRef = useRef(null);
+  const contentSyncGenerationRef = useRef(
+    createContentSyncGeneration(),
+  );
   const searchPendingRef = useRef({
     conversations: new Set(),
     diary: new Set(),
@@ -312,8 +317,20 @@ export default function InsDiaryPrototype({
     const currentDate = selectedDateRef.current;
     let resyncDateIndex = null;
     if (hasResync) {
+      const requestIdentity =
+        contentSyncGenerationRef.current.begin(
+          "date-index",
+          "global",
+        );
       try {
         resyncDateIndex = await fetchDateIndex();
+        if (
+          !contentSyncGenerationRef.current.isCurrent(
+            requestIdentity,
+          )
+        ) {
+          return;
+        }
         setRemoteDateIndexState(resyncDateIndex);
       } catch {
         // Keep current data and retry on the next event/reconnect.
@@ -471,9 +488,20 @@ export default function InsDiaryPrototype({
     };
 
     const tasks = expandedEvents.map(async (event) => {
+      const requestIdentity =
+        contentSyncGenerationRef.current.begin(
+          event.type,
+          event.date || event.mode || event.threadId || "global",
+        );
+      const canCommit = () =>
+        contentSyncGenerationRef.current.isCurrent(
+          requestIdentity,
+        );
+
       if (event.type === "conversations" && event.date) {
         const dotDate = toDotDate(event.date);
         const records = await fetchConversations(dotDate);
+        if (!canCommit()) return;
         const dateWasLoaded = loadedConversationDatesRef.current.has(dotDate);
         registerIncomingMessages(dotDate, records, dateWasLoaded);
         loadedConversationDatesRef.current.add(dotDate);
@@ -493,12 +521,15 @@ export default function InsDiaryPrototype({
             : event.type === "dailySummary"
               ? fetchMemoryDailySummary
               : fetchMemoryLetters;
-        updateDatedMemory(event.type, event.date, await loader(event.date));
+        const result = await loader(event.date);
+        if (!canCommit()) return;
+        updateDatedMemory(event.type, event.date, result);
         return;
       }
 
       if (event.type === "timeline") {
         const nextTimelineState = normalizeTimelineResponse(await fetchTimeline());
+        if (!canCommit()) return;
         setRemoteTimelineStateValue(nextTimelineState);
         setRemoteSearchCacheState((current) => ({
           ...current,
@@ -514,6 +545,7 @@ export default function InsDiaryPrototype({
         );
         if (!modeEntry) return;
         const result = await fetchMemoryStatic(normalizedMode);
+        if (!canCommit()) return;
         const [mode] = modeEntry;
         setRemoteStaticModeEntriesState((current) => {
           const next = { ...current };
@@ -530,6 +562,7 @@ export default function InsDiaryPrototype({
         );
         if (!modeEntry) return;
         const result = await fetchXiaoyeStatic(event.mode);
+        if (!canCommit()) return;
         setRemoteXiaoyeEntriesState((current) => {
           const next = { ...current };
           if (result?.found === true && result.entry) next[modeEntry] = result.entry;
@@ -541,6 +574,7 @@ export default function InsDiaryPrototype({
 
       if (event.type === "reminders") {
         const result = await fetchReminderHistory();
+        if (!canCommit()) return;
         setRemoteReminderHistoryEntriesState(
           Array.isArray(result?.entries) ? result.entries : [],
         );
@@ -554,6 +588,7 @@ export default function InsDiaryPrototype({
 
       if (event.type === "moments") {
         const result = await fetchConversationMoments(3);
+        if (!canCommit()) return;
         setConversationMoments(result.moments ?? []);
       }
     });
@@ -568,8 +603,20 @@ export default function InsDiaryPrototype({
         ),
       )
     ) {
+      const requestIdentity =
+        contentSyncGenerationRef.current.begin(
+          "date-index",
+          "global",
+        );
       try {
-        setRemoteDateIndexState(await fetchDateIndex());
+        const dateIndex = await fetchDateIndex();
+        if (
+          contentSyncGenerationRef.current.isCurrent(
+            requestIdentity,
+          )
+        ) {
+          setRemoteDateIndexState(dateIndex);
+        }
       } catch {
         // A later file event or foreground resync will retry the lightweight index.
       }
@@ -577,63 +624,38 @@ export default function InsDiaryPrototype({
     initialLiveRefreshCompleteRef.current = true;
   }, []);
 
-  refreshLiveEventsRef.current = refreshLiveEvents;
-
   useEffect(() => {
-    const schedulePendingRefresh = () => {
-      if (liveSearchActiveRef.current || document.hidden) return;
-      if (liveRefreshTimerRef.current) window.clearTimeout(liveRefreshTimerRef.current);
-      liveRefreshTimerRef.current = window.setTimeout(() => {
-        liveRefreshTimerRef.current = null;
-        if (liveSearchActiveRef.current || document.hidden) return;
-        const events = Array.from(pendingLiveEventsRef.current.values());
-        pendingLiveEventsRef.current.clear();
-        if (events.length) refreshLiveEventsRef.current?.(events);
-      }, 220);
-    };
-    const enqueue = (event) => {
-      const key = `${event.type}:${event.date || ""}:${event.mode || ""}:${event.threadId || ""}`;
-      pendingLiveEventsRef.current.set(key, event);
-      schedulePendingRefresh();
-    };
-    let unsubscribe = null;
-    const startSubscription = () => {
-      if (unsubscribe || document.hidden) return;
-      unsubscribe = subscribeToLiveUpdates(enqueue);
-    };
-    const stopSubscription = () => {
-      unsubscribe?.();
-      unsubscribe = null;
-    };
+    const coordinator = createLiveUpdateCoordinator({
+      subscribe: subscribeToLiveUpdates,
+      refresh: refreshLiveEvents,
+      schedule: (callback, delayMs) =>
+        window.setTimeout(callback, delayMs),
+      cancelSchedule: (timer) => window.clearTimeout(timer),
+      isRefreshBlocked: () => liveSearchActiveRef.current,
+    });
+    liveUpdateCoordinatorRef.current = coordinator;
+
     const handleVisibilityChange = () => {
-      if (document.hidden) {
-        stopSubscription();
-        return;
-      }
-      enqueue({ type: "resync", id: Date.now() });
-      startSubscription();
+      coordinator.setVisible(!document.hidden);
     };
 
-    startSubscription();
+    coordinator.setVisible(!document.hidden);
+    coordinator.start();
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-      stopSubscription();
-      if (liveRefreshTimerRef.current) {
-        window.clearTimeout(liveRefreshTimerRef.current);
-        liveRefreshTimerRef.current = null;
+      coordinator.stop();
+      if (liveUpdateCoordinatorRef.current === coordinator) {
+        liveUpdateCoordinatorRef.current = null;
       }
     };
   }, []);
 
   useEffect(() => {
     if (liveSearchActiveRef.current || document.hidden) return;
-    if (!pendingLiveEventsRef.current.size) return;
     const timer = window.setTimeout(() => {
       if (liveSearchActiveRef.current || document.hidden) return;
-      const events = Array.from(pendingLiveEventsRef.current.values());
-      pendingLiveEventsRef.current.clear();
-      if (events.length) refreshLiveEventsRef.current?.(events);
+      liveUpdateCoordinatorRef.current?.flushPending();
     }, 220);
     return () => window.clearTimeout(timer);
   }, [searchQuery, conversationView]);

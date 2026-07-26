@@ -10,6 +10,8 @@
   "include": [
     "src/app/**/*.ts",
     "src/app/**/*.tsx",
+    "src/content-sync/**/*.ts",
+    "src/content-sync/**/*.tsx",
     "src/workspaces/**/*.ts",
     "src/workspaces/**/*.tsx"
   ]

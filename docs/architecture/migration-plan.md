@@ -381,3 +381,44 @@ tsconfig.strict.json
 - 设置现有编辑凭据后，确认编辑能力显示条件不变。
 - 进入 Conversation Chat，确认 WebChat 状态、发送、上传、SSE 和媒体 URL 行为不变。
 - 在无凭据环境启动，确认原有只读与错误提示行为不变。
+
+### 阶段 3 执行结果
+
+- 新增 `createContentSyncGeneration()`，按 Source/Key 独立管理请求 Generation。
+- 新增 `createLiveUpdateCoordinator()`，统一管理文件 SSE 订阅、事件身份去重、220ms 批处理、页面隐藏释放和恢复 `resync`。
+- `App.tsx` 的文件 SSE Effect 已改为使用 ContentSync coordinator。
+- 文件事件触发的 Conversation、Timeline、Memory、Reminder、Moment 和 Date Index 刷新，在提交前检查对应 Generation。
+- Adapter 仍只负责创建与关闭 SSE；是否订阅、何时 `resync` 和迟到结果能否提交由 ContentSync 决定。
+- 来源 Snapshot 的 React State、启动加载和搜索 Keyed Source Cache 仍在 `App.tsx`，将在后续所有权迁移中继续收口；ADR-0002 与 ADR-0017 因此为 `Partial`。
+- 新增 3 个 ContentSync Characterization Tests。
+- `npm test`：91/91 通过。
+- `npm run typecheck:strict`：通过。
+- `npx tsc -p tsconfig.app.json --noEmit --incremental false`：通过。
+- `npm run build`：通过。
+- 生产构建仍有既有的 500 kB Chunk Size Warning，本阶段未处理。
+- 本阶段未修改 JSX、CSS、DOM、滚动、窗口化或动画。
+- 浏览器和真机完整交互验收继续延后到全部架构迁移完成后统一执行。
+
+### 阶段 3 实际修改文件
+
+```text
+AGENTS.md
+docs/adr/0002-content-sync-validity-workspaces-meaning.md
+docs/adr/0017-async-results-are-committed-by-their-state-owner.md
+docs/architecture/migration-plan.md
+src/App.tsx
+src/content-sync/generation.ts
+src/content-sync/index.ts
+src/content-sync/liveUpdateCoordinator.ts
+test/contentSync.test.ts
+tsconfig.strict.json
+```
+
+### 阶段 3 最终人工验收项
+
+- 应用可见时确认只建立一个文件 SSE。
+- 连续触发同一文件事件，确认只发生一次有效刷新。
+- 页面隐藏时确认文件 SSE 关闭，恢复时确认重新连接并执行完整 `resync`。
+- 搜索进行时触发文件变化，退出搜索后确认积压事件刷新。
+- 快速切换日期并触发刷新，确认迟到结果不覆盖较新来源数据。
+- 断开并恢复 Server，确认保留最后有效数据并在重连后重新同步。
