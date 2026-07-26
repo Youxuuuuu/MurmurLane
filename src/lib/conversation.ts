@@ -540,7 +540,7 @@ export function getOperationDisplayPaths(record: ConversationRecord) {
     .map((value) => String(value ?? "").trim())
     .filter(Boolean);
 
-  const normalized = [];
+  const normalized: Array<{ value: string; normalized: string }> = [];
 
   candidates.forEach((candidate) => {
     const normalizedCandidate = candidate.replace(/\\/g, "/").toLowerCase();

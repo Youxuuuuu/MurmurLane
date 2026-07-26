@@ -10,6 +10,7 @@
     "dev:all": "concurrently \"npm run dev\" \"npm run server:dev\"",
     "build": "tsc -b && vite build",
     "test": "node --import tsx --test test/*.test.ts",
+    "typecheck:strict": "tsc -p tsconfig.strict.json",
     "preview": "vite preview",
     "serve:prod": "npm run build && npm run server",
     "serve:prod:lan": "npm run build && powershell -NoProfile -Command \"$env:API_HOST='0.0.0.0'; $env:API_PORT='8790'; & npm.cmd run server\""

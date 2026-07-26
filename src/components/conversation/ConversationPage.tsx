@@ -9,13 +9,7 @@ import {
   useState,
 } from "react";
 import { useReducedMotion } from "framer-motion";
-import {
-  shouldHideConversationRecord,
-} from "../../lib/conversation";
-import {
-  getConversationMergeKey,
-  mergeConversationRecords,
-} from "../../lib/conversationMerge";
+import { getConversationMergeKey } from "../../lib/conversationMerge";
 import { getConversationRenderId } from "../../lib/conversationIdentity";
 import { bubbleRevealLedger } from "../../lib/BubbleRevealLedger";
 import {
@@ -40,13 +34,12 @@ import { ConversationComposer } from "./ConversationComposer";
 import { ConversationEmptyState } from "./ConversationEmptyState";
 import {
   getConversationMessageDate as getMessageDate,
-  groupConversationDisplayRecords,
   messageMatchesConversationDisplayTarget,
 } from "../../lib/conversationDisplayGroups";
 import {
-  buildAssistantTurnDisplayModel,
-  expandRangeToAssistantTurnBoundaries,
-} from "../../lib/assistantTurnModel";
+  buildConversationTranscript,
+  selectConversationTranscriptWindow,
+} from "../../workspaces/conversation";
 
 const CONVERSATION_RECENT_RENDER_LIMIT = 120;
 const CONVERSATION_HIT_CONTEXT_LIMIT = 80;
@@ -114,31 +107,20 @@ export const ConversationPage = memo(function ConversationPage({
   useEffect(() => {
     setActiveAction(null);
   }, [selectedThreadId]);
-  const mergedMessages = useMemo(
-    () => mergeConversationRecords(
-      [...(page.messages || []), ...(liveMessages || [])],
-      selectedThreadId,
-    ),
+  const transcript = useMemo(
+    () => buildConversationTranscript({
+      canonicalRecords: page.messages || [],
+      liveRecords: liveMessages || [],
+      threadId: selectedThreadId,
+    }),
     [liveMessages, page.messages, selectedThreadId],
   );
-  const visibleMessages = useMemo(
-    () =>
-      groupConversationDisplayRecords(
-        mergedMessages.filter(
-          (message) => !shouldHideConversationRecord(message),
-        ),
-      ),
-    [mergedMessages],
-  );
+  const visibleMessages = transcript.records;
   const bubbleAnimationEntries = useMemo(
     () => getBubbleAnimationEntries(visibleMessages, selectedThreadId),
     [visibleMessages, selectedThreadId],
   );
-  const visibleMessageIds = useMemo(
-    () => visibleMessages.map((message) =>
-      getConversationRenderId(message, selectedThreadId)),
-    [selectedThreadId, visibleMessages],
-  );
+  const visibleMessageIds = transcript.recordRenderIds;
   const visibleMessageIndexById = useMemo(
     () => new Map(visibleMessageIds.map((id, index) => [id, index])),
     [visibleMessageIds],
@@ -277,30 +259,16 @@ export const ConversationPage = memo(function ConversationPage({
       visibleWindow,
     ],
   );
-  const renderedRange = useMemo(
-    () => expandRangeToAssistantTurnBoundaries(
-      visibleMessages,
+  const transcriptWindow = useMemo(
+    () => selectConversationTranscriptWindow(
+      transcript,
       clampedVisibleRange,
-      selectedThreadId,
     ),
-    [clampedVisibleRange, selectedThreadId, visibleMessages],
+    [clampedVisibleRange, transcript],
   );
-  const renderedMessages = useMemo(
-    () =>
-      visibleMessages.slice(
-        renderedRange.start,
-        renderedRange.end,
-      ),
-    [visibleMessages, renderedRange],
-  );
-  const renderedDisplayItems = useMemo(
-    () => buildAssistantTurnDisplayModel(
-      renderedMessages,
-      selectedThreadId,
-      renderedRange.start,
-    ),
-    [renderedMessages, renderedRange.start, selectedThreadId],
-  );
+  const renderedRange = transcriptWindow.range;
+  const renderedMessages = transcriptWindow.records;
+  const renderedDisplayItems = transcriptWindow.displayItems;
   const renderedBubbleAnimationEntries = useMemo(
     () => getBubbleAnimationEntries(renderedMessages, selectedThreadId),
     [renderedMessages, selectedThreadId],

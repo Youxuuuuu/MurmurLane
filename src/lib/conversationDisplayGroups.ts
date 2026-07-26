@@ -84,8 +84,8 @@ function getMediaIdentity(item: ConversationMediaItem) {
 }
 
 function mergeSendFileImages(messages: ConversationRecord[]) {
-  const merged = [];
-  const seen = new Set();
+  const merged: ConversationMediaItem[] = [];
+  const seen = new Set<string>();
 
   messages.forEach((message) => {
     getConversationMediaItems(message)
@@ -105,8 +105,8 @@ function compareConversationRecordOrder(
   left: ConversationRecord,
   right: ConversationRecord,
 ) {
-  const leftSource = left?.source as any;
-  const rightSource = right?.source as any;
+  const leftSource = left.source;
+  const rightSource = right.source;
   const leftSourceFile = String(leftSource?.sourceFile || "").replace(/\\/g, "/").toLowerCase();
   const rightSourceFile = String(rightSource?.sourceFile || "").replace(/\\/g, "/").toLowerCase();
   const leftLine = Number(leftSource?.sourceLine);
@@ -155,7 +155,10 @@ function getImageMessageGroupKey(message: ConversationRecord) {
 }
 
 function groupSendFileMessages(messages: ConversationRecord[]) {
-  const groups = new Map();
+  const groups = new Map<
+    string,
+    { operationIndexes: number[]; imageIndexes: number[] }
+  >();
 
   messages.forEach((message, index) => {
     const relevant =
@@ -173,12 +176,13 @@ function groupSendFileMessages(messages: ConversationRecord[]) {
     }
 
     const group = groups.get(key);
+    if (!group) return;
     if (isSendFileOperation(message)) group.operationIndexes.push(index);
     if (isSendFileImageRecord(message)) group.imageIndexes.push(index);
   });
 
-  const replacements = new Map();
-  const hiddenIndexes = new Set();
+  const replacements = new Map<number, ConversationRecord>();
+  const hiddenIndexes = new Set<number>();
 
   groups.forEach((group, key) => {
     const groupIds = [
@@ -259,7 +263,8 @@ function isImageOnlyMessage(message: ConversationRecord) {
 
 function mergeImageMessageGroup(messages: ConversationRecord[]) {
   const first = messages[0];
-  if (!first || messages.length === 1) return first;
+  if (!first) return null;
+  if (messages.length === 1) return first;
 
   const attachments = messages.flatMap((message) =>
     getConversationMediaItems(message).filter(isImageLikeMedia),
@@ -279,14 +284,15 @@ function mergeImageMessageGroup(messages: ConversationRecord[]) {
 }
 
 function groupImageMessagesByTime(messages: ConversationRecord[]) {
-  const grouped = [];
-  let pending = [];
+  const grouped: ConversationRecord[] = [];
+  let pending: ConversationRecord[] = [];
   let pendingKey = "";
   let pendingType = "";
 
   const flush = () => {
     if (!pending.length) return;
-    grouped.push(mergeImageMessageGroup(pending));
+    const merged = mergeImageMessageGroup(pending);
+    if (merged) grouped.push(merged);
     pending = [];
     pendingKey = "";
     pendingType = "";
