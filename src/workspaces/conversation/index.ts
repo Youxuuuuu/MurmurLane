@@ -21,6 +21,7 @@ export {
   createConversationWorkspaceOutput,
   type ConversationWorkspaceOutput,
 } from "./conversationWorkspaceContract";
+export { useConversationWorkspace } from "./useConversationWorkspace";
 export type { WebChatPort } from "./webChatPort";
 export {
   createCanonicalConversationObserver,

@@ -1,5 +1,5 @@
 import type { MurmurLaneApi } from "../../data/api";
-import type { WebChatPort } from "../../workspaces/conversation/webChatPort";
+import type { WebChatPort } from "../../workspaces/conversation";
 
 export type MurmurLaneDataAdapter = MurmurLaneApi;
 export type WebChatAdapter = WebChatPort;

@@ -71,7 +71,7 @@ import { SegmentSwitch } from "./components/controls/SegmentSwitch";
 import { ThemeIconButton } from "./components/controls/ThemeIconButton";
 import { TimelineModeSwitch } from "./components/controls/TimelineModeSwitch";
 import { validateAppData } from "./dev/validateAppData";
-import { useConversationWorkspace } from "./workspaces/conversation/useConversationWorkspace";
+import { useConversationWorkspace } from "./workspaces/conversation";
 
 const ENABLE_APP_DEBUG_LOG = false;
 const searchDataVersions = new WeakMap<RemoteData, number>();

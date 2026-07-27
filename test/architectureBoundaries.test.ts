@@ -9,6 +9,7 @@ const repositoryRoot = join(
   "..",
 );
 const workspacesRoot = join(repositoryRoot, "src", "workspaces");
+const sourceRoot = join(repositoryRoot, "src");
 
 function collectSourceFiles(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap(
@@ -65,4 +66,48 @@ test("不建立无所有权语义的顶层杂物目录", () => {
   assert.equal(topLevelDirectories.has("common"), false);
   assert.equal(topLevelDirectories.has("utils"), false);
   assert.equal(topLevelDirectories.has("helpers"), false);
+});
+
+test("Workspace 外部调用方只通过公共入口导入", () => {
+  const violations: string[] = [];
+  for (const path of collectSourceFiles(sourceRoot)) {
+    if (![".ts", ".tsx"].includes(extname(path))) continue;
+    if (path.startsWith(workspacesRoot)) continue;
+    const source = readFileSync(path, "utf8");
+    for (const match of source.matchAll(
+      /from\s+["']([^"']+)["']/g,
+    )) {
+      const specifier = match[1];
+      if (/\/workspaces\/[^/]+\//.test(specifier)) {
+        violations.push(
+          `${relative(repositoryRoot, path)} -> ${specifier}`,
+        );
+      }
+    }
+  }
+  assert.deepEqual(violations, []);
+});
+
+test("View 不直接依赖具体 Adapter 或 ContentSync", () => {
+  const componentsRoot = join(sourceRoot, "components");
+  const violations: string[] = [];
+  for (const path of collectSourceFiles(componentsRoot)) {
+    if (![".ts", ".tsx"].includes(extname(path))) continue;
+    const source = readFileSync(path, "utf8");
+    for (const match of source.matchAll(
+      /from\s+["']([^"']+)["']/g,
+    )) {
+      const specifier = match[1];
+      if (
+        specifier.includes("/data/api") ||
+        specifier.includes("/data/chatApi") ||
+        specifier.includes("/content-sync")
+      ) {
+        violations.push(
+          `${relative(repositoryRoot, path)} -> ${specifier}`,
+        );
+      }
+    }
+  }
+  assert.deepEqual(violations, []);
 });

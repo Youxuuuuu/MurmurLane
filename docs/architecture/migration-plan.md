@@ -822,3 +822,24 @@ src/workspaces/conversation/index.ts
 src/workspaces/conversation/useConversationWorkspace.ts
 test/canonicalConversationObserver.test.ts
 ```
+
+### 阶段 11 执行结果
+
+- Conversation Workspace 从 `index.ts` 公开 Controller Hook、WebChat Port、Transcript、状态与 Canonical Observer 的窄入口。
+- `App.tsx`、Conversation View 类型和 App Dependencies 不再深层导入 Workspace 内部文件。
+- 新增静态架构测试，禁止 Workspace 外部调用方通过深层路径导入，并禁止 View 直接依赖具体 Adapter 或 ContentSync。
+- 保留现有 `components/`、`lib/`、`types/` 与 `data/` 位置，不进行全树搬迁。
+- ADR-0015 标记为 `Implementation: Complete`。
+- 本阶段没有修改运行时数据流、JSX、CSS、DOM、滚动、窗口化或动画。
+
+### 阶段 11 实际修改文件
+
+```text
+docs/adr/0015-runtime-flow-and-static-module-dependencies-are-distinct.md
+docs/architecture/migration-plan.md
+src/App.tsx
+src/app/composition/appDependencies.ts
+src/components/conversation/ConversationPage.tsx
+src/workspaces/conversation/index.ts
+test/architectureBoundaries.test.ts
+```

@@ -1,10 +1,18 @@
 ---
 Status: Accepted
-Implementation: Partial
+Implementation: Complete
 Date: 2026-07-27
 ---
 
 # ADR-0015：区分运行时数据流与静态模块依赖方向
+
+## 当前实施结果
+
+`src/app/`、`src/content-sync/` 与 `src/workspaces/` 已承载真实的 Composition、Navigation、Application Flow、同步和领域 Controller。运行时仍由 App Composition Root 把 Snapshot、Ports、View Model、Commands 与现有 View 组装起来；Workspace 不因向 View 提供值而静态导入 View。
+
+Conversation、Timeline 与 Archive 均提供窄 `index.ts` 公共入口。Workspace 外部调用方已移除对 `useConversationWorkspace.ts` 与 `webChatPort.ts` 的深层导入。架构测试现在检查 Workspace 之间的越界依赖、外部调用方的深层 Workspace Import，以及 View 对具体 Adapter 或 ContentSync 的直接依赖。
+
+现有 `components/`、`lib/`、`types/` 与 `data/` 没有为目录整齐而批量搬迁；新 seam 单向复用其中已有且所有权明确的逻辑和外部契约映射。
 
 ## Context
 

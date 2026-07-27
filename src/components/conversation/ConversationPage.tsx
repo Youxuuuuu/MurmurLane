@@ -41,7 +41,7 @@ import {
 import {
   selectConversationTranscriptWindow,
 } from "../../workspaces/conversation";
-import type { useConversationWorkspace } from "../../workspaces/conversation/useConversationWorkspace";
+import type { useConversationWorkspace } from "../../workspaces/conversation";
 import type { ConversationMediaUrlPort } from "../../lib/conversation";
 import type { ConversationRecord } from "../../types/conversation";
 
