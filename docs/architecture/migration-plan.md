@@ -775,3 +775,25 @@ docs/adr/0009-strict-types-grow-from-new-seams.md
 docs/architecture/migration-plan.md
 src/components/conversation/ConversationPage.tsx
 ```
+
+### 阶段 9B 执行结果
+
+- 按既定顺序移除 `App.tsx` 的 `@ts-nocheck`，完成 ADR-0009 规定的两个大型入口渐进收紧。
+- 为搜索数据版本、Conversation Record 身份、ContentSync Coordinator、Thread Profile、通知与同步错误回退补齐明确类型。
+- 修正 ContentSync Snapshot 的类型声明，使其与当前只冻结聚合对象的真实运行时行为一致；没有虚构深度只读保证。
+- Conversation Workspace 的 Thread Profile Override 先与完整 Canonical 或默认 Profile 合并，再应用预览值，保持页面获得完整 Profile。
+- `App.tsx` 与 `ConversationPage.tsx` 进入现有应用类型检查；已经迁出的 App、ContentSync 与 Workspace seam 继续由 `tsconfig.strict.json` 独立严格检查。
+- 已实际验证将两个入口直接加入严格配置会递归拖入大量尚未迁移的旧视觉组件，因此没有用 `any`、新增 `@ts-nocheck` 或批量页面重写掩盖该事实。
+- 本阶段不宣称全项目已经启用 `strict: true`；该候选决策仍按 ADR-0009 留待后续单独评估。
+- 未修改 CSS、DOM 层级、React Key、滚动策略、窗口化算法或动画。
+
+### 阶段 9B 实际修改文件
+
+```text
+docs/adr/0009-strict-types-grow-from-new-seams.md
+docs/architecture/migration-plan.md
+src/App.tsx
+src/content-sync/liveUpdateCoordinator.ts
+src/content-sync/sourceSnapshotStore.ts
+src/workspaces/conversation/useConversationWorkspace.ts
+```

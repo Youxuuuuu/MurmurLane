@@ -208,18 +208,32 @@ export function useConversationWorkspace({
     profileCommands,
   );
   const effectiveThreadProfiles = useMemo(
-    () => ({
-      ...threadProfiles,
-      ...workspaceState.webThreadProfileOverrides,
-      ...(workspaceState.profilePreview?.threadId
-        ? {
-            [workspaceState.profilePreview.threadId]:
-              workspaceState.profilePreview.profile,
-          }
-        : {}),
-    }),
+    () => {
+      const profiles: Record<
+        string,
+        ReturnType<typeof createDefaultThreadProfile>
+      > = { ...threadProfiles };
+      Object.entries(
+        workspaceState.webThreadProfileOverrides,
+      ).forEach(([threadId, override]) => {
+        profiles[threadId] = {
+          ...(threadProfiles[threadId] ??
+            createDefaultThreadProfile(
+              threadId,
+              profileThreadIds.indexOf(threadId),
+            )),
+          ...override,
+        };
+      });
+      if (workspaceState.profilePreview?.threadId) {
+        profiles[workspaceState.profilePreview.threadId] =
+          workspaceState.profilePreview.profile;
+      }
+      return profiles;
+    },
     [
       threadProfiles,
+      profileThreadIds,
       workspaceState.profilePreview,
       workspaceState.webThreadProfileOverrides,
     ],

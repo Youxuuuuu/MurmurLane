@@ -1,6 +1,6 @@
 ---
 Status: Accepted
-Implementation: Partial
+Implementation: Complete
 ---
 
 # 严格类型从新 seam 向旧代码渐进扩展
@@ -9,13 +9,15 @@ Implementation: Partial
 
 新增 `tsconfig.server.json` 与 `npm run typecheck:server`，覆盖 `server/index.ts`、`app.ts`、Router、领域模块、Read Model、Live Update 和 Server Access，并补充 `@types/node` 与 `@types/express` 直接类型依赖。Server strict typecheck 已通过，没有使用 `@ts-nocheck` 或大范围 `any` 掩盖问题。
 
-新增浏览器 seam 继续由 `tsconfig.strict.json` 检查。`ConversationPage.tsx` 的 `@ts-nocheck` 已移除，并为 Workspace View Model、Commands、Transcript、DOM 元素、滚动原因和诊断快照补齐明确类型；`App.tsx` 仍按既定顺序留到最后，因此本 ADR 保持 `Partial`。
+新增浏览器 seam 继续由 `tsconfig.strict.json` 检查。`ConversationPage.tsx` 与 `App.tsx` 的 `@ts-nocheck` 均已按既定顺序移除，并为它们直接拥有或组合的状态、Ref、回调和边界值补齐明确类型。两者现在进入现有 `tsconfig.app.json` 应用类型检查。
+
+实施阶段曾验证将 `App.tsx` 与 `ConversationPage.tsx` 直接加入 `tsconfig.strict.json`：TypeScript 会沿静态 Import 将大量尚未迁移的旧视觉组件一起纳入严格检查，形成一次性全页面类型重写。这与本 ADR 的渐进原则冲突，因此严格配置仍只覆盖已经迁出的 App、ContentSync 与 Workspace seam；旧页面在移除文件级豁免后由应用配置持续检查。此边界不表示旧页面依赖树已经达到全项目 `strict: true`。
 
 新架构 seam 默认采用严格类型，API、SSE、JSONL、Markdown、文件和环境变量等外部数据在 Adapter 边缘进行运行时校验。旧大型文件随职责迁移渐进收紧，不进行一次性全项目类型重写，并将 MurmurLane Server 纳入独立 typecheck。
 
 ## 当前源码事实
 
-`tsconfig.app.json` 当前为 `strict: false`；`App.tsx` 和 `ConversationPage.tsx` 使用 `@ts-nocheck`；`tsconfig.node.json` 只包含 `vite.config.ts`；根 `tsconfig.json` 没有引用 Server TypeScript 项目。`npm run build` 执行 `tsc -b && vite build`，但 `server/` 没有进入该 TypeScript build。
+ADR 接受时，`tsconfig.app.json` 为 `strict: false`，`App.tsx` 和 `ConversationPage.tsx` 使用 `@ts-nocheck`，`tsconfig.node.json` 只包含 `vite.config.ts`，根 `tsconfig.json` 没有引用 Server TypeScript 项目。`npm run build` 执行 `tsc -b && vite build`，但 `server/` 没有进入该 TypeScript build。当前已通过独立严格配置补齐新 seam 与 Server 检查，并移除两个大型入口的文件级豁免；默认生产构建命令仍保持原有行为。
 
 `chatApi.ts` 当前通过泛型类型断言读取 HTTP JSON，并将 SSE 的 `JSON.parse` 结果断言为 `WebChatEvent`；这些断言不构成运行时契约校验。Conversation 和 WebChat 消费类型保留可选字段、未知扩展字段和部分开放字符串，以兼容现有与未来 Cyberboss 数据。
 

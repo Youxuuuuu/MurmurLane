@@ -1,4 +1,3 @@
-// @ts-nocheck
 import {
   useCallback,
   useEffect,
@@ -16,6 +15,10 @@ import {
   createContentSyncStore,
   createLiveUpdateCoordinator,
 } from "./content-sync";
+import type { LiveUpdateCoordinator } from "./content-sync";
+import type { RemoteData } from "./types/api";
+import type { ConversationRecord } from "./types/conversation";
+import type { ConversationThreadProfile } from "./lib/conversationProfiles";
 import { styleThemes } from "./config/theme";
 import {
   diaryEntries,
@@ -78,10 +81,10 @@ import {
 import { getConversationRenderId } from "./lib/conversationIdentity";
 
 const ENABLE_APP_DEBUG_LOG = false;
-const searchDataVersions = new WeakMap();
+const searchDataVersions = new WeakMap<RemoteData, number>();
 let nextSearchDataVersion = 1;
 
-function getSearchDataVersion(source) {
+function getSearchDataVersion(source: RemoteData) {
   const current = searchDataVersions.get(source);
   if (current) return current;
   const version = nextSearchDataVersion++;
@@ -89,19 +92,32 @@ function getSearchDataVersion(source) {
   return version;
 }
 
-function resolveStateAction(action, current) {
+function resolveStateAction(
+  action: string | ((current: string) => string),
+  current: string,
+) {
   return typeof action === "function" ? action(current) : action;
 }
 
-function getLiveConversationRecordKey(date, threadId, record) {
+function getLiveConversationRecordKey(
+  date: string,
+  threadId: string,
+  record: ConversationRecord,
+) {
   return `${toDotDate(date)}:${getConversationRenderId(record, threadId)}`;
 }
 
-function rememberConversationRecords(knownSet, date, records = []) {
-  records.forEach((record, index) => {
+function rememberConversationRecords(
+  knownSet: Set<string>,
+  date: string,
+  records: readonly ConversationRecord[] = [],
+) {
+  records.forEach((record) => {
     const threadId = String(record?.threadId || "");
     if (!threadId) return;
-    knownSet.add(getLiveConversationRecordKey(date, threadId, record, index));
+    knownSet.add(
+      getLiveConversationRecordKey(date, threadId, record),
+    );
   });
 }
 
@@ -483,7 +499,9 @@ export default function InsDiaryPrototype({
           .filter(([, metadata]) => metadata.error != null)
           .map(([source, metadata]) => [
             source,
-            String(metadata.error?.message || metadata.error),
+            metadata.error instanceof Error
+              ? metadata.error.message
+              : "内容同步失败",
           ]),
       ),
     [contentSyncSnapshot.sources],
@@ -498,13 +516,18 @@ export default function InsDiaryPrototype({
   const activeSectionRef = useRef(activeSection);
   const conversationViewRef = useRef(conversationView);
   const selectedThreadIdRef = useRef(selectedThreadId);
-  const threadProfilesRef = useRef({});
-  const knownConversationRecordIdsRef = useRef(new Set());
-  const loadedConversationDatesRef = useRef(new Set());
+  const threadProfilesRef = useRef<
+    Record<string, ConversationThreadProfile>
+  >({});
+  const knownConversationRecordIdsRef = useRef(
+    new Set<string>(),
+  );
+  const loadedConversationDatesRef = useRef(new Set<string>());
   const conversationBaselineReadyRef = useRef(false);
   const initialLiveRefreshCompleteRef = useRef(false);
   const liveSearchActiveRef = useRef(false);
-  const liveUpdateCoordinatorRef = useRef(null);
+  const liveUpdateCoordinatorRef =
+    useRef<LiveUpdateCoordinator | null>(null);
   threadProfilesRef.current = effectiveThreadProfiles;
 
   selectedDateRef.current = selectedDate;
@@ -531,7 +554,6 @@ export default function InsDiaryPrototype({
           dotDate,
           threadId,
           record,
-          index,
         );
         const alreadyKnown = knownConversationRecordIdsRef.current.has(recordKey);
         knownConversationRecordIdsRef.current.add(recordKey);
@@ -560,13 +582,14 @@ export default function InsDiaryPrototype({
 
         const incomingCount = incomingRecords.length;
         const latestRecord = incomingRecords[incomingRecords.length - 1];
-        const profile = threadProfilesRef.current[threadId] || {};
+        const profile = threadProfilesRef.current[threadId];
         receiveConversationNotification(
           {
             threadId,
             date: dotDate,
-            name: profile.name || `对话 ${threadId.slice(0, 6)}`,
-            avatar: profile.avatar || "",
+            name:
+              profile?.name || `对话 ${threadId.slice(0, 6)}`,
+            avatar: profile?.avatar || "",
             message: getLiveMessagePreview(latestRecord),
             count: incomingCount,
             version: Date.now(),
@@ -888,8 +911,7 @@ export default function InsDiaryPrototype({
     getSearchDataVersion(searchRemoteData);
 
   const archiveShowsXiaoye =
-    activeSection === "Xiaoye" ||
-    (activeSection === "Archive" && archiveSubject === "Xiaoye");
+    activeSection === "Archive" && archiveSubject === "Xiaoye";
   const pageScrollMode = activeSection === "Timeline" ? "page" : "contained";
   const page = useMemo(() => {
     if (activeSection === "Conversation")
@@ -1348,7 +1370,7 @@ export default function InsDiaryPrototype({
       bottomNavigation={
         activeSection === "Conversation" ? null : (
           <BottomNav
-            activeSection={activeSection === "Xiaoye" ? "Archive" : activeSection}
+            activeSection={activeSection}
             onSelectSection={handleSelectSection}
             page={page}
           />
@@ -1382,13 +1404,17 @@ export default function InsDiaryPrototype({
                 <ConversationSettingsModal
                   mode="thread"
             profile={effectiveThreadProfiles[selectedThreadId]}
-                  onPreview={(profile) =>
+                  onPreview={(
+                    profile: ConversationThreadProfile,
+                  ) =>
                     setConversationProfilePreview({
                       threadId: selectedThreadId,
                       profile,
                     })
                   }
-                  onSave={async (profile) => {
+                  onSave={async (
+                    profile: ConversationThreadProfile,
+                  ) => {
                     const saved = await updateThreadProfile(
                       selectedThreadId,
                       profile,

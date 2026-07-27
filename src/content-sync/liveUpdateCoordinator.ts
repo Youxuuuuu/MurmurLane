@@ -6,9 +6,7 @@ export interface ContentChangeEvent {
   readonly id?: string | number;
 }
 
-type ScheduledTask = unknown;
-
-export interface LiveUpdateCoordinatorDependencies {
+export interface LiveUpdateCoordinatorDependencies<ScheduledTask> {
   readonly subscribe: (
     onEvent: (event: ContentChangeEvent) => void,
   ) => () => void;
@@ -41,14 +39,14 @@ function eventKey(event: ContentChangeEvent) {
   ].join(":");
 }
 
-export function createLiveUpdateCoordinator({
+export function createLiveUpdateCoordinator<ScheduledTask>({
   subscribe,
   refresh,
   schedule,
   cancelSchedule,
   isRefreshBlocked,
   batchDelayMs = 220,
-}: LiveUpdateCoordinatorDependencies): LiveUpdateCoordinator {
+}: LiveUpdateCoordinatorDependencies<ScheduledTask>): LiveUpdateCoordinator {
   const pendingEvents = new Map<string, ContentChangeEvent>();
   let scheduledTask: ScheduledTask | undefined;
   let unsubscribe: (() => void) | undefined;

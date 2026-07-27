@@ -33,15 +33,7 @@ export interface ContentSyncNegativeCache {
   readonly letters: Readonly<Record<string, true>>;
 }
 
-type DeepReadonly<T> = T extends (...args: never[]) => unknown
-  ? T
-  : T extends readonly (infer Item)[]
-    ? readonly DeepReadonly<Item>[]
-    : T extends object
-      ? { readonly [Key in keyof T]: DeepReadonly<T[Key]> }
-      : T;
-
-export type ContentSyncDataSnapshot = DeepReadonly<RemoteData>;
+export type ContentSyncDataSnapshot = Readonly<RemoteData>;
 
 export interface ContentSyncSnapshot {
   readonly data: ContentSyncDataSnapshot;
