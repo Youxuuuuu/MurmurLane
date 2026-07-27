@@ -22,6 +22,10 @@ import {
   upsertTimelineEventInOverlay,
 } from "./timelineMutationOverlay";
 import { toTimelineCommandError } from "./timelineCommandError";
+import {
+  consumeTimelineNavigationTarget,
+  type TimelineHighlightTarget,
+} from "./timelineNavigationTarget";
 
 export type TimelineViewMode =
   | "line"
@@ -121,12 +125,8 @@ export function useTimelineWorkspace<Theme, Page>({
   const [overlay, setOverlay] = useState(
     createTimelineMutationOverlay,
   );
-  const [navigationTarget, setNavigationTarget] = useState<{
-    readonly mode: "Timeline";
-    readonly date: string;
-    readonly targetId: string;
-    readonly query: string;
-  } | null>(null);
+  const [navigationTarget, setNavigationTarget] =
+    useState<TimelineHighlightTarget | null>(null);
   const lastNavigationRevisionRef = useRef(-1);
   const mutationSequenceByTargetRef = useRef(
     new Map<string, number>(),
@@ -290,6 +290,17 @@ export function useTimelineWorkspace<Theme, Page>({
   const selectStatsPeriod = useCallback((period: string) => {
     setStatsPeriod(period);
   }, []);
+  const consumeNavigationTarget = useCallback(
+    (targetId: string) => {
+      setNavigationTarget((current) =>
+        consumeTimelineNavigationTarget(
+          current,
+          targetId,
+        ),
+      );
+    },
+    [],
+  );
 
   const page = useMemo(
     () => buildPage(theme, date, effectiveRemoteData),
@@ -322,12 +333,14 @@ export function useTimelineWorkspace<Theme, Page>({
       openDate,
       selectView,
       selectStatsPeriod,
+      consumeNavigationTarget,
       fetchEvent,
       saveEvent,
       deleteEvent,
     }),
     [
       deleteEvent,
+      consumeNavigationTarget,
       fetchEvent,
       openDate,
       saveEvent,

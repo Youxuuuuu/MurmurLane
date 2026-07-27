@@ -15,6 +15,7 @@ import {
 export function DirectoryPage({
   page,
   highlightResult: requestedHighlightResult,
+  onHighlightConsumed,
   onOpenDatePicker,
   onMonthSelect,
   onOpenShare,
@@ -34,12 +35,13 @@ export function DirectoryPage({
   useEffect(() => {
     setHighlightResult(requestedHighlightResult);
     if (!requestedHighlightResult) return;
-    const timer = window.setTimeout(
-      () => setHighlightResult(null),
-      3000,
-    );
+    const targetId = requestedHighlightResult.targetId;
+    const timer = window.setTimeout(() => {
+      setHighlightResult(null);
+      onHighlightConsumed?.(targetId);
+    }, 3000);
     return () => window.clearTimeout(timer);
-  }, [requestedHighlightResult]);
+  }, [onHighlightConsumed, requestedHighlightResult]);
   const pageRef = useRef(null);
   const [isEditing, setIsEditing] = useState(false);
   const [isPreview, setIsPreview] = useState(false);

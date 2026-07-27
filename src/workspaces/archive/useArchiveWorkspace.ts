@@ -27,6 +27,10 @@ import {
   saveArchiveEntryToOverlay,
 } from "./archiveMutationOverlay";
 import { toArchiveCommandError } from "./archiveCommandError";
+import {
+  consumeArchiveNavigationTarget,
+  type ArchiveHighlightTarget,
+} from "./archiveNavigationTarget";
 
 export type ArchiveSubject = "Me" | "Xiaoye";
 
@@ -145,12 +149,8 @@ export function useArchiveWorkspace<Theme, Page>({
   const [overlay, setOverlay] = useState(
     createArchiveMutationOverlay,
   );
-  const [navigationTarget, setNavigationTarget] = useState<{
-    readonly mode: string;
-    readonly date: string;
-    readonly targetId: string;
-    readonly query: string;
-  } | null>(null);
+  const [navigationTarget, setNavigationTarget] =
+    useState<ArchiveHighlightTarget | null>(null);
   const lastNavigationRevisionRef = useRef(-1);
   const openLoopSequenceRef = useRef(0);
 
@@ -436,6 +436,17 @@ export function useArchiveWorkspace<Theme, Page>({
     },
     [],
   );
+  const consumeNavigationTarget = useCallback(
+    (targetId: string) => {
+      setNavigationTarget((current) =>
+        consumeArchiveNavigationTarget(
+          current,
+          targetId,
+        ),
+      );
+    },
+    [],
+  );
   const viewModel = useMemo(
     () => ({
       date,
@@ -464,12 +475,14 @@ export function useArchiveWorkspace<Theme, Page>({
       selectMode,
       selectSubject,
       selectXiaoyeMode,
+      consumeNavigationTarget,
       loadDocument,
       saveDocument,
       toggleOpenLoop,
     }),
     [
       loadDocument,
+      consumeNavigationTarget,
       openDate,
       saveDocument,
       selectMode,

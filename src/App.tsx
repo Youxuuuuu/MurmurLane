@@ -1140,6 +1140,9 @@ export default function InsDiaryPrototype({
                     highlightResult={
                       timelineViewModel.navigationTarget
                     }
+                    onHighlightConsumed={
+                      timelineCommands.consumeNavigationTarget
+                    }
                     onSelectStatsPeriod={setStatsPeriod}
                     onOpenDatePicker={() => setDatePickerOpen(true)}
                     onMonthSelect={handleSelectMonth}
@@ -1163,6 +1166,9 @@ export default function InsDiaryPrototype({
                     highlightResult={
                       archiveViewModel.navigationTarget
                     }
+                    onHighlightConsumed={
+                      archiveCommands.consumeNavigationTarget
+                    }
                     onOpenDatePicker={() => setDatePickerOpen(true)}
                     onMonthSelect={handleSelectMonth}
                     onSelectXiaoyeMode={setSelectedXiaoyeMode}
@@ -1184,6 +1190,9 @@ export default function InsDiaryPrototype({
                     page={page}
                     highlightResult={
                       archiveViewModel.navigationTarget
+                    }
+                    onHighlightConsumed={
+                      archiveCommands.consumeNavigationTarget
                     }
                     onOpenDatePicker={() => setDatePickerOpen(true)}
                     onMonthSelect={handleSelectMonth}

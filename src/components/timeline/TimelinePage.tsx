@@ -10,6 +10,7 @@ export function TimelinePage({
   timelineView,
   statsPeriod,
   highlightResult: requestedHighlightResult,
+  onHighlightConsumed,
   onSelectStatsPeriod,
   onOpenDatePicker,
   onMonthSelect,
@@ -24,12 +25,13 @@ export function TimelinePage({
   useEffect(() => {
     setHighlightResult(requestedHighlightResult);
     if (!requestedHighlightResult) return;
-    const timer = window.setTimeout(
-      () => setHighlightResult(null),
-      3000,
-    );
+    const targetId = requestedHighlightResult.targetId;
+    const timer = window.setTimeout(() => {
+      setHighlightResult(null);
+      onHighlightConsumed?.(targetId);
+    }, 3000);
     return () => window.clearTimeout(timer);
-  }, [requestedHighlightResult]);
+  }, [onHighlightConsumed, requestedHighlightResult]);
   return (
     <PageCard
       page={page}
