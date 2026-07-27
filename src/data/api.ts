@@ -17,6 +17,10 @@ import type {
   TimelineEventApiResponse,
   TimelineApiResponse,
 } from "../types/api";
+import {
+  AdapterTechnicalError,
+  normalizeRequestError,
+} from "../app/technicalError";
 
 export interface MurmurLaneApiConfig {
   readonly baseUrl: string;
@@ -26,11 +30,11 @@ export interface MurmurLaneApiConfig {
   }>;
 }
 
-export class ApiError extends Error {
-  status: number;
-  statusText: string;
-  path: string;
-  bodyText: string;
+export class ApiError extends AdapterTechnicalError {
+  readonly status: number;
+  readonly statusText: string;
+  readonly path: string;
+  readonly bodyText: string;
 
   constructor({
     status,
@@ -43,7 +47,11 @@ export class ApiError extends Error {
     path: string;
     bodyText: string;
   }) {
-    super(`Request failed: ${status} ${statusText}`);
+    super({
+      kind: "http",
+      message: `Request failed: ${status} ${statusText}`,
+      retryHint: status >= 500 || status === 408 || status === 429,
+    });
     this.name = "ApiError";
     this.status = status;
     this.statusText = statusText;
@@ -82,9 +90,46 @@ function buildQuery(params: Record<string, string | number | null | undefined>) 
   return query.toString();
 }
 
+function isObjectPayload(value: unknown) {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      !Array.isArray(value),
+  );
+}
+
+function isConversationPayload(value: unknown) {
+  return (
+    Array.isArray(value) &&
+    value.every(isObjectPayload)
+  );
+}
+
+function isLiveUpdateEvent(value: unknown): value is LiveUpdateEvent {
+  if (!isObjectPayload(value)) return false;
+  const event = value as Record<string, unknown>;
+  return (
+    typeof event.type === "string" &&
+    [
+      "conversations",
+      "timeline",
+      "diary",
+      "dailySummary",
+      "letters",
+      "staticMemory",
+      "xiaoye",
+      "reminders",
+      "profiles",
+      "moments",
+      "resync",
+    ].includes(event.type)
+  );
+}
+
 async function requestJson<T>(
   path: string,
   options: ApiRequestOptions = {},
+  validate: (value: unknown) => boolean = isObjectPayload,
 ): Promise<T> {
   const headers = new Headers(options.headers);
 
@@ -92,12 +137,17 @@ async function requestJson<T>(
     headers.set("X-MurmurLane-Edit-Token", EDIT_TOKEN);
   }
 
-  const response = await fetch(buildApiUrl(path), {
-    signal: options.signal,
-    method: options.method,
-    headers,
-    body: options.body,
-  });
+  let response: Response;
+  try {
+    response = await fetch(buildApiUrl(path), {
+      signal: options.signal,
+      method: options.method,
+      headers,
+      body: options.body,
+    });
+  } catch (error) {
+    throw normalizeRequestError(error);
+  }
 
   if (!response.ok) {
     const bodyText = await response.text();
@@ -109,7 +159,44 @@ async function requestJson<T>(
     });
   }
 
-  return response.json() as Promise<T>;
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch (cause) {
+    throw new AdapterTechnicalError({
+      kind: "invalid-payload",
+      message: "Invalid JSON response",
+      retryHint: false,
+      cause,
+    });
+  }
+  if (!validate(payload)) {
+    throw new AdapterTechnicalError({
+      kind: "invalid-payload",
+      message: "Unexpected response payload",
+      retryHint: false,
+    });
+  }
+  return payload as T;
+}
+
+async function fetchBinaryAsset(url: string) {
+  let response: Response;
+  try {
+    response = await fetch(url);
+  } catch (error) {
+    throw normalizeRequestError(error);
+  }
+  if (!response.ok) {
+    const bodyText = await response.text();
+    throw new ApiError({
+      status: response.status,
+      statusText: response.statusText,
+      path: url,
+      bodyText,
+    });
+  }
+  return response.blob();
 }
 
 function fetchConversations(
@@ -122,7 +209,11 @@ function fetchConversations(
     limit: options.limit,
   });
 
-  return requestJson<ConversationsResponse>(`/api/conversations?${query}`);
+  return requestJson<ConversationsResponse>(
+    `/api/conversations?${query}`,
+    {},
+    isConversationPayload,
+  );
 }
 
 function searchConversation(
@@ -136,9 +227,11 @@ function searchConversation(
     limit: options.limit,
   });
 
-  return requestJson<ConversationsResponse>(`/api/conversations/search?${query}`, {
-    signal: options.signal,
-  });
+  return requestJson<ConversationsResponse>(
+    `/api/conversations/search?${query}`,
+    { signal: options.signal },
+    isConversationPayload,
+  );
 }
 
 function fetchConversationMoments(
@@ -355,7 +448,10 @@ function subscribeToLiveUpdates(
   source.addEventListener("error", () => onConnectionChange?.(false));
   source.addEventListener("change", (event) => {
     try {
-      onEvent(JSON.parse((event as MessageEvent<string>).data) as LiveUpdateEvent);
+      const payload: unknown = JSON.parse(
+        (event as MessageEvent<string>).data,
+      );
+      if (isLiveUpdateEvent(payload)) onEvent(payload);
     } catch (error) {
       if (diagnostics.development) {
         console.debug("[MurmurLane Debug] ignored invalid live update", error);
@@ -373,6 +469,7 @@ return Object.freeze({
   fetchConversationMoments,
   fetchConversationProfiles,
   fetchStickerAssets,
+  fetchBinaryAsset,
   saveConversationUserProfile,
   saveConversationThreadProfile,
   fetchTimeline,

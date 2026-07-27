@@ -84,7 +84,10 @@ interface ConversationPageProps {
   webChatCommands:
     | Pick<
         ConversationCommands,
-        "sendMessages" | "retryMessage" | "chooseModel"
+        | "sendMessages"
+        | "retryMessage"
+        | "chooseModel"
+        | "loadSticker"
       >
     | null;
   loadStickers: ComposerProps["loadStickers"];
@@ -1306,6 +1309,7 @@ export const ConversationPage = memo(function ConversationPage({
           onClearQuote={() => setQuoteMessage(null)}
           onSendMessages={({ messages, newThread }) => webChatCommands.sendMessages({ messages, newThread })}
           onChooseModel={webChatCommands.chooseModel}
+          loadStickerAsset={webChatCommands.loadSticker}
           isNewThread={String(selectedThreadId).startsWith("draft-")}
           error={webChatViewModel.error}
           loadStickers={loadStickers}

@@ -93,6 +93,7 @@ export function ConversationComposer({
   isNewThread = false,
   error = "",
   loadStickers,
+  loadStickerAsset,
   mediaUrls,
 }: {
   status?: WebChatStatus | null;
@@ -105,6 +106,7 @@ export function ConversationComposer({
   isNewThread?: boolean;
   error?: string;
   loadStickers: () => Promise<{ stickers: StickerAsset[] }>;
+  loadStickerAsset: (sticker: StickerAsset) => Promise<Blob>;
   mediaUrls: import("../../lib/conversation").ConversationMediaUrlPort;
 }) {
   const [text, setText] = useState("");
@@ -211,8 +213,8 @@ export function ConversationComposer({
       setQueuedMessages([]);
       resetCurrent();
       setPanel(null);
-    } catch (nextError) {
-      setLocalError(String(nextError?.message || nextError));
+    } catch {
+      setLocalError("发送失败，请稍后重试。");
     } finally {
       window.setTimeout(() => {
         sendingRef.current = false;
@@ -236,9 +238,7 @@ export function ConversationComposer({
     if (stickerSendingRef.current) return;
     stickerSendingRef.current = true;
     try {
-      const response = await fetch(sticker.src);
-      if (!response.ok) throw new Error("表情包读取失败");
-      const blob = await response.blob();
+      const blob = await loadStickerAsset(sticker);
       await onSendMessages({
         newThread: isNewThread,
         messages: [{
@@ -255,8 +255,8 @@ export function ConversationComposer({
       });
       onClearQuote?.();
       setPanel(null);
-    } catch (nextError) {
-      setLocalError(String(nextError?.message || nextError));
+    } catch {
+      setLocalError("表情包发送失败，请稍后重试。");
     } finally {
       stickerSendingRef.current = false;
     }
@@ -289,8 +289,8 @@ export function ConversationComposer({
       recorderRef.current = recorder;
       recorder.start();
       setRecording(true);
-    } catch (nextError) {
-      setLocalError(String(nextError?.message || nextError));
+    } catch {
+      setLocalError("无法开始录音，请检查麦克风权限。");
     }
   };
 

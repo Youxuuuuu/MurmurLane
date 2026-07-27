@@ -19,7 +19,7 @@ Implementation: Complete
 
 ADR 接受时，`tsconfig.app.json` 为 `strict: false`，`App.tsx` 和 `ConversationPage.tsx` 使用 `@ts-nocheck`，`tsconfig.node.json` 只包含 `vite.config.ts`，根 `tsconfig.json` 没有引用 Server TypeScript 项目。`npm run build` 执行 `tsc -b && vite build`，但 `server/` 没有进入该 TypeScript build。当前已通过独立严格配置补齐新 seam 与 Server 检查，并移除两个大型入口的文件级豁免；默认生产构建命令仍保持原有行为。
 
-`chatApi.ts` 当前通过泛型类型断言读取 HTTP JSON，并将 SSE 的 `JSON.parse` 结果断言为 `WebChatEvent`；这些断言不构成运行时契约校验。Conversation 和 WebChat 消费类型保留可选字段、未知扩展字段和部分开放字符串，以兼容现有与未来 Cyberboss 数据。
+ADR 接受时，`chatApi.ts` 通过泛型类型断言读取 HTTP JSON，并将 SSE 的 `JSON.parse` 结果断言为 `WebChatEvent`；这些断言不构成运行时契约校验。当前 Browser Adapter 已先将 JSON 解析为 `unknown`，检查 Conversation Array、WebChat Models、Send Result、Upload Media 和 SSE Event 等调用方依赖的最小不变量，再进入消费类型；未知扩展字段继续保留。Conversation 和 WebChat 消费类型仍保留可选字段、未知扩展字段和部分开放字符串，以兼容现有与未来 Cyberboss 数据。
 
 ## 新 seam 的严格类型
 

@@ -24,6 +24,7 @@ export {
   type ContentSyncNegativeCache,
   type ContentSyncSnapshot,
   type ContentSyncSource,
+  type ContentSyncSourceError,
   type ContentSyncSourceMetadata,
   type ContentSyncStore,
 } from "./sourceSnapshotStore";

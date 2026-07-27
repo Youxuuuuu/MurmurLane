@@ -843,3 +843,45 @@ src/components/conversation/ConversationPage.tsx
 src/workspaces/conversation/index.ts
 test/architectureBoundaries.test.ts
 ```
+
+### 阶段 12 执行结果
+
+- 新增应用级 Technical Error 类型，Browser Adapter 将 HTTP、网络、取消、Timeout 与无效 Payload 归一化为技术事实。
+- `ApiError` 与 `WebChatHttpError` 保留 HTTP Body 作为诊断字段，但安全 Error message 不再包含远端 Body。
+- MurmurLane HTTP JSON、文件 SSE、WebChat HTTP JSON 与 WebChat SSE 在 Adapter 边缘先作为 `unknown` 检查最小不变量；未知兼容字段继续允许。
+- ContentSync Snapshot 的错误改为安全、稳定的 `sync-failed` 元数据，不发布原始 Error、路径或 Cause。
+- Conversation Workspace 将连接、模型、发送、上传、搜索、Sticker 和资料保存失败解释为安全领域结果或 Command Error。
+- 保持发送 Timeout/网络模糊错误先查询状态，无法确认进入 `unknown`，不自动重复发送；HTTP 明确失败仍进入 `failed`。
+- Conversation 搜索、Sticker 列表和 Sticker 二进制加载不再由 App 把具体 Adapter 函数直接传给 View，而由 Workspace Commands 暴露。
+- Conversation 媒体 URL 能力由 Workspace 消费窄 Port 后随页面 View Model 提供，不暴露具体 Adapter、Token 或 Base URL。
+- View 不再根据 HTTP 状态、技术 Error Class、原始 Server Body 或浏览器异常字符串决定领域行为。
+- 新增 Adapter、ContentSync、Workspace 安全错误与静态边界测试。
+- ADR-0014 标记为 `Implementation: Complete`，并补充 ADR-0009 与 ADR-0010 的当前实施事实。
+- 明确的安全行为变化仅限错误文案去除未经筛选的远端 Body、路径与原始异常；错误 UI 位置、JSX、CSS、DOM、发送事务、上传顺序、滚动和动画不变。
+
+### 阶段 12 实际修改文件
+
+```text
+docs/adr/0009-strict-types-grow-from-new-seams.md
+docs/adr/0010-adapters-are-wired-at-the-app-composition-root.md
+docs/adr/0014-errors-flow-from-technical-facts-to-domain-results-to-safe-view-state.md
+docs/architecture/migration-plan.md
+src/App.tsx
+src/app/technicalError.ts
+src/components/conversation/ConversationComposer.tsx
+src/components/conversation/ConversationPage.tsx
+src/components/conversation/ConversationSettingsModal.tsx
+src/components/conversation/StickerPanel.tsx
+src/content-sync/index.ts
+src/content-sync/sourceSnapshotStore.ts
+src/data/api.ts
+src/data/chatApi.ts
+src/lib/conversationProfiles.ts
+src/workspaces/conversation/conversationCommandError.ts
+src/workspaces/conversation/index.ts
+src/workspaces/conversation/useConversationWorkspace.ts
+test/adapterErrors.test.ts
+test/architectureBoundaries.test.ts
+test/contentSync.test.ts
+test/workspaceErrors.test.ts
+```

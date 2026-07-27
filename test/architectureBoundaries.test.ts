@@ -111,3 +111,22 @@ test("View 不直接依赖具体 Adapter 或 ContentSync", () => {
   }
   assert.deepEqual(violations, []);
 });
+
+test("View 不读取技术错误诊断字段或 HTTP 状态", () => {
+  const componentsRoot = join(sourceRoot, "components");
+  const violations: string[] = [];
+  for (const path of collectSourceFiles(componentsRoot)) {
+    if (![".ts", ".tsx"].includes(extname(path))) continue;
+    const source = readFileSync(path, "utf8");
+    if (
+      /\bbodyText\b/.test(source) ||
+      /\berror\??\.status(?:Code)?\b/.test(source) ||
+      /instanceof\s+(?:ApiError|WebChatHttpError)/.test(
+        source,
+      )
+    ) {
+      violations.push(relative(repositoryRoot, path));
+    }
+  }
+  assert.deepEqual(violations, []);
+});

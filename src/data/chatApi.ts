@@ -6,6 +6,11 @@ import type {
   WebChatSendResult,
   WebChatStatus,
 } from "../types/webChat";
+import {
+  AdapterTechnicalError,
+  isTechnicalError,
+  normalizeRequestError,
+} from "../app/technicalError";
 
 export const WEB_CHAT_SEND_TIMEOUT_MS = 15_000;
 export const WEB_CHAT_UPLOAD_TIMEOUT_MS = 120_000;
@@ -17,26 +22,43 @@ export interface WebChatApiConfig {
   readonly uploadTimeoutMs: number;
 }
 
-export class WebChatHttpError extends Error {
-  statusCode: number;
+export class WebChatHttpError extends AdapterTechnicalError {
+  readonly statusCode: number;
+  readonly bodyText: string;
 
-  constructor(statusCode: number, message: string) {
-    super(message);
+  constructor(statusCode: number, bodyText = "") {
+    super({
+      kind: "http",
+      message: `Web Chat request failed: ${statusCode}`,
+      retryHint:
+        statusCode >= 500 ||
+        statusCode === 408 ||
+        statusCode === 429,
+    });
     this.name = "WebChatHttpError";
     this.statusCode = statusCode;
+    this.bodyText = bodyText;
   }
 }
 
-export class WebChatSendTimeoutError extends Error {
+export class WebChatSendTimeoutError extends AdapterTechnicalError {
   constructor() {
-    super("Web Chat send timed out");
+    super({
+      kind: "timeout",
+      message: "Web Chat send timed out",
+      retryHint: true,
+    });
     this.name = "WebChatSendTimeoutError";
   }
 }
 
-export class WebChatUploadTimeoutError extends Error {
+export class WebChatUploadTimeoutError extends AdapterTechnicalError {
   constructor() {
-    super("附件上传超时");
+    super({
+      kind: "timeout",
+      message: "Web Chat upload timed out",
+      retryHint: true,
+    });
     this.name = "WebChatUploadTimeoutError";
   }
 }
@@ -63,19 +85,92 @@ function buildAuthHeaders(headers: HeadersInit = {}) {
   return next;
 }
 
-async function requestChatJson<T>(path: string, init: RequestInit = {}) {
-  const response = await fetch(buildChatUrl(path), {
-    ...init,
-    headers: buildAuthHeaders(init.headers),
-  });
+function isObjectPayload(value: unknown) {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      !Array.isArray(value),
+  );
+}
+
+function isWebChatStatus(value: unknown) {
+  return isObjectPayload(value);
+}
+
+function isWebChatModels(value: unknown) {
+  return (
+    isObjectPayload(value) &&
+    Array.isArray(
+      (value as Record<string, unknown>).models,
+    )
+  );
+}
+
+function isWebChatSendResult(value: unknown) {
+  return (
+    isObjectPayload(value) &&
+    typeof (value as Record<string, unknown>).accepted ===
+      "boolean"
+  );
+}
+
+function isWebChatUpload(value: unknown) {
+  return (
+    isObjectPayload(value) &&
+    isObjectPayload(
+      (value as Record<string, unknown>).media,
+    )
+  );
+}
+
+function isWebChatEvent(value: unknown): value is WebChatEvent {
+  if (!isObjectPayload(value)) return false;
+  const event = value as Record<string, unknown>;
+  return (
+    (event.kind == null ||
+      typeof event.kind === "string") &&
+    (event.cursor == null ||
+      typeof event.cursor === "number")
+  );
+}
+
+async function requestChatJson<T>(
+  path: string,
+  init: RequestInit = {},
+  validate: (value: unknown) => boolean = isObjectPayload,
+) {
+  let response: Response;
+  try {
+    response = await fetch(buildChatUrl(path), {
+      ...init,
+      headers: buildAuthHeaders(init.headers),
+    });
+  } catch (error) {
+    throw normalizeRequestError(error);
+  }
   if (!response.ok) {
     const body = await response.text();
-    throw new WebChatHttpError(
-      response.status,
-      body || `Web Chat request failed: ${response.status}`,
-    );
+    throw new WebChatHttpError(response.status, body);
   }
-  return response.json() as Promise<T>;
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch (cause) {
+    throw new AdapterTechnicalError({
+      kind: "invalid-payload",
+      message: "Invalid Web Chat JSON response",
+      retryHint: false,
+      cause,
+    });
+  }
+  if (!validate(payload)) {
+    throw new AdapterTechnicalError({
+      kind: "invalid-payload",
+      message: "Unexpected Web Chat response payload",
+      retryHint: false,
+    });
+  }
+  return payload as T;
 }
 
 function fetchWebChatStatus(threadId = "", requestId = "") {
@@ -83,11 +178,19 @@ function fetchWebChatStatus(threadId = "", requestId = "") {
   if (threadId) query.set("threadId", threadId);
   if (requestId) query.set("requestId", requestId);
   const suffix = query.size ? `?${query.toString()}` : "";
-  return requestChatJson<WebChatStatus>(`/api/chat/status${suffix}`);
+  return requestChatJson<WebChatStatus>(
+    `/api/chat/status${suffix}`,
+    {},
+    isWebChatStatus,
+  );
 }
 
 function fetchWebChatModels() {
-  return requestChatJson<WebChatModelResponse>("/api/chat/models");
+  return requestChatJson<WebChatModelResponse>(
+    "/api/chat/models",
+    {},
+    isWebChatModels,
+  );
 }
 
 function setWebChatModel(model: string, modelProvider = "") {
@@ -95,7 +198,7 @@ function setWebChatModel(model: string, modelProvider = "") {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ model, modelProvider }),
-  });
+  }, isWebChatStatus);
 }
 
 function selectWebChatThread(threadId: string, clientId = "") {
@@ -103,7 +206,7 @@ function selectWebChatThread(threadId: string, clientId = "") {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ threadId, clientId }),
-  });
+  }, isWebChatStatus);
 }
 
 async function sendWebChatMessages(
@@ -112,12 +215,16 @@ async function sendWebChatMessages(
 ) {
   const timeout = createSendTimeout(timeoutMs);
   try {
-    return await requestChatJson<WebChatSendResult>("/api/chat/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(envelope),
-      signal: timeout.signal,
-    });
+    return await requestChatJson<WebChatSendResult>(
+      "/api/chat/messages",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(envelope),
+        signal: timeout.signal,
+      },
+      isWebChatSendResult,
+    );
   } catch (error) {
     if (timeout.signal.aborted) {
       throw new WebChatSendTimeoutError();
@@ -131,10 +238,22 @@ async function sendWebChatMessages(
 function isAmbiguousWebChatSendError(error: unknown) {
   if (error instanceof WebChatHttpError) return false;
   if (error instanceof WebChatSendTimeoutError) return true;
-  if (typeof DOMException !== "undefined" && error instanceof DOMException) {
-    return error.name === "AbortError" || error.name === "TimeoutError";
+  if (error instanceof TypeError) return true;
+  if (
+    typeof DOMException !== "undefined" &&
+    error instanceof DOMException
+  ) {
+    return (
+      error.name === "AbortError" ||
+      error.name === "TimeoutError"
+    );
   }
-  return error instanceof TypeError;
+  if (!isTechnicalError(error)) return false;
+  return (
+    error.kind === "network-unavailable" ||
+    error.kind === "connection-lost" ||
+    error.kind === "timeout"
+  );
 }
 
 function createSendTimeout(timeoutMs: number) {
@@ -163,16 +282,20 @@ async function uploadWebChatFile(
 ): Promise<WebChatMedia> {
   const timeout = createSendTimeout(timeoutMs);
   try {
-    const result = await requestChatJson<{ media: WebChatMedia }>("/api/chat/uploads", {
-      method: "POST",
-      headers: {
-        "Content-Type": file.type || "application/octet-stream",
-        "X-Cyberboss-File-Name": encodeURIComponent(String(fileName || "attachment")),
-        "X-Cyberboss-Media-Kind": String(kind || "file"),
+    const result = await requestChatJson<{ media: WebChatMedia }>(
+      "/api/chat/uploads",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": file.type || "application/octet-stream",
+          "X-Cyberboss-File-Name": encodeURIComponent(String(fileName || "attachment")),
+          "X-Cyberboss-Media-Kind": String(kind || "file"),
+        },
+        body: file,
+        signal: timeout.signal,
       },
-      body: file,
-      signal: timeout.signal,
-    });
+      isWebChatUpload,
+    );
     return result.media;
   } catch (error) {
     if (timeout.signal.aborted) {
@@ -208,9 +331,12 @@ function subscribeToWebChat({
   source.addEventListener("error", () => onConnectionChange?.(false));
   source.addEventListener("chat", (event) => {
     try {
-      onEvent(JSON.parse((event as MessageEvent<string>).data) as WebChatEvent);
+      const payload: unknown = JSON.parse(
+        (event as MessageEvent<string>).data,
+      );
+      if (isWebChatEvent(payload)) onEvent(payload);
     } catch {
-      // Ignore a malformed event and let EventSource continue reconnecting.
+      // 忽略格式错误的事件，让 EventSource 继续按照现有策略重连。
     }
   });
   return () => source.close();

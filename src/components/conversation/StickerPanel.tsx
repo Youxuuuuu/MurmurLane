@@ -22,8 +22,10 @@ export function StickerPanel({
       .then((result) => {
         if (!cancelled) setStickers(result.stickers || []);
       })
-      .catch((nextError) => {
-        if (!cancelled) setError(String(nextError?.message || "表情包加载失败"));
+      .catch(() => {
+        if (!cancelled) {
+          setError("表情包加载失败，请稍后重试。");
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);

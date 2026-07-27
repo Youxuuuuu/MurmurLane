@@ -1,17 +1,21 @@
 ---
 Status: Accepted
-Implementation: Partial
+Implementation: Complete
 ---
 
 # 错误从技术事实流向领域结果和安全 View State
 
 ## 当前实施范围
 
-Timeline 与 Archive Workspace 已将 Adapter 异常转换为各自的安全 Command Error，View 不再读取 `ApiError.bodyText`，也不会接收路径、Token、Stack 或原始 Cause。错误仍显示在原有 Inline Error 位置，JSX、CSS、DOM 和交互未改变。
+Browser Adapter 已将 HTTP、网络、取消、Timeout 与无效 Payload 归一化为带 `kind` 和技术 `retryHint` 的 Technical Error。HTTP Body 只保留在 Adapter 诊断字段中，不再作为 Error message；HTTP JSON 与文件/WebChat SSE 在边缘按当前消费方需要的最小不变量校验，同时继续接受未知兼容字段。
 
-本次明确的安全行为变化是：Timeline、Archive 与 Xiaoye 编辑失败时，不再把未经筛选的 Server Body 直接显示给用户，而改用稳定中文文案。Conversation 的 `failed / unknown` 事务解释继续保留既有领域规则。浏览器 Adapter 的统一技术错误归一化、ContentSync 安全错误元数据和 Server 领域错误分层仍随对应后续 seam 实施，因此本 ADR 保持 `Partial`。
+ContentSync Snapshot 只发布安全的 `sync-failed`、稳定用户文案和技术可重试标记，不保存原始 Error、路径或 Cause。Timeline、Archive 与 Conversation Workspace 分别将技术失败解释为自己的 Command Error、发送 `failed / unknown`、上传失败、连接状态和安全 View State。
 
-Server 已新增明确的 `InvalidInput`、`NotFound` 与 `Conflict` 领域错误，并由 Router 映射为 HTTP；领域模块不依赖 Express。为保持既有公开契约，第一轮没有扩大或重写全部 HTTP 错误协议。浏览器 Adapter 与 ContentSync 的统一技术错误结构仍未完成，因此整体状态继续保持 `Partial`。
+Conversation 搜索、Sticker 列表与 Sticker 二进制加载已经进入 Conversation Workspace Commands；View 不再直接接收这些具体 Adapter 函数，也不自行执行远端 `fetch`。Conversation 媒体 URL 能力由 Workspace 消费具体 Port 后作为页面所需的窄 View Model 能力交付，不暴露 Token、Base URL 或 Adapter 实例。
+
+Server 已新增明确的 `InvalidInput`、`NotFound` 与 `Conflict` 领域错误，并由 Router 映射为 HTTP；领域模块不依赖 Express。为保持既有公开契约，本阶段没有扩大或重写 HTTP 错误协议。
+
+明确的安全行为变化是：Timeline、Archive、Xiaoye 与 Conversation 不再显示未经筛选的 Server Body、浏览器原始异常或内部路径，改用稳定中文文案；错误位置、按钮、发送 `failed / unknown`、上传与回滚流程保持不变。
 
 Adapter 只产生经过归一化、不包含展示决策的技术错误；Workspace 将技术错误解释为领域结果、领域错误和可执行恢复动作；View Model 暴露安全、稳定的用户展示状态，View 按现有 UI 渲染并触发 Command。预期且可恢复的失败使用明确结果表示，违反程序不变量的异常不得被伪装成普通业务错误。Server 领域错误由 Router 映射为 HTTP，页面不得直接依赖 HTTP 状态码决定领域行为。
 

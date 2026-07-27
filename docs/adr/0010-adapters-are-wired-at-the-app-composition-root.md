@@ -5,11 +5,17 @@ Implementation: Complete
 
 # 技术 Adapter 在 App Composition Root 组装
 
+## 当前实施结果
+
+`main.tsx` 读取浏览器环境并调用 `createProductionDependencies()`；具体 MurmurLane Data 与 WebChat Adapter 只在 Composition Root 创建。ContentSync 与各 Workspace 接收窄 Port，Workspace 不导入具体 Adapter、环境变量、`fetch` 或 EventSource。
+
+Conversation 搜索、Sticker 列表、Sticker 二进制加载和媒体 URL 解析已经先进入 Conversation Workspace 的窄能力边界，再作为 Commands 或页面所需 View Model 能力交付。View 不接收完整 `AppDependencies`、Token、Base URL、具体 Adapter 或 EventSource。
+
 所有具体技术 Adapter 在 App Composition Root 创建或集中组装，并通过窄接口传入相应模块。Workspace、ContentSync 和 View 不自行创建、导入或查找基础设施依赖。当前不引入通用依赖注入框架、Service Locator 或全局可变单例。
 
 ## 当前源码事实
 
-`main.tsx` 当前只渲染 `<App />` 并注册 Service Worker，尚未承担依赖组装职责。`App.tsx` 直接导入并调用 `src/data/api.ts` 中的 Conversation、Timeline、Memory、编辑和文件 SSE 能力；`useWebChat.ts` 直接导入 `chatApi.ts` 的状态、模型、发送、上传和订阅函数。
+ADR 接受时，`main.tsx` 只渲染 `<App />` 并注册 Service Worker，尚未承担依赖组装职责；`App.tsx` 直接导入并调用 `src/data/api.ts` 中的 Conversation、Timeline、Memory、编辑和文件 SSE 能力，`useWebChat.ts` 直接导入 `chatApi.ts` 的状态、模型、发送、上传和订阅函数。上述是迁移前事实，不描述当前实现。
 
 `chatApi.ts` 读取环境变量，确定 Base URL 和 Token，创建 HTTP 请求、超时和 EventSource，并解析媒体 URL，因此属于具体浏览器技术 Adapter。上述直接依赖是当前实现事实；本 ADR 规定后续职责迁移时的目标边界。
 

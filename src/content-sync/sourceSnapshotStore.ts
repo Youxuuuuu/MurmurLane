@@ -6,6 +6,7 @@ import type {
 import type { MemoryEntry } from "../types/memory";
 import type { ContentSyncRequestIdentity } from "./generation";
 import { createContentSyncGeneration } from "./generation";
+import { isTechnicalError } from "../app/technicalError";
 
 export type ContentSyncSource =
   | "conversation"
@@ -22,9 +23,15 @@ export type ContentSyncSource =
 
 export interface ContentSyncSourceMetadata {
   readonly status: "idle" | "loading" | "ready" | "error";
-  readonly error: unknown;
+  readonly error: ContentSyncSourceError | null;
   readonly updatedAt: number | null;
   readonly revision: number;
+}
+
+export interface ContentSyncSourceError {
+  readonly kind: "sync-failed";
+  readonly message: "内容同步失败";
+  readonly retryable: boolean;
 }
 
 export interface ContentSyncNegativeCache {
@@ -146,6 +153,18 @@ function freezeData(data: RemoteData): ContentSyncDataSnapshot {
   return Object.freeze(data);
 }
 
+function toContentSyncSourceError(
+  error: unknown,
+): ContentSyncSourceError {
+  return Object.freeze({
+    kind: "sync-failed",
+    message: "内容同步失败",
+    retryable: isTechnicalError(error)
+      ? error.retryHint
+      : false,
+  });
+}
+
 export function createContentSyncStore(): ContentSyncStore {
   const generations = createContentSyncGeneration();
   const listeners = new Set<() => void>();
@@ -236,7 +255,7 @@ export function createContentSyncStore(): ContentSyncStore {
       updateSource(source, {
         ...sources[source],
         status: "error",
-        error,
+        error: toContentSyncSourceError(error),
       });
       publish();
       return true;

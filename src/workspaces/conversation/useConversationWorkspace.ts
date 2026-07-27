@@ -30,8 +30,11 @@ import {
 } from "../../lib/webChatSendTransaction";
 import type { ConversationRecord } from "../../types/conversation";
 import type {
+  ConversationsResponse,
   FetchConversationsOptions,
   RemoteData,
+  SearchConversationOptions,
+  StickerAsset,
 } from "../../types/api";
 import type {
   WebChatComposerMessageInput,
@@ -68,11 +71,16 @@ import {
 } from "../../lib/conversationPageData";
 import { getTodayDateText, toDotDate } from "../../lib/date";
 import { buildConversationTranscript } from "./buildConversationTranscript";
+import type { ConversationMediaUrlPort } from "../../lib/conversation";
 import {
   createCanonicalConversationObserver,
   type CanonicalConversationBatch,
   type CanonicalConversationObservation,
 } from "./canonicalConversationObserver";
+import {
+  getConversationCommandErrorMessage,
+  toConversationCommandError,
+} from "./conversationCommandError";
 
 interface StagedWebChatSend {
   requestId: string;
@@ -152,6 +160,10 @@ export function useConversationWorkspace({
   initialDate,
   profileCommands,
   loadConversationRecords,
+  loadStickerAssets,
+  loadStickerAsset,
+  searchConversationRecords,
+  resolveLocalMediaUrl,
   navigation,
   remoteData,
   styleTheme,
@@ -170,6 +182,14 @@ export function useConversationWorkspace({
     date: string,
     options?: FetchConversationsOptions,
   ): Promise<ConversationRecord[] | null>;
+  loadStickerAssets(): Promise<{
+    stickers: StickerAsset[];
+  }>;
+  loadStickerAsset(sticker: StickerAsset): Promise<Blob>;
+  searchConversationRecords(
+    options: SearchConversationOptions,
+  ): Promise<ConversationsResponse>;
+  resolveLocalMediaUrl(path: string): string;
   remoteData: RemoteData;
   styleTheme: Record<string, unknown>;
 }) {
@@ -424,7 +444,7 @@ export function useConversationWorkspace({
       }
 
       if (event.kind === "error") {
-        setError(String(event.text || "执行失败"));
+        setError("执行失败，请稍后重试。");
         setStatus((current) => ({ ...(current || {}), threadId: targetThreadId, status: "failed" }));
         return;
       }
@@ -471,7 +491,12 @@ export function useConversationWorkspace({
       .catch((nextError) => {
         if (cancelled) return;
         setConnection("offline");
-        setError(String(nextError?.message || nextError));
+        setError(
+          getConversationCommandErrorMessage(
+            "connect",
+            nextError,
+          ),
+        );
       });
     return () => {
       cancelled = true;
@@ -488,7 +513,14 @@ export function useConversationWorkspace({
         setModels(nextModels);
       })
       .catch((nextError) => {
-        if (!cancelled) setError(String(nextError?.message || nextError));
+        if (!cancelled) {
+          setError(
+            getConversationCommandErrorMessage(
+              "load-models",
+              nextError,
+            ),
+          );
+        }
       });
     return () => {
       cancelled = true;
@@ -547,12 +579,19 @@ export function useConversationWorkspace({
       }
     };
 
-    const markTerminal = (state: "failed" | "unknown", nextError: unknown) => {
+    const markTerminal = (
+      state: "failed" | "unknown",
+      nextError?: unknown,
+    ) => {
       const latest = transactionsByRequestIdRef.current.get(requestId);
       if (!latest || latest.state !== "submitting") return;
-      const errorText = String(
-        nextError instanceof Error ? nextError.message : nextError || "",
-      );
+      const errorText =
+        state === "unknown"
+          ? "发送状态暂时无法确认"
+          : getConversationCommandErrorMessage(
+              "send",
+              nextError,
+            );
       const next = transitionWebChatSendTransaction(latest, {
         type: state,
         error: errorText,
@@ -564,7 +603,7 @@ export function useConversationWorkspace({
         deliveryState: state,
         deliveryError: errorText,
       }));
-      if (state === "failed") setError(errorText || "发送失败");
+      if (state === "failed") setError(errorText);
     };
 
     try {
@@ -572,15 +611,18 @@ export function useConversationWorkspace({
       if (result.accepted) {
         accept(result);
       } else if (result.status === "unknown") {
-        markTerminal("unknown", "服务端正在确认这次发送");
+        markTerminal("unknown");
       } else {
-        markTerminal("failed", result.status || "发送失败");
+        markTerminal("failed");
       }
     } catch (nextError) {
       console.error("[MurmurLane WebChat] 消息提交失败", {
         requestId,
         messageId: envelope.messageId,
-        error: String(nextError instanceof Error ? nextError.message : nextError || ""),
+        error: getConversationCommandErrorMessage(
+          "send",
+          nextError,
+        ),
       });
       if (!webChat.isAmbiguousSendError(nextError)) {
         markTerminal("failed", nextError);
@@ -659,10 +701,11 @@ export function useConversationWorkspace({
       });
       void executeTransaction(requestId);
     } catch (nextError) {
-      const detail = String(
-        nextError instanceof Error ? nextError.message : nextError || "",
-      );
-      const errorText = detail ? `附件上传失败：${detail}` : "附件上传失败";
+      const errorText =
+        getConversationCommandErrorMessage(
+          "upload",
+          nextError,
+        );
       console.error("[MurmurLane WebChat] 附件准备失败", {
         requestId,
         messageId: staged.messageId,
@@ -754,17 +797,67 @@ export function useConversationWorkspace({
   }, [executeTransaction, prepareStagedSend]);
 
   const refreshModels = useCallback(async () => {
-    const result = await webChat.fetchModels();
-    setModels(result);
-    return result;
+    try {
+      const result = await webChat.fetchModels();
+      setModels(result);
+      return result;
+    } catch (error) {
+      throw toConversationCommandError(
+        "load-models",
+        error,
+      );
+    }
   }, []);
 
   const chooseModel = useCallback(async (model: string, modelProvider = "") => {
-    const result = await webChat.setModel(model, modelProvider);
-    setStatus(result);
-    setModels((current) => current ? { ...current, currentModel: result.model, currentModelProvider: result.modelProvider } : current);
-    return result;
+    try {
+      const result = await webChat.setModel(model, modelProvider);
+      setStatus(result);
+      setModels((current) => current ? { ...current, currentModel: result.model, currentModelProvider: result.modelProvider } : current);
+      return result;
+    } catch (error) {
+      throw toConversationCommandError(
+        "choose-model",
+        error,
+      );
+    }
   }, []);
+
+  const searchRecords = useCallback(
+    async (options: SearchConversationOptions) => {
+      try {
+        return await searchConversationRecords(options);
+      } catch (error) {
+        throw toConversationCommandError("search", error);
+      }
+    },
+    [searchConversationRecords],
+  );
+
+  const loadStickers = useCallback(async () => {
+    try {
+      return await loadStickerAssets();
+    } catch (error) {
+      throw toConversationCommandError(
+        "load-stickers",
+        error,
+      );
+    }
+  }, [loadStickerAssets]);
+
+  const loadSticker = useCallback(
+    async (sticker: StickerAsset) => {
+      try {
+        return await loadStickerAsset(sticker);
+      } catch (error) {
+        throw toConversationCommandError(
+          "load-stickers",
+          error,
+        );
+      }
+    },
+    [loadStickerAsset],
+  );
 
   const selectThread = useCallback((nextThreadId: string) => {
     dispatch({ type: "select-thread", threadId: nextThreadId });
@@ -1119,6 +1212,13 @@ export function useConversationWorkspace({
         : null,
     [workspaceState.navigationTarget],
   );
+  const mediaUrls = useMemo<ConversationMediaUrlPort>(
+    () => ({
+      resolveLocalFile: resolveLocalMediaUrl,
+      resolveWebChatAsset: webChat.resolveAssetUrl,
+    }),
+    [resolveLocalMediaUrl, webChat.resolveAssetUrl],
+  );
 
   const viewModel = useMemo(
     () => ({
@@ -1153,6 +1253,7 @@ export function useConversationWorkspace({
       allConversationDates,
       earlierDateToLoad,
       laterDateToLoad,
+      mediaUrls,
     }),
     [
       connection,
@@ -1171,6 +1272,7 @@ export function useConversationWorkspace({
       profileError,
       profileThreadIds,
       laterDateToLoad,
+      mediaUrls,
       selectedThreadDates,
       allConversationDates,
       threadSummaries,
@@ -1194,6 +1296,9 @@ export function useConversationWorkspace({
       openNewThread,
       receiveNotification,
       observeCanonicalBatches,
+      searchRecords,
+      loadStickers,
+      loadSticker,
       dismissNotification,
       loadThreadDate,
       openThread,
@@ -1211,6 +1316,9 @@ export function useConversationWorkspace({
       openThread,
       receiveNotification,
       observeCanonicalBatches,
+      searchRecords,
+      loadStickers,
+      loadSticker,
       refreshModels,
       retryMessage,
       selectThread,

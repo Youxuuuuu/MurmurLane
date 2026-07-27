@@ -30,3 +30,9 @@ export {
   type CanonicalConversationObservation,
   type CanonicalConversationObserver,
 } from "./canonicalConversationObserver";
+export {
+  ConversationCommandError,
+  getConversationCommandErrorMessage,
+  toConversationCommandError,
+  type ConversationCommandOperation,
+} from "./conversationCommandError";

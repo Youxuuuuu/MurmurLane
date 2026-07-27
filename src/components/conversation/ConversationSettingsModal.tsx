@@ -356,11 +356,9 @@ export function ConversationSettingsModal({
                   onPreview?.(originalProfileRef.current);
                 }
                 setSaveError(
-                  error?.status === 404
-                    ? "资料接口尚未加载，请重启 MurmurLane 后端后再保存。"
-                    : error instanceof TypeError
-                      ? "无法连接资料服务，请确认 MurmurLane 后端正在运行。"
-                      : "保存失败，请确认前后端编辑 Token 已配置且一致。",
+                  error instanceof Error
+                    ? error.message
+                    : "资料保存失败，请稍后重试。",
                 );
                 setSaving(false);
               }

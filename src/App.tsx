@@ -390,6 +390,16 @@ export default function InsDiaryPrototype({
     initialDate: getTodayDateText(),
     profileCommands: conversationProfileCommands,
     loadConversationRecords,
+    loadStickerAssets:
+      dependencies.murmurLaneData.fetchStickerAssets,
+    loadStickerAsset: (sticker) =>
+      dependencies.murmurLaneData.fetchBinaryAsset(
+        sticker.src,
+      ),
+    searchConversationRecords:
+      dependencies.murmurLaneData.searchConversation,
+    resolveLocalMediaUrl:
+      dependencies.murmurLaneData.resolveFileUrl,
     navigation: conversationNavigation,
     remoteData,
     styleTheme,
@@ -450,9 +460,7 @@ export default function InsDiaryPrototype({
           .filter(([, metadata]) => metadata.error != null)
           .map(([source, metadata]) => [
             source,
-            metadata.error instanceof Error
-              ? metadata.error.message
-              : "内容同步失败",
+            metadata.error?.message ?? "内容同步失败",
           ]),
       ),
     [contentSyncSnapshot.sources],
@@ -536,16 +544,6 @@ export default function InsDiaryPrototype({
     }, 220);
     return () => window.clearTimeout(timer);
   }, [searchQuery, conversationView]);
-
-  const conversationMediaUrls = useMemo(
-    () => ({
-      resolveLocalFile:
-        dependencies.murmurLaneData.resolveFileUrl,
-      resolveWebChatAsset:
-        dependencies.webChat.resolveAssetUrl,
-    }),
-    [dependencies],
-  );
 
   useEffect(() => {
     const dotDate = toDotDate(selectedDate);
@@ -1083,9 +1081,9 @@ export default function InsDiaryPrototype({
                 onBack={() => setConversationView("list")}
                 onSelectResult={handleSelectGlobalConversationSearchResult}
                 searchConversations={
-                  dependencies.murmurLaneData.searchConversation
+                  conversationCommands.searchRecords
                 }
-                mediaUrls={conversationMediaUrls}
+                mediaUrls={conversationViewModel.mediaUrls}
               />
             ) : conversationView === "search" ? (
               <ConversationSearchPage
@@ -1098,9 +1096,9 @@ export default function InsDiaryPrototype({
                 onEditThread={handleEditSelectedConversationThread}
                 onSelectResult={handleSelectConversationSearchResult}
                 searchConversations={
-                  dependencies.murmurLaneData.searchConversation
+                  conversationCommands.searchRecords
                 }
-                mediaUrls={conversationMediaUrls}
+                mediaUrls={conversationViewModel.mediaUrls}
               />
             ) : (
               <ConversationPage
@@ -1124,10 +1122,8 @@ export default function InsDiaryPrototype({
                 transcript={conversationViewModel.transcript}
                 webChatViewModel={webChatViewModel}
                 webChatCommands={webChatCommands}
-                loadStickers={
-                  dependencies.murmurLaneData.fetchStickerAssets
-                }
-                mediaUrls={conversationMediaUrls}
+                loadStickers={conversationCommands.loadStickers}
+                mediaUrls={conversationViewModel.mediaUrls}
                 diagnosticsEnabled={
                   dependencies.diagnostics.development
                 }

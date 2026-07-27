@@ -165,10 +165,11 @@ export function useConversationProfiles(
       setProfileError("");
       return saved;
     } catch (error) {
-      setProfileError(
-        error instanceof Error ? error.message : String(error),
+      const safeError = new Error(
+        "个人资料保存失败，请稍后重试。",
       );
-      throw error;
+      setProfileError(safeError.message);
+      throw safeError;
     }
   }, [profileCommands]);
 
@@ -197,10 +198,11 @@ export function useConversationProfiles(
         ...current,
         [threadId]: previous,
       }));
-      setProfileError(
-        error instanceof Error ? error.message : String(error),
+      const safeError = new Error(
+        "对话资料保存失败，请稍后重试。",
       );
-      throw error;
+      setProfileError(safeError.message);
+      throw safeError;
     }
   }, [profileCommands]);
 

@@ -168,3 +168,23 @@ test("ContentSync 在 Snapshot 中发布文件连接状态", () => {
   store.setConnectionStatus("connected");
   assert.equal(store.getSnapshot().connectionStatus, "connected");
 });
+
+test("ContentSync Snapshot 不发布原始技术错误", () => {
+  const store = createContentSyncStore();
+  const request = store.begin("timeline", "global");
+  store.fail(
+    request,
+    new Error("D:\\private\\timeline.json"),
+  );
+
+  const error = store.getSnapshot().sources.timeline.error;
+  assert.deepEqual(error, {
+    kind: "sync-failed",
+    message: "内容同步失败",
+    retryable: false,
+  });
+  assert.equal(
+    JSON.stringify(error).includes("private"),
+    false,
+  );
+});
