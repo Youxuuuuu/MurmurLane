@@ -235,14 +235,14 @@ export function DiaryShareModal({ page, onClose, selectedText = "" }) {
       <motion.section
         {...dialogProps}
         aria-label="分享预览"
-        className="share-scroll relative max-h-[82dvh] w-full max-w-[342px] overflow-y-auto border bg-[#f3eee4] p-4 shadow-[0_4px_8px_rgba(64,44,26,.16)]"
+        className="relative flex h-[min(82dvh,680px)] w-full max-w-[342px] flex-col overflow-hidden border bg-[#f3eee4] p-4 shadow-[0_4px_8px_rgba(64,44,26,.16)]"
         initial={{ y: 14, opacity: 0, scale: 0.96 }}
         animate={{ y: 0, opacity: 1, scale: 1 }}
         exit={{ y: 10, opacity: 0, scale: 0.97 }}
         style={{ borderColor: page.line }}
       >
         <PaperTexture mode="warm" />
-        <div className="relative mb-3 flex items-center justify-between">
+        <div className="relative mb-3 flex shrink-0 items-center justify-between">
           <div className="font-mono text-[9px] uppercase tracking-[0.18em] text-black/[0.38]">
             share {shareModeLabel}
           </div>
@@ -254,7 +254,7 @@ export function DiaryShareModal({ page, onClose, selectedText = "" }) {
             close
           </button>
         </div>
-        <div className="relative mb-3 grid grid-cols-3 gap-1 font-mono text-[9px] uppercase tracking-[0.12em]">
+        <div className="relative mb-3 grid shrink-0 grid-cols-3 gap-1 font-mono text-[9px] uppercase tracking-[0.12em]">
           {[
             { id: "tag", label: "摘要" },
             { id: "rain", label: "雨滴" },
@@ -282,7 +282,7 @@ export function DiaryShareModal({ page, onClose, selectedText = "" }) {
         </div>
           <div
         ref={previewViewportRef}
-        className="share-scroll relative max-h-[68vh] overflow-y-auto overflow-x-hidden px-2 py-2"
+        className="share-scroll relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 py-2"
       >
         <div
           className="mx-auto"
@@ -410,7 +410,7 @@ export function DiaryShareModal({ page, onClose, selectedText = "" }) {
             </div>
           </div>
         </div>
-        <div className="relative mt-4 grid grid-cols-2 gap-2 font-mono text-[10px] uppercase tracking-[0.12em]">
+        <div className="relative mt-4 grid shrink-0 grid-cols-2 gap-2 font-mono text-[10px] uppercase tracking-[0.12em]">
           <button
             className="border px-3 py-2"
             type="button"
@@ -435,7 +435,7 @@ export function DiaryShareModal({ page, onClose, selectedText = "" }) {
         </div>
         {saveMessage && (
           <div
-            className="relative mt-3 text-center font-serif text-[11px] text-[#8f4f43]"
+            className="relative mt-3 shrink-0 text-center font-serif text-[11px] text-[#8f4f43]"
             role="status"
             aria-live="polite"
           >

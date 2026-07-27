@@ -23,6 +23,13 @@ const conversationComposerSource = readFileSync(
   ),
   "utf8",
 );
+const diaryShareModalSource = readFileSync(
+  new URL(
+    "../src/components/archive/DiaryShareModal.tsx",
+    import.meta.url,
+  ),
+  "utf8",
+);
 
 test("搜索高亮展示完成后只消费对应 Workspace 的当前目标", () => {
   const timelineTarget = {
@@ -104,5 +111,24 @@ test("新消息按钮始终位于实际 Composer 高度与键盘位移之上", (
   assert.doesNotMatch(
     conversationPageSource,
     /className="absolute bottom-4 left-1\/2 z-30/u,
+  );
+});
+
+test("长分享内容只滚动预览区并保持操作按钮可见", () => {
+  assert.match(
+    diaryShareModalSource,
+    /h-\[min\(82dvh,680px\)\][^"]*flex-col[^"]*overflow-hidden/u,
+  );
+  assert.match(
+    diaryShareModalSource,
+    /className="share-scroll relative min-h-0 flex-1 overflow-y-auto/u,
+  );
+  assert.match(
+    diaryShareModalSource,
+    /className="relative mt-4 grid shrink-0 grid-cols-2/u,
+  );
+  assert.doesNotMatch(
+    diaryShareModalSource,
+    /max-h-\[68vh\]/u,
   );
 });
