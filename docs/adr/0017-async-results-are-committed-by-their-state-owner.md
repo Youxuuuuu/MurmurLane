@@ -1,9 +1,9 @@
 ---
 Status: Accepted
-Implementation: Partial
+Implementation: Complete
 Date: 2026-07-27
 ContentSync implementation: Complete
-Workspace command implementation: Pending
+Workspace command implementation: Complete
 ---
 
 # ADR-0017：异步结果由其状态所有者决定是否提交

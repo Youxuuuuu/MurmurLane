@@ -1,9 +1,15 @@
 ---
 Status: Accepted
-Implementation: Pending
+Implementation: Partial
 ---
 
 # 错误从技术事实流向领域结果和安全 View State
+
+## 当前实施范围
+
+Timeline 与 Archive Workspace 已将 Adapter 异常转换为各自的安全 Command Error，View 不再读取 `ApiError.bodyText`，也不会接收路径、Token、Stack 或原始 Cause。错误仍显示在原有 Inline Error 位置，JSX、CSS、DOM 和交互未改变。
+
+本次明确的安全行为变化是：Timeline、Archive 与 Xiaoye 编辑失败时，不再把未经筛选的 Server Body 直接显示给用户，而改用稳定中文文案。Conversation 的 `failed / unknown` 事务解释继续保留既有领域规则。浏览器 Adapter 的统一技术错误归一化、ContentSync 安全错误元数据和 Server 领域错误分层仍随对应后续 seam 实施，因此本 ADR 保持 `Partial`。
 
 Adapter 只产生经过归一化、不包含展示决策的技术错误；Workspace 将技术错误解释为领域结果、领域错误和可执行恢复动作；View Model 暴露安全、稳定的用户展示状态，View 按现有 UI 渲染并触发 Command。预期且可恢复的失败使用明确结果表示，违反程序不变量的异常不得被伪装成普通业务错误。Server 领域错误由 Router 映射为 HTTP，页面不得直接依赖 HTTP 状态码决定领域行为。
 

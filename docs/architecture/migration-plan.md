@@ -69,7 +69,8 @@
 | 4 | Conversation Workspace Controller | Implemented / Final Device Pending | ADR-0005、0006、0012、0014、0017 |
 | 5 | App Navigation | Implemented / Final Device Pending | ADR-0003、0010、0015 |
 | 6 | Timeline 与 Archive Workspace | Implemented / Final Device Pending | ADR-0005、0013、0014、0019 |
-| 7 | 搜索所有权 | Pending | ADR-0004、0011、0016 |
+| 7 | 搜索所有权 | Implemented / Final Device Pending | ADR-0004、0011、0016 |
+| 7A | 状态确认、错误安全边界与依赖准入补救 | Implemented / Final Device Pending | ADR-0013、0014、0016、0017、0019 |
 | 8 | Server 分层与 Server Typecheck | Pending | ADR-0007、0009、0014、0018 |
 | 9 | 严格类型收尾 | Pending | ADR-0009、0011 |
 
@@ -661,4 +662,45 @@ src/lib/searchPageData.ts
 src/workspaces/timeline/useTimelineWorkspace.ts
 src/workspaces/timeline/index.ts
 test/searchOwnership.test.ts
+```
+
+### 阶段 7A 执行结果
+
+- Timeline 与 Archive Mutation Overlay 在成功写入后请求 ContentSync 刷新真实来源。
+- Overlay 只有在 Snapshot Revision 前进，且 Canonical 数据确认同一保存或删除结果后才会清除。
+- Timeline、Archive 与 Xiaoye 编辑 View 不再读取 `ApiError.bodyText`，Workspace 只向 View 交付安全的领域错误。
+- 错误仍显示在现有位置，未修改 JSX、CSS、DOM、按钮、抽屉关闭规则或动画。
+- 明确的安全行为变化：未经筛选的 Server Body 不再直接作为用户文案。
+- 新增静态架构测试，禁止 Workspace 直接依赖具体 Adapter、View 或其他 Workspace，并阻止新增无所有权语义的顶层杂物目录。
+- ADR-0013、ADR-0016、ADR-0017 与 ADR-0019 标记为 `Complete`；ADR-0014 因 Browser Adapter、ContentSync 与 Server 错误链尚未完成而保持 `Partial`。
+- `npm test`：118/118 通过。
+- `npm run typecheck:strict`：通过。
+- `npx tsc -p tsconfig.app.json --noEmit --incremental false`：通过。
+- `npm run build`：通过；保留既有的 500 kB Chunk Size Warning。
+- 本阶段未修改 JSX 结构、CSS、DOM 层级、React Key、滚动、窗口化或动画。
+
+### 阶段 7A 实际修改文件
+
+```text
+docs/adr/0013-content-snapshots-are-read-only-and-mutations-use-domain-overlays.md
+docs/adr/0014-errors-flow-from-technical-facts-to-domain-results-to-safe-view-state.md
+docs/adr/0016-shared-code-requires-proven-domain-neutral-reuse.md
+docs/adr/0017-async-results-are-committed-by-their-state-owner.md
+docs/adr/0019-each-semantic-fact-has-one-authoritative-owner.md
+docs/architecture/migration-plan.md
+src/App.tsx
+src/components/archive/DirectoryPage.tsx
+src/components/timeline/TimelineEventEditorDrawer.tsx
+src/components/xiaoye/XiaoyePage.tsx
+src/workspaces/archive/archiveCommandError.ts
+src/workspaces/archive/archiveMutationOverlay.ts
+src/workspaces/archive/index.ts
+src/workspaces/archive/useArchiveWorkspace.ts
+src/workspaces/timeline/index.ts
+src/workspaces/timeline/timelineCommandError.ts
+src/workspaces/timeline/timelineMutationOverlay.ts
+src/workspaces/timeline/useTimelineWorkspace.ts
+test/architectureBoundaries.test.ts
+test/workspaceErrors.test.ts
+test/workspaceViewModels.test.ts
 ```

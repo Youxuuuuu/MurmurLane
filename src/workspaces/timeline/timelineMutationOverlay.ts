@@ -131,3 +131,63 @@ export function applyTimelineMutationOverlay(
   return effective;
 }
 
+function matchesSavedEvent(
+  canonical: TimelineEvent,
+  saved: TimelineEvent,
+) {
+  return Object.entries(saved).every(
+    ([key, value]) =>
+      JSON.stringify(canonical[key]) === JSON.stringify(value),
+  );
+}
+
+export function reconcileTimelineMutationOverlay(
+  overlay: TimelineMutationOverlay,
+  canonical: TimelineState,
+  revision: number,
+): TimelineMutationOverlay {
+  let changed = false;
+  const upserts: Record<
+    string,
+    Record<string, TimelineUpsertMutation>
+  > = {};
+  Object.entries(overlay.upserts).forEach(
+    ([date, mutations]) => {
+      const canonicalEvents = canonical[date]?.events ?? [];
+      Object.entries(mutations).forEach(([eventId, mutation]) => {
+        const confirmed =
+          revision > mutation.baseRevision &&
+          canonicalEvents.some(
+            (event) =>
+              event.id === eventId &&
+              matchesSavedEvent(event, mutation.event),
+          );
+        if (confirmed) {
+          changed = true;
+          return;
+        }
+        (upserts[date] ??= {})[eventId] = mutation;
+      });
+    },
+  );
+  const deletions: Record<
+    string,
+    Record<string, TimelineDeleteMutation>
+  > = {};
+  Object.entries(overlay.deletions).forEach(
+    ([date, mutations]) => {
+      const canonicalEvents = canonical[date]?.events ?? [];
+      Object.entries(mutations).forEach(([eventId, mutation]) => {
+        const confirmed =
+          revision > mutation.baseRevision &&
+          !canonicalEvents.some((event) => event.id === eventId);
+        if (confirmed) {
+          changed = true;
+          return;
+        }
+        (deletions[date] ??= {})[eventId] = mutation;
+      });
+    },
+  );
+  return changed ? { upserts, deletions } : overlay;
+}

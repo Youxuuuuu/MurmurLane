@@ -97,3 +97,53 @@ export function applyArchiveMutationOverlay(
   };
 }
 
+function getCanonicalEntry(
+  canonical: RemoteData,
+  document: EditableMemoryDocumentRequest,
+) {
+  const date = String(document.date ?? "").replace(/-/g, ".");
+  if (document.documentId === "diary") {
+    return canonical.diaryEntries[date];
+  }
+  if (document.documentId === "daily-summary") {
+    return canonical.dailySummaryEntries[date];
+  }
+  if (document.documentId === "letters") {
+    return canonical.letterEntries[date];
+  }
+  if (document.documentType === "xiaoye-memory-document") {
+    const mode =
+      document.documentId === "personality_anchor"
+        ? "PersonalityAnchor"
+        : "Ins";
+    return canonical.xiaoyeEntries[mode];
+  }
+  return canonical.staticModeEntries[
+    getStaticMode(document.documentId)
+  ];
+}
+
+export function reconcileArchiveMutationOverlay(
+  overlay: ArchiveMutationOverlay,
+  canonical: RemoteData,
+  revision: number,
+): ArchiveMutationOverlay {
+  let changed = false;
+  const entries: Record<string, ArchiveEntryMutation> = {};
+  Object.entries(overlay.entries).forEach(([key, mutation]) => {
+    const canonicalEntry = getCanonicalEntry(
+      canonical,
+      mutation.document,
+    );
+    const confirmed =
+      revision > mutation.baseRevision &&
+      JSON.stringify(canonicalEntry) ===
+        JSON.stringify(mutation.entry);
+    if (confirmed) {
+      changed = true;
+      return;
+    }
+    entries[key] = mutation;
+  });
+  return changed ? { entries } : overlay;
+}

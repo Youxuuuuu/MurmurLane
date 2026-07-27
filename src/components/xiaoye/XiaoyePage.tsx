@@ -87,7 +87,11 @@ export function XiaoyePage({
       setIsEditing(true);
       setIsPreview(false);
     } catch (error) {
-      setEditorError(String(error?.message || error || "Failed to load document."));
+      setEditorError(
+        error instanceof Error
+          ? error.message
+          : "文档加载失败，请稍后重试。",
+      );
     } finally {
       setIsEditorLoading(false);
     }
@@ -109,7 +113,11 @@ export function XiaoyePage({
       setIsEditing(false);
       setIsPreview(false);
     } catch (error) {
-      setEditorError(String(error?.bodyText || error?.message || error));
+      setEditorError(
+        error instanceof Error
+          ? error.message
+          : "文档保存失败，请稍后重试。",
+      );
     } finally {
       setIsSaving(false);
     }

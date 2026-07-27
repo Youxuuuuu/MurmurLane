@@ -309,6 +309,29 @@ export default function InsDiaryPrototype({
     }),
     [dependencies.murmurLaneData],
   );
+  const timelineSync = useMemo(
+    () => ({
+      async refresh(date) {
+        await Promise.all([
+          contentSync.loadTimeline({ date }),
+          contentSync.loadDateIndex(),
+        ]);
+      },
+    }),
+    [contentSync],
+  );
+  const archiveSync = useMemo(
+    () => ({
+      refreshDated: (source, date) =>
+        contentSync.loadDatedMemory(source, date),
+      refreshStatic: (workspaceMode, apiMode) =>
+        contentSync.loadStaticMemory(workspaceMode, apiMode),
+      refreshXiaoye: (workspaceMode, apiMode) =>
+        contentSync.loadXiaoye(workspaceMode, apiMode),
+      refreshDateIndex: () => contentSync.loadDateIndex(),
+    }),
+    [contentSync],
+  );
   const timelineWorkspace = useTimelineWorkspace({
     initialDate: getTodayDateText(),
     remoteData,
@@ -317,6 +340,7 @@ export default function InsDiaryPrototype({
     theme: timelineStyleTheme,
     buildPage: buildTimelineWorkspaceViewModel,
     port: timelinePort,
+    sync: timelineSync,
     navigation: timelineNavigation,
   });
   const archiveWorkspace = useArchiveWorkspace({
@@ -326,6 +350,7 @@ export default function InsDiaryPrototype({
     theme: styleTheme,
     buildPage: buildArchiveWorkspaceViewModel,
     port: archivePort,
+    sync: archiveSync,
     navigation: archiveNavigation,
   });
   const timelineViewModel = timelineWorkspace.viewModel;

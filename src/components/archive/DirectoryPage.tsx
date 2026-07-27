@@ -158,7 +158,11 @@ export function DirectoryPage({
       setIsEditing(true);
       setIsPreview(false);
     } catch (error) {
-      setEditorError(String(error?.message || error || "Failed to load document."));
+      setEditorError(
+        error instanceof Error
+          ? error.message
+          : "文档加载失败，请稍后重试。",
+      );
     } finally {
       setIsEditorLoading(false);
     }
@@ -186,7 +190,11 @@ export function DirectoryPage({
       setIsEditing(false);
       setIsPreview(false);
     } catch (error) {
-      setEditorError(String(error?.bodyText || error?.message || error));
+      setEditorError(
+        error instanceof Error
+          ? error.message
+          : "文档保存失败，请稍后重试。",
+      );
     } finally {
       setIsSaving(false);
     }
@@ -202,7 +210,11 @@ export function DirectoryPage({
       setPendingOpenLoopNo(String(no));
       await onToggleOpenLoop(no, checked);
     } catch (error) {
-      setOpenLoopError(String(error?.bodyText || error?.message || error));
+      setOpenLoopError(
+        error instanceof Error
+          ? error.message
+          : "清单更新失败，请稍后重试。",
+      );
     } finally {
       setPendingOpenLoopNo("");
     }

@@ -13,11 +13,13 @@ import {
   createTimelineMutationOverlay,
   createTimelineWorkspaceViewModelBuilder,
   deleteTimelineEventFromOverlay,
+  reconcileTimelineMutationOverlay,
   upsertTimelineEventInOverlay,
 } from "../src/workspaces/timeline";
 import {
   applyArchiveMutationOverlay,
   createArchiveMutationOverlay,
+  reconcileArchiveMutationOverlay,
   saveArchiveEntryToOverlay,
 } from "../src/workspaces/archive";
 import { createBrowseDateFlow } from "../src/app/flows/browseDateFlow";
@@ -147,4 +149,88 @@ test("Timeline 与 Archive 的既有共享浏览日期由显式 Application Flow
     "timeline:2026.07.27",
     "archive:2026.07.27",
   ]);
+});
+
+test("Canonical Snapshot 只在确认相同领域结果后清除 Overlay", () => {
+  const timelineOverlay = upsertTimelineEventInOverlay(
+    createTimelineMutationOverlay(),
+    {
+      date: "2026.07.27",
+      event: {
+        id: "event-1",
+        startAt: "09:00",
+        endAt: "10:00",
+        title: "新标题",
+      },
+      baseRevision: 2,
+    },
+  );
+  const staleTimeline = reconcileTimelineMutationOverlay(
+    timelineOverlay,
+    {
+      "2026.07.27": {
+        events: [
+          {
+            id: "event-1",
+            startAt: "09:00",
+            endAt: "10:00",
+            title: "旧标题",
+          },
+        ],
+      },
+    },
+    3,
+  );
+  const confirmedTimeline = reconcileTimelineMutationOverlay(
+    timelineOverlay,
+    {
+      "2026.07.27": {
+        events: [
+          {
+            id: "event-1",
+            startAt: "09:00",
+            endAt: "10:00",
+            title: "新标题",
+          },
+        ],
+      },
+    },
+    3,
+  );
+
+  assert.equal(staleTimeline, timelineOverlay);
+  assert.deepEqual(confirmedTimeline.upserts, {});
+
+  const archiveOverlay = saveArchiveEntryToOverlay(
+    createArchiveMutationOverlay(),
+    {
+      document: {
+        documentType: "dated-memory-document",
+        documentId: "diary",
+        date: "2026-07-27",
+      },
+      entry: {
+        title: "新日记",
+        excerpt: "内容",
+        sections: [],
+      },
+      baseRevision: 4,
+    },
+  );
+  const confirmedArchive = reconcileArchiveMutationOverlay(
+    archiveOverlay,
+    {
+      ...emptyRemoteData,
+      diaryEntries: {
+        "2026.07.27": {
+          title: "新日记",
+          excerpt: "内容",
+          sections: [],
+        },
+      },
+    },
+    5,
+  );
+
+  assert.deepEqual(confirmedArchive.entries, {});
 });

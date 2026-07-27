@@ -23,8 +23,10 @@ import {
 import {
   applyArchiveMutationOverlay,
   createArchiveMutationOverlay,
+  reconcileArchiveMutationOverlay,
   saveArchiveEntryToOverlay,
 } from "./archiveMutationOverlay";
+import { toArchiveCommandError } from "./archiveCommandError";
 
 export type ArchiveSubject = "Me" | "Xiaoye";
 
@@ -41,6 +43,22 @@ export interface ArchiveWorkspacePort {
     no: string;
     checked: boolean;
   }): Promise<EditableMemoryDocumentApiResponse>;
+}
+
+export interface ArchiveWorkspaceSyncPort {
+  refreshDated(
+    source: "diary" | "dailySummary" | "letters",
+    date: string,
+  ): Promise<unknown>;
+  refreshStatic(
+    workspaceMode: MemoryMode,
+    apiMode: string,
+  ): Promise<unknown>;
+  refreshXiaoye(
+    workspaceMode: string,
+    apiMode: string,
+  ): Promise<unknown>;
+  refreshDateIndex(): Promise<unknown>;
 }
 
 function normalizeDate(value: unknown) {
@@ -96,6 +114,7 @@ export function useArchiveWorkspace<Theme, Page>({
   theme,
   buildPage,
   port,
+  sync,
   navigation,
 }: {
   initialDate: string;
@@ -111,6 +130,7 @@ export function useArchiveWorkspace<Theme, Page>({
     readonly remoteData: RemoteData;
   }): Page;
   port: ArchiveWorkspacePort;
+  sync: ArchiveWorkspaceSyncPort;
   navigation: {
     readonly revision: number;
     readonly target?: ArchiveNavigationTarget;
@@ -165,6 +185,70 @@ export function useArchiveWorkspace<Theme, Page>({
       },
     };
   }, [overlay, remoteData]);
+  useEffect(() => {
+    setOverlay((current) =>
+      reconcileArchiveMutationOverlay(
+        current,
+        remoteData,
+        sourceRevision,
+      ),
+    );
+  }, [remoteData, sourceRevision]);
+
+  const refreshDocument = useCallback(
+    (document: EditableMemoryDocumentRequest) => {
+      if (document.documentId === "diary") {
+        void Promise.all([
+          sync.refreshDated("diary", document.date ?? ""),
+          sync.refreshDateIndex(),
+        ]);
+        return;
+      }
+      if (document.documentId === "daily-summary") {
+        void Promise.all([
+          sync.refreshDated(
+            "dailySummary",
+            document.date ?? "",
+          ),
+          sync.refreshDateIndex(),
+        ]);
+        return;
+      }
+      if (document.documentId === "letters") {
+        void Promise.all([
+          sync.refreshDated("letters", document.date ?? ""),
+          sync.refreshDateIndex(),
+        ]);
+        return;
+      }
+      if (document.documentType === "xiaoye-memory-document") {
+        const workspaceMode =
+          document.documentId === "personality_anchor"
+            ? "PersonalityAnchor"
+            : "Ins";
+        void sync.refreshXiaoye(
+          workspaceMode,
+          document.documentId,
+        );
+        return;
+      }
+      const workspaceMode: MemoryMode =
+        document.documentId === "projects"
+          ? "Project"
+          : document.documentId === "preferences"
+            ? "Preference"
+            : document.documentId === "facts"
+              ? "Facts"
+              : document.documentId === "patterns"
+                ? "Patterns"
+                : "Openloops";
+      void sync.refreshStatic(
+        workspaceMode,
+        document.documentId,
+      );
+    },
+    [sync],
+  );
 
   useEffect(() => {
     if (
@@ -208,8 +292,13 @@ export function useArchiveWorkspace<Theme, Page>({
   }, [date, mode, navigation]);
 
   const loadDocument = useCallback(
-    (input: EditableMemoryDocumentApiRequest) =>
-      port.loadDocument(input),
+    async (input: EditableMemoryDocumentApiRequest) => {
+      try {
+        return await port.loadDocument(input);
+      } catch {
+        throw toArchiveCommandError("load");
+      }
+    },
     [port],
   );
   const saveDocument = useCallback(
@@ -218,7 +307,12 @@ export function useArchiveWorkspace<Theme, Page>({
         content: string;
       },
     ) => {
-      const result = await port.saveDocument(input);
+      let result: EditableMemoryDocumentApiResponse;
+      try {
+        result = await port.saveDocument(input);
+      } catch {
+        throw toArchiveCommandError("save");
+      }
       const resultEntry = result.entry;
       if (isMemoryEntry(resultEntry)) {
         setOverlay((current) =>
@@ -228,10 +322,11 @@ export function useArchiveWorkspace<Theme, Page>({
             baseRevision: sourceRevision,
           }),
         );
+        refreshDocument(toDocumentRequest(input));
       }
       return result;
     },
-    [port, sourceRevision],
+    [port, refreshDocument, sourceRevision],
   );
   const toggleOpenLoop = useCallback(
     async (no: string | number, checked: boolean) => {
@@ -272,9 +367,10 @@ export function useArchiveWorkspace<Theme, Page>({
               baseRevision: sourceRevision,
             }),
           );
+          refreshDocument(document);
         }
         return result;
-      } catch (error) {
+      } catch {
         if (
           openLoopSequenceRef.current === sequence &&
           previousEntry
@@ -287,12 +383,13 @@ export function useArchiveWorkspace<Theme, Page>({
             }),
           );
         }
-        throw error;
+        throw toArchiveCommandError("toggle");
       }
     },
     [
       effectiveRemoteData.staticModeEntries.Openloops,
       port,
+      refreshDocument,
       sourceRevision,
     ],
   );
@@ -348,12 +445,14 @@ export function useArchiveWorkspace<Theme, Page>({
       page,
       effectiveRemoteData,
       navigationTarget,
+      waitingForSync: Object.keys(overlay.entries).length > 0,
     }),
     [
       date,
       effectiveRemoteData,
       mode,
       navigationTarget,
+      overlay.entries,
       page,
       subject,
       xiaoyeMode,

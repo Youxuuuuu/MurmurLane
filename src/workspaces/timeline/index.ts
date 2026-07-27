@@ -3,6 +3,7 @@ export {
   applyTimelineMutationOverlay,
   createTimelineMutationOverlay,
   deleteTimelineEventFromOverlay,
+  reconcileTimelineMutationOverlay,
   upsertTimelineEventInOverlay,
   type TimelineMutationOverlay,
 } from "./timelineMutationOverlay";
@@ -11,4 +12,10 @@ export {
   resolveTimelineNavigationView,
   type TimelineViewMode,
   type TimelineWorkspacePort,
+  type TimelineWorkspaceSyncPort,
 } from "./useTimelineWorkspace";
+export {
+  TimelineCommandError,
+  toTimelineCommandError,
+  type TimelineCommandOperation,
+} from "./timelineCommandError";

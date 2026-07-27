@@ -1,9 +1,13 @@
 ---
 Status: Accepted
-Implementation: Pending
+Implementation: Complete
 ---
 
 # ContentSync Snapshot 只读，写操作使用领域 Mutation Overlay
+
+## 实施结果
+
+Timeline 与 Archive Workspace 已通过领域专属 Mutation Overlay 生成 Effective State，不再直接修改 ContentSync Snapshot、Search Cache 或 Date Index。保存和删除成功后，Workspace 请求 ContentSync 刷新对应来源；只有新 Snapshot Revision 前进且 Canonical 数据在领域语义上确认相同结果时，Overlay 才会清除。Open Loops 继续保留既有的请求前乐观更新和失败回滚。相关确认、迟到结果和只读边界已有 Characterization Tests。
 
 ContentSync 发布的 Snapshot 对 Workspace 只读。领域写操作由 Workspace Command 发起；需要保持即时反馈时，Workspace 使用领域特定的 Mutation Overlay 推导 View Model，并通过 `invalidate(source)` 或 `refresh(source)` 请求 ContentSync 发布新 Snapshot。只有当新 Snapshot 在领域语义上确认对应变更后，才清除 Overlay。Workspace 不得直接修改 ContentSync 内部缓存，当前不建立通用 Optimistic Store、Entity Cache 或 Repository 框架。
 

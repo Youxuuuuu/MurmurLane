@@ -1,10 +1,14 @@
 ---
 Status: Accepted
-Implementation: Pending
+Implementation: Complete
 Date: 2026-07-27
 ---
 
 # ADR-0016：共享代码必须具有已证明的领域中立复用
+
+## 实施结果
+
+新增架构边界测试，阻止 Workspace 直接依赖具体 `api.ts`、`chatApi.ts`、View 组件或其他 Workspace，并阻止新增 `shared/`、`common/`、`utils/`、`helpers/` 顶层杂物目录。Conversation、Timeline 与 Archive 新 seam 保持领域所有权；跨 Workspace 的既有浏览日期协调通过明确的 App Application Flow 实现。现有 `lib/` 和 `types/` 未进行无关批量搬迁。
 
 ## Context
 

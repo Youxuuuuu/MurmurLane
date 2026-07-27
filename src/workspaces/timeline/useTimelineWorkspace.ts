@@ -18,8 +18,10 @@ import {
   applyTimelineMutationOverlay,
   createTimelineMutationOverlay,
   deleteTimelineEventFromOverlay,
+  reconcileTimelineMutationOverlay,
   upsertTimelineEventInOverlay,
 } from "./timelineMutationOverlay";
+import { toTimelineCommandError } from "./timelineCommandError";
 
 export type TimelineViewMode =
   | "line"
@@ -48,6 +50,10 @@ export interface TimelineWorkspacePort {
     date: string;
     eventId: string;
   }): Promise<TimelineEventApiResponse>;
+}
+
+export interface TimelineWorkspaceSyncPort {
+  refresh(date: string): Promise<unknown>;
 }
 
 function normalizeDate(value: unknown) {
@@ -89,6 +95,7 @@ export function useTimelineWorkspace<Theme, Page>({
   theme,
   buildPage,
   port,
+  sync,
   navigation,
 }: {
   initialDate: string;
@@ -101,6 +108,7 @@ export function useTimelineWorkspace<Theme, Page>({
     remoteData: RemoteData,
   ): Page;
   port: TimelineWorkspacePort;
+  sync: TimelineWorkspaceSyncPort;
   navigation: {
     readonly revision: number;
     readonly target?: TimelineNavigationTarget;
@@ -132,6 +140,15 @@ export function useTimelineWorkspace<Theme, Page>({
       ),
     [overlay, remoteData.timelineState],
   );
+  useEffect(() => {
+    setOverlay((current) =>
+      reconcileTimelineMutationOverlay(
+        current,
+        remoteData.timelineState,
+        sourceRevision,
+      ),
+    );
+  }, [remoteData.timelineState, sourceRevision]);
   const effectiveRemoteData = useMemo<RemoteData>(
     () => ({
       ...remoteData,
@@ -194,8 +211,13 @@ export function useTimelineWorkspace<Theme, Page>({
   }, []);
 
   const fetchEvent = useCallback(
-    (eventDate: string, eventId: string) =>
-      port.fetchEvent(eventDate, eventId),
+    async (eventDate: string, eventId: string) => {
+      try {
+        return await port.fetchEvent(eventDate, eventId);
+      } catch {
+        throw toTimelineCommandError("load");
+      }
+    },
     [port],
   );
   const saveEvent = useCallback(
@@ -206,7 +228,12 @@ export function useTimelineWorkspace<Theme, Page>({
     }) => {
       const targetKey = `${normalizeDate(input.date)}:${input.eventId}`;
       const sequence = nextMutationSequence(targetKey);
-      const result = await port.patchEvent(input);
+      let result: TimelineEventApiResponse;
+      try {
+        result = await port.patchEvent(input);
+      } catch {
+        throw toTimelineCommandError("save");
+      }
       const resultEvent = result.event;
       if (
         mutationSequenceByTargetRef.current.get(targetKey) ===
@@ -220,16 +247,22 @@ export function useTimelineWorkspace<Theme, Page>({
             baseRevision: sourceRevision,
           }),
         );
+        void sync.refresh(normalizeDate(result.date ?? input.date));
       }
       return result;
     },
-    [nextMutationSequence, port, sourceRevision],
+    [nextMutationSequence, port, sourceRevision, sync],
   );
   const deleteEvent = useCallback(
     async (input: { date: string; eventId: string }) => {
       const targetKey = `${normalizeDate(input.date)}:${input.eventId}`;
       const sequence = nextMutationSequence(targetKey);
-      const result = await port.deleteEvent(input);
+      let result: TimelineEventApiResponse;
+      try {
+        result = await port.deleteEvent(input);
+      } catch {
+        throw toTimelineCommandError("delete");
+      }
       if (
         mutationSequenceByTargetRef.current.get(targetKey) ===
         sequence
@@ -241,10 +274,11 @@ export function useTimelineWorkspace<Theme, Page>({
             baseRevision: sourceRevision,
           }),
         );
+        void sync.refresh(normalizeDate(result.date ?? input.date));
       }
       return result;
     },
-    [nextMutationSequence, port, sourceRevision],
+    [nextMutationSequence, port, sourceRevision, sync],
   );
   const openDate = useCallback((nextDate: string) => {
     const normalized = normalizeDate(nextDate);
@@ -269,11 +303,15 @@ export function useTimelineWorkspace<Theme, Page>({
       page,
       effectiveRemoteData,
       navigationTarget,
+      waitingForSync:
+        Object.keys(overlay.upserts).length > 0 ||
+        Object.keys(overlay.deletions).length > 0,
     }),
     [
       date,
       effectiveRemoteData,
       navigationTarget,
+      overlay,
       page,
       statsPeriod,
       view,

@@ -611,7 +611,11 @@ export function TimelineEventEditorDrawer({
 
       onClose();
     } catch (error) {
-      setError(String(error?.bodyText || error?.message || error));
+      setError(
+        error instanceof Error
+          ? error.message
+          : "时间轴事件保存失败，请稍后重试。",
+      );
     } finally {
       setIsSaving(false);
     }
@@ -629,7 +633,11 @@ export function TimelineEventEditorDrawer({
 
       onClose();
     } catch (error) {
-      setError(String(error?.bodyText || error?.message || error));
+      setError(
+        error instanceof Error
+          ? error.message
+          : "时间轴事件删除失败，请稍后重试。",
+      );
     } finally {
       setIsDeleting(false);
     }
