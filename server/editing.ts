@@ -3,7 +3,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import {
   readTextFile,
-  resolveDataPath,
+  type ServerAccess,
 } from "./fileLoaders.js";
 import {
   parseDailySummaryMarkdown,
@@ -12,6 +12,11 @@ import {
   parseStaticMemoryMarkdown,
 } from "./parsers.js";
 import type { MemoryEntry } from "./types.js";
+import {
+  ConflictError,
+  InvalidInputError,
+  NotFoundError,
+} from "./domainErrors.js";
 
 export type EditableMemoryDocumentType =
   | "dated-memory-document"
@@ -97,20 +102,25 @@ function normalizeConfidence(value: unknown) {
   }
 
   if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new Error("Invalid confidence. Expected a finite number.");
+    throw new InvalidInputError(
+      "Invalid confidence. Expected a finite number.",
+    );
   }
 
   return value;
 }
 
 function assertEditableMemoryDocumentSpec(
+  access: ServerAccess,
   documentType: EditableMemoryDocumentType,
   documentId: EditableMemoryDocumentId,
   date?: string,
 ): EditableMemoryDocumentSpec {
   if (documentType === "dated-memory-document") {
     if (!isIsoDate(date)) {
-      throw new Error("Missing or invalid date. Expected yyyy-mm-dd.");
+      throw new InvalidInputError(
+        "Missing or invalid date. Expected yyyy-mm-dd.",
+      );
     }
 
     if (documentId === "diary") {
@@ -118,7 +128,7 @@ function assertEditableMemoryDocumentSpec(
         documentType,
         documentId,
         date,
-        filePath: resolveDataPath("diary", `${date}.md`),
+        filePath: access.resolveDataPath("diary", `${date}.md`),
         parse: (content) =>
           parseDiaryOrLetterMarkdown(content, {
             fallbackTitle: date,
@@ -131,7 +141,7 @@ function assertEditableMemoryDocumentSpec(
         documentType,
         documentId,
         date,
-        filePath: resolveDataPath(
+        filePath: access.resolveDataPath(
           "memory",
           "daily-summary",
           `daily-summary-${date}.md`,
@@ -145,7 +155,7 @@ function assertEditableMemoryDocumentSpec(
         documentType,
         documentId,
         date,
-        filePath: resolveDataPath("memory", "letters", `${date}.md`),
+        filePath: access.resolveDataPath("memory", "letters", `${date}.md`),
         parse: (content) =>
           parseDiaryOrLetterMarkdown(content, {
             fallbackTitle: "给小栩的信",
@@ -159,7 +169,7 @@ function assertEditableMemoryDocumentSpec(
       return {
         documentType,
         documentId,
-        filePath: resolveDataPath("memory", "projects.md"),
+        filePath: access.resolveDataPath("memory", "projects.md"),
         parse: (content) => parseStaticMemoryMarkdown("projects", content),
       };
     }
@@ -168,7 +178,7 @@ function assertEditableMemoryDocumentSpec(
       return {
         documentType,
         documentId,
-        filePath: resolveDataPath("memory", "preferences.md"),
+        filePath: access.resolveDataPath("memory", "preferences.md"),
         parse: (content) => parseStaticMemoryMarkdown("preferences", content),
       };
     }
@@ -177,7 +187,7 @@ function assertEditableMemoryDocumentSpec(
       return {
         documentType,
         documentId,
-        filePath: resolveDataPath("memory", "facts.md"),
+        filePath: access.resolveDataPath("memory", "facts.md"),
         parse: (content) => parseStaticMemoryMarkdown("facts", content),
       };
     }
@@ -186,7 +196,7 @@ function assertEditableMemoryDocumentSpec(
       return {
         documentType,
         documentId,
-        filePath: resolveDataPath("memory", "patterns.md"),
+        filePath: access.resolveDataPath("memory", "patterns.md"),
         parse: (content) => parseStaticMemoryMarkdown("patterns", content),
       };
     }
@@ -195,7 +205,7 @@ function assertEditableMemoryDocumentSpec(
       return {
         documentType,
         documentId,
-        filePath: resolveDataPath("memory", "open_loops.md"),
+        filePath: access.resolveDataPath("memory", "open_loops.md"),
         parse: parseOpenLoopsMarkdown,
       };
     }
@@ -206,7 +216,7 @@ function assertEditableMemoryDocumentSpec(
       return {
         documentType,
         documentId,
-        filePath: resolveDataPath("weixin-instructions.md"),
+        filePath: access.resolveDataPath("weixin-instructions.md"),
         parse: (content) =>
           parseStaticMemoryMarkdown("weixin_instructions", content),
       };
@@ -216,14 +226,14 @@ function assertEditableMemoryDocumentSpec(
       return {
         documentType,
         documentId,
-        filePath: resolveDataPath("personality-anchor.md"),
+        filePath: access.resolveDataPath("personality-anchor.md"),
         parse: (content) =>
           parseStaticMemoryMarkdown("personality_anchor", content),
       };
     }
   }
 
-  throw new Error("Unsupported editable document.");
+  throw new InvalidInputError("Unsupported editable document.");
 }
 
 async function writeWhitelistedFile(filePath: string, content: string) {
@@ -235,8 +245,9 @@ export function getEditableMemoryDocumentSpec(input: {
   documentType: EditableMemoryDocumentType;
   documentId: EditableMemoryDocumentId;
   date?: string;
-}) {
+}, access: ServerAccess) {
   return assertEditableMemoryDocumentSpec(
+    access,
     input.documentType,
     input.documentId,
     input.date,
@@ -247,8 +258,8 @@ export async function readEditableMemoryDocument(input: {
   documentType: EditableMemoryDocumentType;
   documentId: EditableMemoryDocumentId;
   date?: string;
-}): Promise<EditableMemoryDocumentResult> {
-  const spec = getEditableMemoryDocumentSpec(input);
+}, access: ServerAccess): Promise<EditableMemoryDocumentResult> {
+  const spec = getEditableMemoryDocumentSpec(input, access);
   const result = await readTextFile(spec.filePath);
   const content = result.content ?? "";
 
@@ -265,8 +276,8 @@ export async function writeEditableMemoryDocument(input: {
   documentId: EditableMemoryDocumentId;
   date?: string;
   content: string;
-}) {
-  const spec = getEditableMemoryDocumentSpec(input);
+}, access: ServerAccess) {
+  const spec = getEditableMemoryDocumentSpec(input, access);
   const normalizedContent = normalizeMarkdownContent(input.content);
 
   await writeWhitelistedFile(spec.filePath, normalizedContent);
@@ -281,18 +292,20 @@ export async function writeEditableMemoryDocument(input: {
 export async function toggleOpenLoopsChecklistItem(input: {
   no: string;
   checked: boolean;
-}) {
+}, access: ServerAccess) {
   const spec = getEditableMemoryDocumentSpec({
     documentType: "static-memory-document",
     documentId: "open_loops",
-  });
+  }, access);
   const result = await readTextFile(spec.filePath);
   const content = result.content ?? "";
   const lines = normalizeMarkdownContent(content).split("\n");
   const targetNo = trimStringValue(input.no);
 
   if (!/^\d+$/.test(targetNo)) {
-    throw new Error("Missing or invalid no. Expected a checklist index.");
+    throw new InvalidInputError(
+      "Missing or invalid no. Expected a checklist index.",
+    );
   }
 
   let checklistCursor = 0;
@@ -317,7 +330,9 @@ export async function toggleOpenLoopsChecklistItem(input: {
   });
 
   if (!replaced) {
-    throw new Error(`Open loop #${targetNo} was not found.`);
+    throw new NotFoundError(
+      `Open loop #${targetNo} was not found.`,
+    );
   }
 
   const nextContent = nextLines.join("\n");
@@ -399,7 +414,9 @@ function ensureTimelineDayRecord(
   const dayKey = findTimelineDayKey(facts, date, options);
 
   if (!dayKey) {
-    throw new Error(`Timeline day ${date} was not found.`);
+    throw new NotFoundError(
+      `Timeline day ${date} was not found.`,
+    );
   }
 
   const existing = facts[dayKey];
@@ -411,7 +428,9 @@ function ensureTimelineDayRecord(
   }
 
   if (!options.allowCreate) {
-    throw new Error(`Timeline day ${date} was not found.`);
+    throw new NotFoundError(
+      `Timeline day ${date} was not found.`,
+    );
   }
 
   return {
@@ -429,13 +448,15 @@ function parseIsoDateTime(value: unknown, fieldName: string) {
   const text = trimStringValue(value);
 
   if (!text) {
-    throw new Error(`Missing ${fieldName}.`);
+    throw new InvalidInputError(`Missing ${fieldName}.`);
   }
 
   const timeMs = Date.parse(text);
 
   if (!Number.isFinite(timeMs)) {
-    throw new Error(`Invalid ${fieldName}. Expected an ISO datetime string.`);
+    throw new InvalidInputError(
+      `Invalid ${fieldName}. Expected an ISO datetime string.`,
+    );
   }
 
   return new Date(timeMs).toISOString();
@@ -478,7 +499,7 @@ function sanitizeTimelineEventPatch(
     ["startAt", "endAt", "title", "categoryId", "subcategoryId"].forEach(
       (fieldName) => {
         if (!(fieldName in nextPatch)) {
-          throw new Error(`Missing ${fieldName}.`);
+          throw new InvalidInputError(`Missing ${fieldName}.`);
         }
       },
     );
@@ -596,7 +617,7 @@ function buildTimelineTaxonomyMaps(state: Record<string, unknown>) {
   const taxonomy = isRecord(state.taxonomy) ? state.taxonomy : null;
 
   if (!taxonomy) {
-    throw new Error("Timeline taxonomy was not found.");
+    throw new NotFoundError("Timeline taxonomy was not found.");
   }
 
   collectTimelineCategories(taxonomy.categories, maps);
@@ -616,28 +637,30 @@ function validateTimelineEvent(
   const title = trimStringValue(event.title);
 
   if (!title) {
-    throw new Error("Missing title.");
+    throw new InvalidInputError("Missing title.");
   }
 
   if (!taxonomyMaps.categoryIds.has(categoryId)) {
-    throw new Error("Invalid categoryId.");
+    throw new InvalidInputError("Invalid categoryId.");
   }
 
   const subcategoryIds = taxonomyMaps.subcategoryIdsByCategory.get(categoryId);
 
   if (!subcategoryId || !subcategoryIds?.has(subcategoryId)) {
-    throw new Error("Invalid subcategoryId.");
+    throw new InvalidInputError("Invalid subcategoryId.");
   }
 
   if (
     eventNodeId &&
     taxonomyMaps.eventNodeParentById.get(eventNodeId) !== subcategoryId
   ) {
-    throw new Error("Invalid eventNodeId.");
+    throw new InvalidInputError("Invalid eventNodeId.");
   }
 
   if (new Date(endAt).getTime() <= new Date(startAt).getTime()) {
-    throw new Error("Invalid time range. endAt must be after startAt.");
+    throw new InvalidInputError(
+      "Invalid time range. endAt must be after startAt.",
+    );
   }
 }
 
@@ -662,8 +685,11 @@ function normalizeTimelineEventRecord(event: Record<string, unknown>) {
   return normalizedEvent;
 }
 
-export async function readTimelineStateFile() {
-  const filePath = resolveDataPath("timeline", "timeline-state.json");
+export async function readTimelineStateFile(access: ServerAccess) {
+  const filePath = access.resolveDataPath(
+    "timeline",
+    "timeline-state.json",
+  );
   const result = await readTextFile(filePath);
 
   if (!result.found || result.content == null) {
@@ -724,11 +750,11 @@ export async function patchTimelineEvent(input: {
   date: string;
   eventId: string;
   changes: Record<string, unknown>;
-}) {
-  const timelineFile = await readTimelineStateFile();
+}, access: ServerAccess) {
+  const timelineFile = await readTimelineStateFile(access);
 
   if (!timelineFile.found || !timelineFile.data) {
-    throw new Error("Timeline state was not found.");
+    throw new NotFoundError("Timeline state was not found.");
   }
 
   const state = timelineFile.data;
@@ -739,13 +765,17 @@ export async function patchTimelineEvent(input: {
   );
 
   if (eventIndex === -1) {
-    throw new Error(`Timeline event ${input.eventId} was not found.`);
+    throw new NotFoundError(
+      `Timeline event ${input.eventId} was not found.`,
+    );
   }
 
   const currentEvent = dayRecord.events[eventIndex];
 
   if (!isRecord(currentEvent)) {
-    throw new Error(`Timeline event ${input.eventId} was not found.`);
+    throw new NotFoundError(
+      `Timeline event ${input.eventId} was not found.`,
+    );
   }
 
   const nextPatch = sanitizeTimelineEventPatch(input.changes);
@@ -779,11 +809,11 @@ export async function patchTimelineEvent(input: {
 export async function createTimelineEvent(input: {
   date: string;
   event: Record<string, unknown>;
-}) {
-  const timelineFile = await readTimelineStateFile();
+}, access: ServerAccess) {
+  const timelineFile = await readTimelineStateFile(access);
 
   if (!timelineFile.found || !timelineFile.data) {
-    throw new Error("Timeline state was not found.");
+    throw new NotFoundError("Timeline state was not found.");
   }
 
   const state = timelineFile.data;
@@ -801,7 +831,7 @@ export async function createTimelineEvent(input: {
   });
 
   if (!nextEvent.id) {
-    throw new Error("Missing event id.");
+    throw new InvalidInputError("Missing event id.");
   }
 
   if (
@@ -809,7 +839,9 @@ export async function createTimelineEvent(input: {
       (item) => isRecord(item) && trimStringValue(item.id) === nextEvent.id,
     )
   ) {
-    throw new Error(`Timeline event ${nextEvent.id} already exists.`);
+    throw new ConflictError(
+      `Timeline event ${nextEvent.id} already exists.`,
+    );
   }
 
   validateTimelineEvent(nextEvent, buildTimelineTaxonomyMaps(state));
@@ -837,11 +869,11 @@ export async function createTimelineEvent(input: {
 export async function deleteTimelineEvent(input: {
   date: string;
   eventId: string;
-}) {
-  const timelineFile = await readTimelineStateFile();
+}, access: ServerAccess) {
+  const timelineFile = await readTimelineStateFile(access);
 
   if (!timelineFile.found || !timelineFile.data) {
-    throw new Error("Timeline state was not found.");
+    throw new NotFoundError("Timeline state was not found.");
   }
 
   const state = timelineFile.data;
@@ -852,7 +884,9 @@ export async function deleteTimelineEvent(input: {
   );
 
   if (nextEvents.length === dayRecord.events.length) {
-    throw new Error(`Timeline event ${input.eventId} was not found.`);
+    throw new NotFoundError(
+      `Timeline event ${input.eventId} was not found.`,
+    );
   }
 
   const nextFacts = { ...facts };

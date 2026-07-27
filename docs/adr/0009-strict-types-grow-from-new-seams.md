@@ -5,6 +5,12 @@ Implementation: Partial
 
 # 严格类型从新 seam 向旧代码渐进扩展
 
+## 当前实施进度
+
+新增 `tsconfig.server.json` 与 `npm run typecheck:server`，覆盖 `server/index.ts`、`app.ts`、Router、领域模块、Read Model、Live Update 和 Server Access，并补充 `@types/node` 与 `@types/express` 直接类型依赖。Server strict typecheck 已通过，没有使用 `@ts-nocheck` 或大范围 `any` 掩盖问题。
+
+新增浏览器 seam 继续由 `tsconfig.strict.json` 检查。`ConversationPage.tsx` 与 `App.tsx` 的渐进移除仍属于阶段 9，因此本 ADR 保持 `Partial`。
+
 新架构 seam 默认采用严格类型，API、SSE、JSONL、Markdown、文件和环境变量等外部数据在 Adapter 边缘进行运行时校验。旧大型文件随职责迁移渐进收紧，不进行一次性全项目类型重写，并将 MurmurLane Server 纳入独立 typecheck。
 
 ## 当前源码事实

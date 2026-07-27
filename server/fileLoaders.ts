@@ -1,20 +1,9 @@
 import { access, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import {
-  DEFAULT_CYBERBOSS_DATA_ROOT,
   type JsonFileResult,
   type TextFileResult,
 } from "./types.js";
-
-export function getCyberbossDataRoot() {
-  return path.resolve(
-    process.env.CYBERBOSS_DATA_ROOT || DEFAULT_CYBERBOSS_DATA_ROOT,
-  );
-}
-
-export function resolveDataPath(...parts: string[]) {
-  return path.resolve(getCyberbossDataRoot(), ...parts);
-}
 
 function isPathWithinRoot(targetPath: string, rootPath: string) {
   const relative = path.relative(rootPath, targetPath);
@@ -24,24 +13,6 @@ function isPathWithinRoot(targetPath: string, rootPath: string) {
   );
 }
 
-export function resolveReadableCyberbossFilePath(filePath: string) {
-  const rawPath = String(filePath ?? "").trim();
-
-  if (!rawPath) {
-    return null;
-  }
-
-  const resolvedPath = path.isAbsolute(rawPath)
-    ? path.resolve(rawPath)
-    : resolveDataPath(rawPath);
-
-  if (isPathWithinRoot(resolvedPath, getCyberbossDataRoot())) {
-    return resolvedPath;
-  }
-
-  return null;
-}
-
 export async function fileExists(filePath: string) {
   try {
     await access(filePath);
@@ -49,17 +20,6 @@ export async function fileExists(filePath: string) {
   } catch {
     return false;
   }
-}
-
-export async function findExistingDataPath(paths: string[]) {
-  for (const relativePath of paths) {
-    const absolutePath = resolveDataPath(relativePath);
-    if (await fileExists(absolutePath)) {
-      return absolutePath;
-    }
-  }
-
-  return resolveDataPath(paths[0] || "");
 }
 
 export async function readTextFile(filePath: string): Promise<TextFileResult> {
@@ -83,12 +43,6 @@ export async function readTextFile(filePath: string): Promise<TextFileResult> {
   }
 }
 
-export async function readDataTextFile(
-  ...relativeParts: string[]
-): Promise<TextFileResult> {
-  return readTextFile(resolveDataPath(...relativeParts));
-}
-
 export async function readJsonFile<T>(filePath: string): Promise<JsonFileResult<T>> {
   const result = await readTextFile(filePath);
 
@@ -105,12 +59,6 @@ export async function readJsonFile<T>(filePath: string): Promise<JsonFileResult<
     path: result.path,
     data: JSON.parse(result.content) as T,
   };
-}
-
-export async function readDataJsonFile<T>(
-  ...relativeParts: string[]
-): Promise<JsonFileResult<T>> {
-  return readJsonFile<T>(resolveDataPath(...relativeParts));
 }
 
 export async function readJsonLinesFile<T>(filePath: string) {
@@ -137,17 +85,64 @@ export async function readJsonLinesFile<T>(filePath: string) {
   };
 }
 
-export async function listDataFileNames(...relativeParts: string[]) {
-  const directoryPath = resolveDataPath(...relativeParts);
+export interface ServerAccess {
+  readonly dataRoot: string;
+  resolveDataPath(...parts: string[]): string;
+  resolveReadableCyberbossFilePath(filePath: string): string | null;
+  findExistingDataPath(paths: string[]): Promise<string>;
+  readDataTextFile(...relativeParts: string[]): Promise<TextFileResult>;
+  readDataJsonFile<T>(
+    ...relativeParts: string[]
+  ): Promise<JsonFileResult<T>>;
+  listDataFileNames(...relativeParts: string[]): Promise<string[]>;
+}
 
-  try {
-    const entries = await readdir(directoryPath, { withFileTypes: true });
-    return entries.filter((entry) => entry.isFile()).map((entry) => entry.name);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return [];
-    }
+export function createServerAccess(dataRoot: string): ServerAccess {
+  const normalizedRoot = path.resolve(dataRoot);
+  const resolveDataPath = (...parts: string[]) =>
+    path.resolve(normalizedRoot, ...parts);
 
-    throw error;
-  }
+  return Object.freeze({
+    dataRoot: normalizedRoot,
+    resolveDataPath,
+    resolveReadableCyberbossFilePath(filePath: string) {
+      const rawPath = String(filePath ?? "").trim();
+      if (!rawPath) return null;
+      const resolvedPath = path.isAbsolute(rawPath)
+        ? path.resolve(rawPath)
+        : resolveDataPath(rawPath);
+      return isPathWithinRoot(resolvedPath, normalizedRoot)
+        ? resolvedPath
+        : null;
+    },
+    async findExistingDataPath(paths: string[]) {
+      for (const relativePath of paths) {
+        const absolutePath = resolveDataPath(relativePath);
+        if (await fileExists(absolutePath)) return absolutePath;
+      }
+      return resolveDataPath(paths[0] || "");
+    },
+    readDataTextFile(...relativeParts: string[]) {
+      return readTextFile(resolveDataPath(...relativeParts));
+    },
+    readDataJsonFile<T>(...relativeParts: string[]) {
+      return readJsonFile<T>(resolveDataPath(...relativeParts));
+    },
+    async listDataFileNames(...relativeParts: string[]) {
+      const directoryPath = resolveDataPath(...relativeParts);
+      try {
+        const entries = await readdir(directoryPath, {
+          withFileTypes: true,
+        });
+        return entries
+          .filter((entry) => entry.isFile())
+          .map((entry) => entry.name);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+          return [];
+        }
+        throw error;
+      }
+    },
+  });
 }

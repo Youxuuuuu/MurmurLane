@@ -1,6 +1,5 @@
 import { watch, type FSWatcher } from "node:fs";
 import path from "node:path";
-import type { Response } from "express";
 
 export type LiveUpdateEvent = {
   id: number;
@@ -64,38 +63,25 @@ export function classifyChangedPath(
   return null;
 }
 
-export function createLiveUpdateHub(dataRoot: string) {
-  const clients = new Set<Response>();
+export function createLiveUpdateService(dataRoot: string) {
+  const listeners = new Set<(event: LiveUpdateEvent) => void>();
   const pendingPaths = new Map<string, NodeJS.Timeout>();
   let nextEventId = Date.now();
   let watcher: FSWatcher | null = null;
-  let keepAliveTimer: NodeJS.Timeout | null = null;
-
-  const send = (response: Response, event: LiveUpdateEvent) => {
-    response.write(`id: ${event.id}\n`);
-    response.write("event: change\n");
-    response.write(`data: ${JSON.stringify(event)}\n\n`);
-  };
 
   const broadcast = (event: Omit<LiveUpdateEvent, "id">) => {
     const payload = { ...event, id: ++nextEventId } as LiveUpdateEvent;
-    clients.forEach((client) => send(client, payload));
+    listeners.forEach((listener) => listener(payload));
   };
 
-  const subscribe = (response: Response) => {
-    response.status(200);
-    response.setHeader("Content-Type", "text/event-stream; charset=utf-8");
-    response.setHeader("Cache-Control", "no-cache, no-transform");
-    response.setHeader("Connection", "keep-alive");
-    response.setHeader("X-Accel-Buffering", "no");
-    response.flushHeaders();
-    response.write("retry: 3000\n\n");
-    send(response, { id: ++nextEventId, type: "resync" });
-    clients.add(response);
-
-    response.on("close", () => {
-      clients.delete(response);
-    });
+  const subscribe = (
+    listener: (event: LiveUpdateEvent) => void,
+  ) => {
+    listeners.add(listener);
+    listener({ id: ++nextEventId, type: "resync" });
+    return () => {
+      listeners.delete(listener);
+    };
   };
 
   const start = () => {
@@ -122,9 +108,6 @@ export function createLiveUpdateHub(dataRoot: string) {
         console.warn("[cyberboss-api] live update watcher failed", error);
         broadcast({ type: "resync" });
       });
-      keepAliveTimer = setInterval(() => {
-        clients.forEach((client) => client.write(": keep-alive\n\n"));
-      }, 25_000);
     } catch (error) {
       console.warn("[cyberboss-api] live update watcher unavailable", error);
     }
@@ -132,10 +115,8 @@ export function createLiveUpdateHub(dataRoot: string) {
 
   const close = () => {
     watcher?.close();
-    if (keepAliveTimer) clearInterval(keepAliveTimer);
     pendingPaths.forEach((timer) => clearTimeout(timer));
-    clients.forEach((client) => client.end());
-    clients.clear();
+    listeners.clear();
   };
 
   return { subscribe, start, close };

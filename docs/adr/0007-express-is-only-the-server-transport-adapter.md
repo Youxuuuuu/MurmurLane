@@ -1,9 +1,15 @@
 ---
 Status: Accepted
-Implementation: Pending
+Implementation: Complete
 ---
 
 # Express 仅作为 Server 传输 Adapter
+
+## 实施结果
+
+`server/index.ts` 现在只加载配置、创建生产依赖、监听端口并处理进程信号；`server/app.ts` 只创建 Express 并组装路由依赖。HTTP 参数、状态码、CORS、SSE 格式、静态托管和错误映射集中在 `server/routes.ts`。
+
+Conversation 读取、Content Read Model 与缓存、Memory、Media、Reminder、Live Update、文件边界、白名单编辑和 Conversation Profile 已进入不依赖 Express 的模块。Live Update Service 只发布普通变化事件，由 Router 转换成 SSE。Server Access 使用启动期 Data Root 快照并集中执行路径边界；Conversation 仍只有读取能力，没有新增 Archive 写入或删除路径。
 
 Express 仅作为 MurmurLane Server 的传输 Adapter。`server/index.ts` 只负责读取和校验运行环境、创建生产依赖、调用 `createApp()`、启动监听与日志，以及进程信号和优雅关闭；不得包含 Conversation 查询、目录遍历、JSONL 或 Markdown 解析、缓存实现、文件编辑规则或 HTTP 路由实现。
 

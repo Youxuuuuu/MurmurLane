@@ -71,7 +71,7 @@
 | 6 | Timeline 与 Archive Workspace | Implemented / Final Device Pending | ADR-0005、0013、0014、0019 |
 | 7 | 搜索所有权 | Implemented / Final Device Pending | ADR-0004、0011、0016 |
 | 7A | 状态确认、错误安全边界与依赖准入补救 | Implemented / Final Device Pending | ADR-0013、0014、0016、0017、0019 |
-| 8 | Server 分层与 Server Typecheck | Pending | ADR-0007、0009、0014、0018 |
+| 8 | Server 分层与 Server Typecheck | Implemented | ADR-0007、0009、0014、0018 |
 | 9 | 严格类型收尾 | Pending | ADR-0009、0011 |
 
 ## 阶段 1：Conversation Transcript
@@ -703,4 +703,54 @@ src/workspaces/timeline/useTimelineWorkspace.ts
 test/architectureBoundaries.test.ts
 test/workspaceErrors.test.ts
 test/workspaceViewModels.test.ts
+```
+
+### 阶段 8 执行结果
+
+- `server/index.ts` 只保留 Dotenv、配置解析、生产依赖创建、监听、启动日志和进程关闭。
+- `server/app.ts` 只创建 Express 并组装领域服务与 HTTP Router。
+- `server/routes.ts` 只承担 HTTP、CORS、SSE、静态托管、输入解析和错误映射。
+- Conversation Read Model、Content Read Model 与缓存、Memory、Media、Reminder、Live Update、Server Access、编辑与 Profile 逻辑均不依赖 Express。
+- Data Root、编辑令牌、文件大小限制和静态目录形成启动期只读 Server Config；除入口外不再读取 `process.env`。
+- 文件 SSE 的监听服务发布普通事件，Router 保持既有 SSE Header、`retry`、事件结构与 Keep Alive。
+- 新增明确的 Server Domain Error，并由 Router 保持现有 HTTP 映射。
+- 新增独立 `tsconfig.server.json`、`typecheck:server`、`@types/node` 与 `@types/express`。
+- Characterization Tests 覆盖 CORS、参数错误、文件路径安全、编辑令牌、缺失来源响应、配置默认值、Server Access 和 Live Update 的 Express 解耦。
+- `npm test`：127/127 通过。
+- `npm run typecheck:strict`：通过。
+- `npm run typecheck:server`：通过。
+- `npx tsc -p tsconfig.app.json --noEmit --incremental false`：通过。
+- `npm run build`：通过；保留既有的 500 kB Chunk Size Warning。
+- 本阶段没有修改任何浏览器 JSX、CSS、DOM、React Key、滚动、窗口化或动画。
+- 无效 Server 端口现在在启动期明确失败；这是记录在 ADR-0018 中的有意配置错误行为变化。
+- 安装直接类型依赖后 `npm audit` 报告 8 个既有依赖树漏洞，本阶段未运行可能扩大改动范围的自动修复。
+
+### 阶段 8 实际修改文件
+
+```text
+docs/adr/0007-express-is-only-the-server-transport-adapter.md
+docs/adr/0009-strict-types-grow-from-new-seams.md
+docs/adr/0014-errors-flow-from-technical-facts-to-domain-results-to-safe-view-state.md
+docs/adr/0018-browser-public-config-and-server-secrets-have-separate-boundaries.md
+docs/architecture/migration-plan.md
+package.json
+package-lock.json
+server/app.ts
+server/config.ts
+server/conversation/readModel.ts
+server/conversationProfiles.ts
+server/domainErrors.ts
+server/editing.ts
+server/fileLoaders.ts
+server/index.ts
+server/liveUpdates.ts
+server/media/service.ts
+server/memory/service.ts
+server/readModels/contentReadModel.ts
+server/reminder/service.ts
+server/routes.ts
+test/serverAccess.test.ts
+test/serverApp.test.ts
+test/serverConfig.test.ts
+tsconfig.server.json
 ```

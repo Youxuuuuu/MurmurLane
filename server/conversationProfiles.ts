@@ -1,6 +1,8 @@
 import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
+import type { Dirent } from "node:fs";
 import path from "node:path";
-import { resolveDataPath } from "./fileLoaders.js";
+import type { ServerAccess } from "./fileLoaders.js";
+import { InvalidInputError } from "./domainErrors.js";
 
 export interface StoredConversationProfile {
   name: string;
@@ -34,20 +36,29 @@ export interface ConversationProfilePayload {
   thinkingFace?: unknown;
 }
 
-const profileRoot = () => resolveDataPath("MLane", "profiles");
+const profileRoot = (access: ServerAccess) =>
+  access.resolveDataPath("MLane", "profiles");
 const maxImageBytes = 2 * 1024 * 1024;
 const imageDataPattern = /^data:(image\/(?:png|jpeg|webp|gif|avif));base64,([a-z0-9+/=]+)$/i;
 
 function assertThreadId(threadId: string) {
   if (!/^[a-zA-Z0-9._-]{1,128}$/.test(threadId)) {
-    throw new Error("Invalid conversation thread id.");
+    throw new InvalidInputError("Invalid conversation thread id.");
   }
 }
 
-function getProfileDirectory(scope: "user" | "thread", threadId?: string) {
-  if (scope === "user") return path.join(profileRoot(), "self");
+function getProfileDirectory(
+  access: ServerAccess,
+  scope: "user" | "thread",
+  threadId?: string,
+) {
+  if (scope === "user") return path.join(profileRoot(access), "self");
   assertThreadId(String(threadId || ""));
-  return path.join(profileRoot(), "threads", String(threadId));
+  return path.join(
+    profileRoot(access),
+    "threads",
+    String(threadId),
+  );
 }
 
 function imageExtension(mimeType: string) {
@@ -111,11 +122,17 @@ async function writeDataImage(
   if (!source.startsWith("data:image/")) return null;
 
   const match = source.match(imageDataPattern);
-  if (!match) throw new Error("Unsupported profile image format.");
+  if (!match) {
+    throw new InvalidInputError(
+      "Unsupported profile image format.",
+    );
+  }
 
   const buffer = Buffer.from(match[2], "base64");
   if (!buffer.length || buffer.length > maxImageBytes) {
-    throw new Error("Profile image must be between 1 byte and 2 MB.");
+    throw new InvalidInputError(
+      "Profile image must be between 1 byte and 2 MB.",
+    );
   }
 
   const fileName = `${prefix}${imageExtension(match[1].toLowerCase())}`;
@@ -149,13 +166,13 @@ function stringArrayValue(value: unknown, fallback: string[] = []) {
   ).slice(0, 30);
 }
 
-export async function readConversationProfiles() {
-  const userDirectory = getProfileDirectory("user");
+export async function readConversationProfiles(access: ServerAccess) {
+  const userDirectory = getProfileDirectory(access, "user");
   const user = await readStoredProfile(userDirectory);
-  const threadsRoot = path.join(profileRoot(), "threads");
+  const threadsRoot = path.join(profileRoot(access), "threads");
   const threads: Record<string, ReturnType<typeof toClientProfile>> = {};
 
-  let entries;
+  let entries: Dirent[];
   try {
     entries = await readdir(threadsRoot, { withFileTypes: true });
   } catch (error) {
@@ -177,7 +194,7 @@ export async function readConversationProfiles() {
   });
 
   return {
-    root: profileRoot(),
+    root: profileRoot(access),
     user: user ? toClientProfile(user, userDirectory) : null,
     threads,
   };
@@ -191,8 +208,12 @@ export async function writeConversationProfile({
   scope: "user" | "thread";
   threadId?: string;
   payload: ConversationProfilePayload;
-}) {
-  const directoryPath = getProfileDirectory(scope, threadId);
+}, access: ServerAccess) {
+  const directoryPath = getProfileDirectory(
+    access,
+    scope,
+    threadId,
+  );
   await mkdir(directoryPath, { recursive: true });
   const current = await readStoredProfile(directoryPath);
   const avatarFile =

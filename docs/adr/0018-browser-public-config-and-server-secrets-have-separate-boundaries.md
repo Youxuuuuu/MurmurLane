@@ -1,12 +1,16 @@
 ---
 Status: Accepted
-Implementation: Partial
+Implementation: Complete
 Date: 2026-07-27
 Browser implementation: Complete
-Server implementation: Pending
+Server implementation: Complete
 ---
 
 # ADR-0018：浏览器公开配置与 Server Secret 使用独立边界
+
+## 实施结果
+
+Server 环境只在 `server/index.ts` 加载和读取，`parseServerConfig()` 生成启动期只读配置。Data Root、文件大小限制、静态目录和编辑令牌通过最小配置或 Server Access 能力注入，`app.ts`、Router、领域模块和文件模块不再直接读取 `process.env`。`.env.local` 先于 `.env` 加载，Dotenv 默认不覆盖已有进程环境，保持既有优先级。浏览器与 Server 配置边界均已完成。
 
 ## Context
 
