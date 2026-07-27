@@ -1,4 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import type {
+  ConversationProfileApiData,
+  ConversationProfilesResponse,
+} from "../types/api";
 
 export type ConversationIdentity = {
   name: string;
@@ -69,7 +79,10 @@ function readStoredValue<T>(key: string, fallback: T): T {
   }
 }
 
-function readStoredThreadProfiles() {
+function readStoredThreadProfiles(): Record<
+  string,
+  Partial<ConversationThreadProfile>
+> {
   if (typeof window === "undefined") return {};
 
   try {
@@ -79,10 +92,20 @@ function readStoredThreadProfiles() {
   }
 }
 
+export interface ConversationProfileCommands {
+  saveUserProfile(
+    profile: ConversationIdentity,
+  ): Promise<ConversationProfileApiData>;
+  saveThreadProfile(
+    threadId: string,
+    profile: ConversationThreadProfile,
+  ): Promise<ConversationProfileApiData>;
+}
+
 export function useConversationProfiles(
   threadIds: string[],
-  profilesSnapshot,
-  profileCommands,
+  profilesSnapshot: ConversationProfilesResponse | null,
+  profileCommands: ConversationProfileCommands,
 ) {
   const [userProfile, setUserProfile] = useState<ConversationIdentity>(() =>
     readStoredValue(USER_PROFILE_KEY, defaultUserProfile),
@@ -134,7 +157,7 @@ export function useConversationProfiles(
     );
   }, [storedThreadProfiles]);
 
-  const saveUserProfile = async (profile: ConversationIdentity) => {
+  const saveUserProfile = useCallback(async (profile: ConversationIdentity) => {
     setUserProfile(profile);
     try {
       const saved = await profileCommands.saveUserProfile(profile);
@@ -142,12 +165,14 @@ export function useConversationProfiles(
       setProfileError("");
       return saved;
     } catch (error) {
-      setProfileError(String(error?.message || error));
+      setProfileError(
+        error instanceof Error ? error.message : String(error),
+      );
       throw error;
     }
-  };
+  }, [profileCommands]);
 
-  const updateThreadProfile = async (
+  const updateThreadProfile = useCallback(async (
     threadId: string,
     changes: Partial<ConversationThreadProfile>,
   ) => {
@@ -172,10 +197,12 @@ export function useConversationProfiles(
         ...current,
         [threadId]: previous,
       }));
-      setProfileError(String(error?.message || error));
+      setProfileError(
+        error instanceof Error ? error.message : String(error),
+      );
       throw error;
     }
-  };
+  }, [profileCommands]);
 
   return {
     userProfile,

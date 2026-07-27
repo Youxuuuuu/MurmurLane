@@ -37,7 +37,6 @@ import {
   messageMatchesConversationDisplayTarget,
 } from "../../lib/conversationDisplayGroups";
 import {
-  buildConversationTranscript,
   selectConversationTranscriptWindow,
 } from "../../workspaces/conversation";
 
@@ -89,7 +88,7 @@ export const ConversationPage = memo(function ConversationPage({
   earlierDateLoading,
   laterDateLoading = earlierDateLoading,
   onFloatingDateChange,
-  liveMessages = [],
+  transcript,
   webChatViewModel = null,
   webChatCommands = null,
   loadStickers,
@@ -111,14 +110,6 @@ export const ConversationPage = memo(function ConversationPage({
   useEffect(() => {
     setActiveAction(null);
   }, [selectedThreadId]);
-  const transcript = useMemo(
-    () => buildConversationTranscript({
-      canonicalRecords: page.messages || [],
-      liveRecords: liveMessages || [],
-      threadId: selectedThreadId,
-    }),
-    [liveMessages, page.messages, selectedThreadId],
-  );
   const visibleMessages = transcript.records;
   const bubbleAnimationEntries = useMemo(
     () => getBubbleAnimationEntries(visibleMessages, selectedThreadId),

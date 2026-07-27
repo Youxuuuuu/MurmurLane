@@ -1,9 +1,9 @@
-function section(no, title, text) {
+function section(no: string | number, title: string, text: string) {
   return { no: String(no), title, text };
 }
 
 const slash = String.fromCharCode(92);
-const winPath = (...parts) => parts.join(slash);
+const winPath = (...parts: string[]) => parts.join(slash);
 
 export const staticModeEntries = {
   Project: {

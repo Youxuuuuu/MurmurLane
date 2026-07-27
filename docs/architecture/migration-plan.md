@@ -66,7 +66,7 @@
 | 1 | Conversation Transcript | Implemented / Final Device Pending | ADR-0006、0009、0011、0019 |
 | 2 | Browser Config、Composition Root 与最小 Adapter | Implemented / Final Device Pending | ADR-0009、0010、0015、0018 |
 | 3 | ContentSync | Implemented / Final Device Pending | ADR-0001、0002、0013、0017、0019 |
-| 4 | Conversation Workspace Controller | Pending | ADR-0005、0006、0012、0014、0017 |
+| 4 | Conversation Workspace Controller | Implemented / Final Device Pending | ADR-0005、0006、0012、0014、0017 |
 | 5 | App Navigation | Pending | ADR-0003、0010、0015 |
 | 6 | Timeline 与 Archive Workspace | Pending | ADR-0005、0013、0014、0019 |
 | 7 | 搜索所有权 | Pending | ADR-0004、0011、0016 |
@@ -485,12 +485,15 @@ tsconfig.strict.json
 - 将 `src/lib/useWebChat.ts` 迁入 `src/workspaces/conversation/useConversationWorkspace.ts`。
 - Conversation Workspace 通过自己声明的 `WebChatPort` 接收状态、模型、发送、上传和订阅能力，不再导入具体 `chatApi.ts`。
 - `WebChatPort` 只声明真实使用的能力，不暴露 Base URL、Token、Header、EventSource 或完整应用依赖。
-- Workspace 输出拆分为 `viewModel` 与 `commands`，`ConversationPage` 分别接收两者。
+- Conversation 的当前线程、日期、页面模式、Profile、Draft Thread、未读和通知状态已进入持续挂载的 Workspace Controller。
+- Controller 只读消费 ContentSync Snapshot，并在内部派生线程列表、日期范围、页面模型和 Transcript；`App.tsx` 不再保存这些 Conversation 领域状态的等价副本。
+- Workspace 输出拆分为 `viewModel` 与 `commands`；View 继续负责 DOM、滚动、窗口化、手势、焦点和动画。
+- `ConversationPage` 不再自行组合 Canonical 与 Live Records，而只消费 Controller View Model 中的 Transcript。
 - 现有 `requestId`、Message ID、Cursor、Draft Thread、Live Records、Usage、发送事务、上传准备和 `failed/unknown` 恢复流程保持原实现。
 - Hook 继续由持续挂载的 `App.tsx` 无条件调用，View 条件卸载不会清空其领域状态。
-- Thread 选择、日期、Profile、未读和通知等 Conversation 状态仍有一部分保留在 `App.tsx`，ADR-0005 与 ADR-0012 因此为 `Partial`。
-- 新增 1 个 Workspace 输出契约测试，并复用现有 WebChat 事务、上传、状态和身份 Characterization Tests。
-- `npm test`：92/92 通过。
+- Navigation Target 的转交与解释留在阶段 5；Timeline 与 Archive Controller 留在阶段 6，因此 ADR-0003、ADR-0005 和 ADR-0012 的整体状态仍按各自剩余范围保持 `Partial`。
+- 新增 Workspace 状态 Characterization Tests，覆盖线程选择、未读清理、通知队列和 Draft Thread 原子迁移，并复用现有 WebChat 事务、上传、状态和身份测试。
+- `npm test`：107/107 通过。
 - `npm run typecheck:strict`：通过。
 - `npx tsc -p tsconfig.app.json --noEmit --incremental false`：通过。
 - `npm run build`：通过。
@@ -510,7 +513,11 @@ src/App.tsx
 src/app/composition/appDependencies.ts
 src/app/composition/createProductionDependencies.ts
 src/components/conversation/ConversationPage.tsx
+src/data/mockEntries.ts
+src/lib/conversationPageData.ts
+src/lib/conversationProfiles.ts
 src/lib/useWebChat.ts（迁出）
+src/workspaces/conversation/conversationWorkspaceState.ts
 src/workspaces/conversation/conversationWorkspaceContract.ts
 src/workspaces/conversation/index.ts
 src/workspaces/conversation/useConversationWorkspace.ts

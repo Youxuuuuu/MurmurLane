@@ -1,6 +1,6 @@
 ---
 Status: Accepted
-Implementation: Partial
+Implementation: Complete
 ---
 
 # Conversation Transcript 是唯一展示语义入口
@@ -34,6 +34,7 @@ View 负责 Transcript 窗口化、DOM refs、滚动与锚点、日期分隔和�
 - 建立 `buildConversationTranscript(...)` 公共 seam。
 - 建立 Transcript 窗口选择接口，由 View 提供窗口、Transcript 组织完整 Assistant Turn。
 - 将 `ConversationPage.tsx` 的 Merge、隐藏、展示分组、Render Identity 和 Assistant Turn 组合收敛到 Transcript 模块。
+- Conversation Workspace Controller 从 ContentSync Canonical Snapshot 与自身 Live Records 派生 Transcript，View 只消费该结果。
 - 新增 Transcript Characterization Tests。
 - 保持 `ChatBubble`、`AssistantTurn` 和页面 JSX 不变。
 - 完整测试、严格 seam typecheck、应用 TypeScript 检查和生产构建通过。

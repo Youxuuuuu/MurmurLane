@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useReducer,
   useRef,
   useState,
 } from "react";
@@ -29,6 +30,10 @@ import {
 } from "../../lib/webChatSendTransaction";
 import type { ConversationRecord } from "../../types/conversation";
 import type {
+  FetchConversationsOptions,
+  RemoteData,
+} from "../../types/api";
+import type {
   WebChatComposerMessageInput,
   WebChatEvent,
   WebChatMedia,
@@ -39,6 +44,28 @@ import type {
 } from "../../types/webChat";
 import type { WebChatPort } from "./webChatPort";
 import { createConversationWorkspaceOutput } from "./conversationWorkspaceContract";
+import {
+  createDefaultThreadProfile,
+  useConversationProfiles,
+  type ConversationProfileCommands,
+} from "../../lib/conversationProfiles";
+import {
+  createConversationWorkspaceState,
+  reduceConversationWorkspaceState,
+  type ConversationNotification,
+  type ConversationPageMode,
+  type ConversationPlaceholder,
+} from "./conversationWorkspaceState";
+import {
+  buildConversationThreadPage,
+  getAllConversationThreadIds,
+  getAdjacentConversationDateToLoad,
+  getContiguousLoadedConversationDates,
+  getConversationThreadSummaries,
+  getLatestConversationThreadId,
+} from "../../lib/conversationPageData";
+import { getTodayDateText, toDotDate } from "../../lib/date";
+import { buildConversationTranscript } from "./buildConversationTranscript";
 
 interface StagedWebChatSend {
   requestId: string;
@@ -113,15 +140,84 @@ function appendRecord(
 
 export function useConversationWorkspace({
   webChat,
-  enabled,
-  threadId,
-  onThreadCreated,
+  active,
+  initialThreadId,
+  initialDate,
+  profileCommands,
+  loadConversationRecords,
+  remoteData,
+  styleTheme,
 }: {
   webChat: WebChatPort;
-  enabled: boolean;
-  threadId: string;
-  onThreadCreated?: (input: { draftThreadId: string; threadId: string; clientId?: string }) => void;
+  active: boolean;
+  initialThreadId: string;
+  initialDate: string;
+  profileCommands: ConversationProfileCommands;
+  loadConversationRecords(
+    date: string,
+    options?: FetchConversationsOptions,
+  ): Promise<ConversationRecord[] | null>;
+  remoteData: RemoteData;
+  styleTheme: Record<string, unknown>;
 }) {
+  const [workspaceState, dispatch] = useReducer(
+    reduceConversationWorkspaceState,
+    { threadId: initialThreadId, date: initialDate },
+    createConversationWorkspaceState,
+  );
+  const threadId = workspaceState.selectedThreadId;
+  const enabled =
+    active &&
+    workspaceState.view === "chat" &&
+    !workspaceState.placeholder;
+  const availableThreadIds = useMemo(
+    () => getAllConversationThreadIds(remoteData),
+    [remoteData],
+  );
+  const latestThreadId = useMemo(
+    () => getLatestConversationThreadId(remoteData),
+    [remoteData],
+  );
+  const profileThreadIds = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...availableThreadIds,
+          ...workspaceState.webThreadIds,
+        ]),
+      ),
+    [availableThreadIds, workspaceState.webThreadIds],
+  );
+  const {
+    userProfile,
+    setUserProfile,
+    threadProfiles,
+    updateThreadProfile,
+    profileError,
+  } = useConversationProfiles(
+    profileThreadIds,
+    remoteData.conversationProfiles,
+    profileCommands,
+  );
+  const effectiveThreadProfiles = useMemo(
+    () => ({
+      ...threadProfiles,
+      ...workspaceState.webThreadProfileOverrides,
+      ...(workspaceState.profilePreview?.threadId
+        ? {
+            [workspaceState.profilePreview.threadId]:
+              workspaceState.profilePreview.profile,
+          }
+        : {}),
+    }),
+    [
+      threadProfiles,
+      workspaceState.profilePreview,
+      workspaceState.webThreadProfileOverrides,
+    ],
+  );
+  const threadProfilesRef = useRef(effectiveThreadProfiles);
+  threadProfilesRef.current = effectiveThreadProfiles;
   const clientIdRef = useRef(createClientId());
   const cursorByThreadRef = useRef(new Map<string, number>());
   const currentThreadIdRef = useRef(threadId);
@@ -135,6 +231,66 @@ export function useConversationWorkspace({
   const [models, setModels] = useState<WebChatModelResponse | null>(null);
   const [connection, setConnection] = useState<"idle" | "connecting" | "open" | "offline">("idle");
   const [error, setError] = useState("");
+  const [dateLoading, setDateLoading] = useState(false);
+  const dateLoadingKeysRef = useRef(new Set<string>());
+
+  useEffect(() => {
+    if (String(threadId).startsWith("draft-")) return;
+    if (!profileThreadIds.length) return;
+    if (!profileThreadIds.includes(threadId)) {
+      dispatch({
+        type: "replace-selected-thread",
+        threadId: latestThreadId ?? profileThreadIds[0],
+      });
+      return;
+    }
+    if (
+      !workspaceState.threadSelectionTouched &&
+      latestThreadId &&
+      latestThreadId !== threadId
+    ) {
+      dispatch({
+        type: "replace-selected-thread",
+        threadId: latestThreadId,
+      });
+    }
+  }, [
+    latestThreadId,
+    profileThreadIds,
+    threadId,
+    workspaceState.threadSelectionTouched,
+  ]);
+
+  useEffect(() => {
+    if (active) {
+      dispatch({ type: "clear-notifications" });
+    }
+  }, [active]);
+
+  const handleThreadCreated = useCallback(
+    ({
+      draftThreadId,
+      threadId: createdThreadId,
+    }: {
+      draftThreadId: string;
+      threadId: string;
+      clientId?: string;
+    }) => {
+      if (!createdThreadId) return;
+      const draftProfile = {
+        ...createDefaultThreadProfile(createdThreadId, 0),
+        ...(threadProfilesRef.current[draftThreadId] ?? {}),
+      };
+      dispatch({
+        type: "settle-draft",
+        draftThreadId,
+        threadId: createdThreadId,
+        date: getTodayDateText(),
+        profile: draftProfile,
+      });
+    },
+    [],
+  );
 
   currentThreadIdRef.current = threadId;
 
@@ -175,7 +331,7 @@ export function useConversationWorkspace({
           if (draftThreadId && draftThreadId !== eventThreadId) delete next[draftThreadId];
           return next;
         });
-        onThreadCreated?.({
+        handleThreadCreated({
           draftThreadId,
           threadId: eventThreadId,
           clientId: String(event.clientId || clientIdRef.current),
@@ -240,7 +396,7 @@ export function useConversationWorkspace({
         }));
       }
     },
-    [onThreadCreated],
+    [handleThreadCreated],
   );
 
   useEffect(() => {
@@ -342,7 +498,7 @@ export function useConversationWorkspace({
       }));
       setError("");
       if (targetThreadId && targetThreadId !== draftThreadId && envelope.newThread) {
-        onThreadCreated?.({
+        handleThreadCreated({
           draftThreadId,
           threadId: targetThreadId,
           clientId: result.clientId || clientIdRef.current,
@@ -410,7 +566,7 @@ export function useConversationWorkspace({
       }
       markTerminal("unknown", nextError);
     }
-  }, [onThreadCreated]);
+  }, [handleThreadCreated]);
 
   const prepareStagedSend = useCallback(async (requestId: string) => {
     const staged = stagedSendsByRequestIdRef.current.get(requestId);
@@ -569,6 +725,206 @@ export function useConversationWorkspace({
     return result;
   }, []);
 
+  const selectThread = useCallback((nextThreadId: string) => {
+    dispatch({ type: "select-thread", threadId: nextThreadId });
+  }, []);
+
+  const openDate = useCallback(
+    (date: string, options: { jump?: boolean } = {}) => {
+      dispatch({
+        type: "open-date",
+        date,
+        jump: options.jump === true,
+      });
+    },
+    [],
+  );
+
+  const setPageMode = useCallback((view: ConversationPageMode) => {
+    dispatch({ type: "set-view", view });
+  }, []);
+
+  const setSettingsMode = useCallback((mode: string | null) => {
+    dispatch({ type: "set-settings-mode", mode });
+  }, []);
+
+  const setProfilePreview = useCallback(
+    (
+      preview: {
+        threadId: string;
+        profile: ReturnType<typeof createDefaultThreadProfile>;
+      } | null,
+    ) => {
+      dispatch({ type: "set-profile-preview", preview });
+    },
+    [],
+  );
+
+  const setPlaceholder = useCallback((placeholder: ConversationPlaceholder | null) => {
+    dispatch({ type: "set-placeholder", placeholder });
+  }, []);
+
+  const setJumpDate = useCallback((date: string | null) => {
+    dispatch({ type: "set-jump-date", date });
+  }, []);
+
+  const openNewThread = useCallback(() => {
+    const draftThreadId = `draft-${createMessageId()}`;
+    dispatch({
+      type: "create-draft",
+      threadId: draftThreadId,
+      date: getTodayDateText(),
+      profile: {
+        ...createDefaultThreadProfile(draftThreadId, 0),
+        name: "新聊天",
+        handle: "@new-chat",
+        signature: "从网页开始的聊天",
+      },
+    });
+    return draftThreadId;
+  }, []);
+
+  const receiveNotification = useCallback(
+    (
+      notification: ConversationNotification,
+      options: { enqueue?: boolean } = {},
+    ) => {
+      dispatch({
+        type: "receive-notification",
+        notification,
+        enqueue: options.enqueue !== false,
+      });
+    },
+    [],
+  );
+
+  const dismissNotification = useCallback(() => {
+    dispatch({ type: "dismiss-notification" });
+  }, []);
+
+  const loadThreadDate = useCallback(
+    async (
+      date: string,
+      targetThreadId = workspaceState.selectedThreadId,
+    ) => {
+      const loadingKey = `${date}:${targetThreadId}`;
+      const alreadyLoaded =
+        remoteData.conversationEntries[date]?.[targetThreadId] ||
+        remoteData.searchCache.conversations[date]?.[targetThreadId];
+      if (
+        alreadyLoaded ||
+        dateLoadingKeysRef.current.has(loadingKey)
+      ) {
+        return false;
+      }
+      dateLoadingKeysRef.current.add(loadingKey);
+      setDateLoading(true);
+      try {
+        const records = await loadConversationRecords(date, {
+          threadId: targetThreadId,
+        });
+        return Boolean(
+          records?.some(
+            (record) =>
+              String(record.threadId || "") === targetThreadId,
+          ),
+        );
+      } finally {
+        dateLoadingKeysRef.current.delete(loadingKey);
+        setDateLoading(dateLoadingKeysRef.current.size > 0);
+      }
+    },
+    [
+      loadConversationRecords,
+      remoteData.conversationEntries,
+      remoteData.searchCache.conversations,
+      workspaceState.selectedThreadId,
+    ],
+  );
+
+  const page = useMemo(
+    () =>
+      buildConversationThreadPage(
+        styleTheme,
+        workspaceState.selectedThreadId,
+        remoteData,
+        workspaceState.calendarDate,
+      ),
+    [
+      remoteData,
+      styleTheme,
+      workspaceState.calendarDate,
+      workspaceState.selectedThreadId,
+    ],
+  );
+  const transcript = useMemo(
+    () =>
+      buildConversationTranscript({
+        canonicalRecords: page.messages,
+        liveRecords:
+          messagesByThread[workspaceState.selectedThreadId] ?? [],
+        threadId: workspaceState.selectedThreadId,
+      }),
+    [
+      messagesByThread,
+      page.messages,
+      workspaceState.selectedThreadId,
+    ],
+  );
+  const threadSummaries = useMemo(
+    () => getConversationThreadSummaries(profileThreadIds, remoteData),
+    [profileThreadIds, remoteData],
+  );
+  const selectedThreadDates = useMemo(
+    () =>
+      (
+        remoteData.dateIndex?.conversationThreads?.[
+          workspaceState.selectedThreadId
+        ] ?? []
+      )
+        .map(toDotDate)
+        .sort(),
+    [remoteData.dateIndex, workspaceState.selectedThreadId],
+  );
+  const allConversationDates = useMemo(
+    () =>
+      (remoteData.dateIndex?.conversations ?? [])
+        .map(toDotDate)
+        .sort(),
+    [remoteData.dateIndex],
+  );
+  const loadedSelectedThreadDates = useMemo(
+    () =>
+      getContiguousLoadedConversationDates(
+        workspaceState.selectedThreadId,
+        remoteData,
+        workspaceState.calendarDate,
+      ),
+    [
+      remoteData,
+      workspaceState.calendarDate,
+      workspaceState.selectedThreadId,
+    ],
+  );
+  const earlierDateToLoad = useMemo(
+    () =>
+      getAdjacentConversationDateToLoad(
+        selectedThreadDates,
+        loadedSelectedThreadDates,
+        "earlier",
+      ),
+    [loadedSelectedThreadDates, selectedThreadDates],
+  );
+  const laterDateToLoad = useMemo(
+    () =>
+      getAdjacentConversationDateToLoad(
+        selectedThreadDates,
+        loadedSelectedThreadDates,
+        "later",
+      ),
+    [loadedSelectedThreadDates, selectedThreadDates],
+  );
+
   const viewModel = useMemo(
     () => ({
       clientId: clientIdRef.current,
@@ -579,15 +935,50 @@ export function useConversationWorkspace({
       models,
       connection,
       error,
+      selectedThreadId: workspaceState.selectedThreadId,
+      calendarDate: workspaceState.calendarDate,
+      pageMode: workspaceState.view,
+      settingsMode: workspaceState.settingsMode,
+      profilePreview: workspaceState.profilePreview,
+      placeholder: workspaceState.placeholder,
+      jumpDate: workspaceState.jumpDate,
+      webThreadIds: workspaceState.webThreadIds,
+      threadIds: profileThreadIds,
+      unreadCounts: workspaceState.unreadCounts,
+      notificationQueue: workspaceState.notificationQueue,
+      userProfile,
+      threadProfiles: effectiveThreadProfiles,
+      profileError,
+      dateLoading,
+      page,
+      transcript,
+      threadSummaries,
+      selectedThreadDates,
+      allConversationDates,
+      earlierDateToLoad,
+      laterDateToLoad,
     }),
     [
       connection,
+      dateLoading,
       error,
       messagesByThread,
       models,
+      page,
+      earlierDateToLoad,
       status,
+      transcript,
       threadId,
       usageByThread,
+      effectiveThreadProfiles,
+      profileError,
+      profileThreadIds,
+      laterDateToLoad,
+      selectedThreadDates,
+      allConversationDates,
+      threadSummaries,
+      userProfile,
+      workspaceState,
     ],
   );
   const commands = useMemo(
@@ -596,8 +987,39 @@ export function useConversationWorkspace({
       retryMessage,
       refreshModels,
       chooseModel,
+      selectThread,
+      openDate,
+      setPageMode,
+      setSettingsMode,
+      setProfilePreview,
+      setPlaceholder,
+      setJumpDate,
+      openNewThread,
+      receiveNotification,
+      dismissNotification,
+      loadThreadDate,
+      saveUserProfile: setUserProfile,
+      updateThreadProfile,
     }),
-    [chooseModel, refreshModels, retryMessage, sendMessages],
+    [
+      chooseModel,
+      dismissNotification,
+      loadThreadDate,
+      openDate,
+      openNewThread,
+      receiveNotification,
+      refreshModels,
+      retryMessage,
+      selectThread,
+      sendMessages,
+      setJumpDate,
+      setPageMode,
+      setPlaceholder,
+      setProfilePreview,
+      setSettingsMode,
+      setUserProfile,
+      updateThreadProfile,
+    ],
   );
 
   return createConversationWorkspaceOutput(viewModel, commands);

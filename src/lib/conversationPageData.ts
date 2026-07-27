@@ -22,6 +22,9 @@ import {
 } from "./conversation";
 import { mergeConversationRecords } from "./conversationMerge";
 
+const mockConversationEntries =
+  conversationEntries as unknown as ConversationDateEntries;
+
 export const defaultConversationThreadId =
   "266618a6-b29f-4a8d-abd4-12ff874eb859";
 
@@ -86,7 +89,7 @@ export function getMockConversationRecordsForDate(
   threadId: string,
 ): ConversationRecord[] {
   const dotDate = toDotDate(dateText);
-  return (conversationEntries[dotDate]?.[threadId] ?? []).map((message) =>
+  return (mockConversationEntries[dotDate]?.[threadId] ?? []).map((message) =>
     legacyConversationMessageToRecord(message, dotDate, threadId),
   );
 }
@@ -134,7 +137,7 @@ export function getConversationThreadIdsForDate(
     return realThreadIds;
   }
 
-  const mockThreadIds = Object.keys(conversationEntries[dotDate] ?? {});
+  const mockThreadIds = Object.keys(mockConversationEntries[dotDate] ?? {});
   return mockThreadIds.length ? mockThreadIds : conversationThreadIds;
 }
 
@@ -260,7 +263,7 @@ export function getAllConversationThreadIds(
 
   const fallbackThreadIds = new Set<string>();
 
-  Object.values(conversationEntries ?? {}).forEach((threads) => {
+  Object.values(mockConversationEntries).forEach((threads) => {
     Object.keys(threads ?? {}).forEach((threadId) => {
       if (threadId) fallbackThreadIds.add(threadId);
     });
@@ -419,7 +422,7 @@ export function getConversationRecordsForThread(
   collect(remoteData.conversationEntries);
 
   if (!records.length && !allowedDateSet) {
-    Object.entries(conversationEntries ?? {}).forEach(([dateText, threads]) => {
+    Object.entries(mockConversationEntries).forEach(([dateText, threads]) => {
       (threads?.[threadId] ?? []).forEach((message) => {
         const date = toDotDate(dateText);
         const record = legacyConversationMessageToRecord(message, date, threadId);
@@ -487,6 +490,7 @@ export function buildConversationThreadPage(
     messages[messages.length - 1]?.conversationDate ?? toDotDate(new Date().toISOString().slice(0, 10)),
   );
   const { month, day } = getDateParts(latestDate);
+  const monthKey = month as keyof typeof monthColors;
 
   return {
     ...styleTheme,
@@ -499,8 +503,8 @@ export function buildConversationThreadPage(
     threadId,
     messages,
     sourcePath: `conversations/${threadId}`,
-    color: monthColors[month] ?? "#667064",
-    pale: monthPales[month] ?? "#e9ebe4",
+    color: monthColors[monthKey] ?? "#667064",
+    pale: monthPales[monthKey] ?? "#e9ebe4",
     hasEntry: messages.length > 0,
   };
 }
@@ -512,6 +516,7 @@ export function buildConversationPage(
   remoteData: RemoteData = emptyRemoteData,
 ) {
   const { month, day } = getDateParts(dateText);
+  const monthKey = month as keyof typeof monthColors;
   const messages = getConversationRecordsForDate(dateText, threadId, remoteData);
   return {
     ...styleTheme,
@@ -524,8 +529,8 @@ export function buildConversationPage(
     threadId,
     messages,
     sourcePath: buildContentPath("Conversation", dateText),
-    color: monthColors[month] ?? "#667064",
-    pale: monthPales[month] ?? "#e9ebe4",
+    color: monthColors[monthKey] ?? "#667064",
+    pale: monthPales[monthKey] ?? "#e9ebe4",
     hasEntry: messages.length > 0,
   };
 }
