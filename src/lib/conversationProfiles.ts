@@ -1,9 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  fetchConversationProfiles,
-  saveConversationThreadProfile,
-  saveConversationUserProfile,
-} from "../data/api";
 
 export type ConversationIdentity = {
   name: string;
@@ -84,7 +79,10 @@ function readStoredThreadProfiles() {
   }
 }
 
-export function useConversationProfiles(threadIds: string[]) {
+export function useConversationProfiles(
+  threadIds: string[],
+  profileCommands,
+) {
   const [userProfile, setUserProfile] = useState<ConversationIdentity>(() =>
     readStoredValue(USER_PROFILE_KEY, defaultUserProfile),
   );
@@ -98,7 +96,7 @@ export function useConversationProfiles(threadIds: string[]) {
   useEffect(() => {
     let cancelled = false;
     const refreshProfiles = () => {
-      fetchConversationProfiles().then((result) => {
+      profileCommands.fetchProfiles().then((result) => {
         if (cancelled) return;
         if (result.user) {
           setUserProfile((current) => ({ ...current, ...result.user }));
@@ -151,7 +149,7 @@ export function useConversationProfiles(threadIds: string[]) {
   const saveUserProfile = async (profile: ConversationIdentity) => {
     setUserProfile(profile);
     try {
-      const saved = await saveConversationUserProfile(profile);
+      const saved = await profileCommands.saveUserProfile(profile);
       setUserProfile((current) => ({ ...current, ...saved }));
       setProfileError("");
       return saved;
@@ -171,7 +169,7 @@ export function useConversationProfiles(threadIds: string[]) {
       [threadId]: { ...(current[threadId] ?? {}), ...changes },
     }));
     try {
-      const saved = await saveConversationThreadProfile(
+      const saved = await profileCommands.saveThreadProfile(
         threadId,
         changes as ConversationThreadProfile,
       );

@@ -1,4 +1,5 @@
 import type { ConversationRecord } from "../../types/conversation";
+import type { SearchConversationOptions } from "../../types/api";
 import type {
   ConversationIdentity,
   ConversationThreadProfile,
@@ -21,6 +22,8 @@ export function ConversationSearchPage({
   onBack,
   onEditThread,
   onSelectResult,
+  searchConversations,
+  mediaUrls,
 }: {
   page: Record<string, any>;
   threadId: string;
@@ -30,12 +33,15 @@ export function ConversationSearchPage({
   onBack: () => void;
   onEditThread: () => void;
   onSelectResult: (record: ConversationRecord) => void | Promise<void>;
+  searchConversations: (options: SearchConversationOptions) => Promise<ConversationRecord[]>;
+  mediaUrls: import("../../lib/conversation").ConversationMediaUrlPort;
 }) {
   const search = useConversationSearch({
     page,
     dates: threadDates,
     threadId,
     limit: 120,
+    searchConversations,
   });
   const {
     query,
@@ -155,6 +161,7 @@ export function ConversationSearchPage({
             fallbackThreadProfile={threadProfile}
             onEditThread={onEditThread}
             onSelectResult={onSelectResult}
+            mediaUrls={mediaUrls}
           />
         )}
       </CardScrollArea>

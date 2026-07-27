@@ -5,6 +5,7 @@ import {
 } from "../../lib/conversation";
 import { getConversationMediaDisplayGroups } from "../../lib/conversationMediaDisplay";
 import type { ConversationMediaItem } from "../../types/conversation";
+import type { ConversationMediaUrlPort } from "../../lib/conversation";
 import { TinyIcon } from "../common/TinyIcon";
 import { ConversationFileCard } from "./ConversationFileCard";
 import { ConversationPhotoGallery } from "./PhotoStack";
@@ -39,13 +40,15 @@ function getMediaLabel(item: ConversationMediaItem, fallback: string) {
 function StickerMedia({
   item,
   mediaKey,
+  mediaUrls,
 }: {
   item: ConversationMediaItem;
   mediaKey: string;
+  mediaUrls: ConversationMediaUrlPort;
 }) {
   const [failed, setFailed] = useState(false);
-  const primarySrc = getConversationMediaSrc(item);
-  const fallbackSrc = getConversationStickerFallbackSrc(item);
+  const primarySrc = getConversationMediaSrc(item, mediaUrls);
+  const fallbackSrc = getConversationStickerFallbackSrc(item, mediaUrls);
   const [src, setSrc] = useState(primarySrc);
   const label = getMediaLabel(item, "表情包");
 
@@ -83,11 +86,13 @@ export function ConversationMediaGroup({
   page,
   align,
   fileFallbackName = "附件",
+  mediaUrls,
 }: {
   items: ConversationMediaItem[];
   page?: MediaGroupPage;
   align: "left" | "right";
   fileFallbackName?: string;
+  mediaUrls: ConversationMediaUrlPort;
 }) {
   const groups = getConversationMediaDisplayGroups(items);
 
@@ -98,7 +103,7 @@ export function ConversationMediaGroup({
     >
       {groups.stickers.map((item, index) => {
         const mediaKey = getMediaKey(item, index);
-        return <StickerMedia key={mediaKey} item={item} mediaKey={mediaKey} />;
+        return <StickerMedia key={mediaKey} item={item} mediaKey={mediaKey} mediaUrls={mediaUrls} />;
       })}
 
       {groups.images.length ? (
@@ -111,6 +116,7 @@ export function ConversationMediaGroup({
             items={groups.images}
             page={page}
             controlSide={align === "right" ? "left" : "right"}
+            mediaUrls={mediaUrls}
           />
         </div>
       ) : null}

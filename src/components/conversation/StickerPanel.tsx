@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { fetchStickerAssets, type StickerAsset } from "../../data/api";
+import type { StickerAsset } from "../../types/api";
 
 export function StickerPanel({
   onSelect,
+  loadStickers,
 }: {
   onSelect: (sticker: StickerAsset) => Promise<void> | void;
+  loadStickers: () => Promise<{ stickers: StickerAsset[] }>;
 }) {
   const [stickers, setStickers] = useState<StickerAsset[]>([]);
   const [query, setQuery] = useState("");
@@ -16,7 +18,7 @@ export function StickerPanel({
 
   useEffect(() => {
     let cancelled = false;
-    fetchStickerAssets()
+    loadStickers()
       .then((result) => {
         if (!cancelled) setStickers(result.stickers || []);
       })
@@ -29,7 +31,7 @@ export function StickerPanel({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [loadStickers]);
 
   const filtered = useMemo(() => {
     const keyword = query.trim().toLocaleLowerCase();

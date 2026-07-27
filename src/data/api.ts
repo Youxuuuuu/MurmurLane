@@ -13,15 +13,18 @@ import type {
   MemoryApiResponse,
   LiveUpdateEvent,
   ReminderHistoryApiResponse,
+  StickerAsset,
   TimelineEventApiResponse,
   TimelineApiResponse,
 } from "../types/api";
 
-const env = (import.meta as { env?: Record<string, string | undefined> }).env;
-
-const API_BASE_URL = String(env?.VITE_API_BASE_URL || "").replace(/\/+$/, "");
-const EDIT_TOKEN = String(env?.VITE_MURMURLANE_EDIT_TOKEN || "").trim();
-export const HAS_EDIT_TOKEN = Boolean(EDIT_TOKEN);
+export interface MurmurLaneApiConfig {
+  readonly baseUrl: string;
+  readonly editCredential: string;
+  readonly diagnostics: Readonly<{
+    development: boolean;
+  }>;
+}
 
 export class ApiError extends Error {
   status: number;
@@ -48,6 +51,14 @@ export class ApiError extends Error {
     this.bodyText = bodyText;
   }
 }
+
+export function createMurmurLaneApi({
+  baseUrl,
+  editCredential,
+  diagnostics,
+}: MurmurLaneApiConfig) {
+const API_BASE_URL = String(baseUrl || "").replace(/\/+$/, "");
+const EDIT_TOKEN = String(editCredential || "").trim();
 
 function normalizeDate(date: string) {
   return String(date).replace(/\./g, "-");
@@ -101,7 +112,7 @@ async function requestJson<T>(
   return response.json() as Promise<T>;
 }
 
-export function fetchConversations(
+function fetchConversations(
   date: string,
   options: FetchConversationsOptions = {},
 ): Promise<ConversationsResponse> {
@@ -114,7 +125,7 @@ export function fetchConversations(
   return requestJson<ConversationsResponse>(`/api/conversations?${query}`);
 }
 
-export function searchConversation(
+function searchConversation(
   options: SearchConversationOptions,
 ): Promise<ConversationsResponse> {
   const query = buildQuery({
@@ -130,32 +141,22 @@ export function searchConversation(
   });
 }
 
-export function fetchConversationMoments(
+function fetchConversationMoments(
   days = 3,
 ): Promise<ConversationMomentsResponse> {
   const query = buildQuery({ days });
   return requestJson<ConversationMomentsResponse>(`/api/moments?${query}`);
 }
 
-export function fetchConversationProfiles(): Promise<ConversationProfilesResponse> {
+function fetchConversationProfiles(): Promise<ConversationProfilesResponse> {
   return requestJson<ConversationProfilesResponse>("/api/conversation-profiles");
 }
 
-export type StickerAsset = {
-  id: string;
-  fileName: string;
-  name: string;
-  tags: string[];
-  category: string;
-  description: string;
-  src: string;
-};
-
-export function fetchStickerAssets(): Promise<{ stickers: StickerAsset[] }> {
+function fetchStickerAssets(): Promise<{ stickers: StickerAsset[] }> {
   return requestJson<{ stickers: StickerAsset[] }>("/api/stickers");
 }
 
-export function saveConversationUserProfile(
+function saveConversationUserProfile(
   profile: ConversationProfileApiData,
 ): Promise<ConversationProfileApiData> {
   return requestJson<ConversationProfileApiData>("/api/conversation-profiles/user", {
@@ -165,7 +166,7 @@ export function saveConversationUserProfile(
   });
 }
 
-export function saveConversationThreadProfile(
+function saveConversationThreadProfile(
   threadId: string,
   profile: ConversationProfileApiData,
 ): Promise<ConversationProfileApiData> {
@@ -179,7 +180,7 @@ export function saveConversationThreadProfile(
   );
 }
 
-export function fetchTimeline(
+function fetchTimeline(
   options: FetchTimelineOptions = {},
 ): Promise<TimelineApiResponse> {
   const query = buildQuery({
@@ -192,21 +193,21 @@ export function fetchTimeline(
   );
 }
 
-export function fetchDateIndex(): Promise<DateIndexResponse> {
+function fetchDateIndex(): Promise<DateIndexResponse> {
   return requestJson<DateIndexResponse>("/api/index/dates");
 }
 
-export function fetchReminderHistory(): Promise<ReminderHistoryApiResponse> {
+function fetchReminderHistory(): Promise<ReminderHistoryApiResponse> {
   return requestJson<ReminderHistoryApiResponse>("/api/reminders/history");
 }
 
-export function fetchMemoryDiary(date: string): Promise<MemoryApiResponse> {
+function fetchMemoryDiary(date: string): Promise<MemoryApiResponse> {
   return requestJson<MemoryApiResponse>(
     `/api/memory/diary?date=${encodeURIComponent(normalizeDate(date))}`,
   );
 }
 
-export function fetchMemoryDailySummary(
+function fetchMemoryDailySummary(
   date: string,
 ): Promise<MemoryApiResponse> {
   return requestJson<MemoryApiResponse>(
@@ -214,25 +215,25 @@ export function fetchMemoryDailySummary(
   );
 }
 
-export function fetchMemoryLetters(date: string): Promise<MemoryApiResponse> {
+function fetchMemoryLetters(date: string): Promise<MemoryApiResponse> {
   return requestJson<MemoryApiResponse>(
     `/api/memory/letters?date=${encodeURIComponent(normalizeDate(date))}`,
   );
 }
 
-export function fetchMemoryStatic(mode: string): Promise<MemoryApiResponse> {
+function fetchMemoryStatic(mode: string): Promise<MemoryApiResponse> {
   return requestJson<MemoryApiResponse>(
     `/api/memory/static?mode=${encodeURIComponent(mode)}`,
   );
 }
 
-export function fetchXiaoyeStatic(mode: string): Promise<MemoryApiResponse> {
+function fetchXiaoyeStatic(mode: string): Promise<MemoryApiResponse> {
   return requestJson<MemoryApiResponse>(
     `/api/xiaoye/static?mode=${encodeURIComponent(mode)}`,
   );
 }
 
-export function fetchEditableMemoryDocument(
+function fetchEditableMemoryDocument(
   input: EditableMemoryDocumentApiRequest,
 ): Promise<EditableMemoryDocumentApiResponse> {
   const query = buildQuery({
@@ -246,7 +247,7 @@ export function fetchEditableMemoryDocument(
   );
 }
 
-export function saveEditableMemoryDocument(
+function saveEditableMemoryDocument(
   input: EditableMemoryDocumentApiRequest & { content: string },
 ): Promise<EditableMemoryDocumentApiResponse> {
   return requestJson<EditableMemoryDocumentApiResponse>(
@@ -264,7 +265,7 @@ export function saveEditableMemoryDocument(
   );
 }
 
-export function toggleOpenLoopsChecklistItem(input: {
+function toggleOpenLoopsChecklistItem(input: {
   no: string;
   checked: boolean;
 }) {
@@ -280,7 +281,7 @@ export function toggleOpenLoopsChecklistItem(input: {
   );
 }
 
-export function fetchTimelineEvent(
+function fetchTimelineEvent(
   date: string,
   eventId: string,
 ): Promise<TimelineEventApiResponse> {
@@ -292,7 +293,7 @@ export function fetchTimelineEvent(
   return requestJson<TimelineEventApiResponse>(`/api/timeline/event?${query}`);
 }
 
-export function patchTimelineEvent(input: {
+function patchTimelineEvent(input: {
   date: string;
   eventId: string;
   changes: Record<string, unknown>;
@@ -309,7 +310,7 @@ export function patchTimelineEvent(input: {
   });
 }
 
-export function createTimelineEvent(input: {
+function createTimelineEvent(input: {
   date: string;
   event: Record<string, unknown>;
 }) {
@@ -325,7 +326,7 @@ export function createTimelineEvent(input: {
   });
 }
 
-export function deleteTimelineEvent(input: { date: string; eventId: string }) {
+function deleteTimelineEvent(input: { date: string; eventId: string }) {
   return requestJson<TimelineEventApiResponse>("/api/timeline/event", {
     method: "DELETE",
     headers: {
@@ -338,13 +339,13 @@ export function deleteTimelineEvent(input: { date: string; eventId: string }) {
   });
 }
 
-export function resolveApiFileUrl(filePath: string) {
+function resolveApiFileUrl(filePath: string) {
   return buildApiUrl(
     `/api/file?path=${encodeURIComponent(String(filePath ?? ""))}`,
   );
 }
 
-export function subscribeToLiveUpdates(
+function subscribeToLiveUpdates(
   onEvent: (event: LiveUpdateEvent) => void,
   onConnectionChange?: (connected: boolean) => void,
 ) {
@@ -356,7 +357,7 @@ export function subscribeToLiveUpdates(
     try {
       onEvent(JSON.parse((event as MessageEvent<string>).data) as LiveUpdateEvent);
     } catch (error) {
-      if (import.meta.env.DEV) {
+      if (diagnostics.development) {
         console.debug("[MurmurLane Debug] ignored invalid live update", error);
       }
     }
@@ -365,4 +366,33 @@ export function subscribeToLiveUpdates(
   return () => source.close();
 }
 
-export { API_BASE_URL, buildApiUrl };
+return Object.freeze({
+  hasEditCredential: Boolean(EDIT_TOKEN),
+  fetchConversations,
+  searchConversation,
+  fetchConversationMoments,
+  fetchConversationProfiles,
+  fetchStickerAssets,
+  saveConversationUserProfile,
+  saveConversationThreadProfile,
+  fetchTimeline,
+  fetchDateIndex,
+  fetchReminderHistory,
+  fetchMemoryDiary,
+  fetchMemoryDailySummary,
+  fetchMemoryLetters,
+  fetchMemoryStatic,
+  fetchXiaoyeStatic,
+  fetchEditableMemoryDocument,
+  saveEditableMemoryDocument,
+  toggleOpenLoopsChecklistItem,
+  fetchTimelineEvent,
+  patchTimelineEvent,
+  createTimelineEvent,
+  deleteTimelineEvent,
+  resolveFileUrl: resolveApiFileUrl,
+  subscribeToLiveUpdates,
+});
+}
+
+export type MurmurLaneApi = ReturnType<typeof createMurmurLaneApi>;

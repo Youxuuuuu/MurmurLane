@@ -14,6 +14,7 @@ export interface WebChatPort {
     requestId?: string,
   ) => Promise<WebChatStatus>;
   readonly isAmbiguousSendError: (error: unknown) => boolean;
+  readonly resolveAssetUrl: (assetPath: string) => string;
   readonly sendMessages: (
     envelope: WebChatSendEnvelope,
     options?: { timeoutMs?: number },

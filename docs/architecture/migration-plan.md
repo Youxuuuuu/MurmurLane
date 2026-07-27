@@ -64,7 +64,7 @@
 | 阶段 | Seam | 状态 | 主要 ADR |
 | --- | --- | --- | --- |
 | 1 | Conversation Transcript | Implemented / Final Device Pending | ADR-0006、0009、0011、0019 |
-| 2 | Browser Config、Composition Root 与最小 Adapter | Pending | ADR-0009、0010、0015、0018 |
+| 2 | Browser Config、Composition Root 与最小 Adapter | Implemented / Final Device Pending | ADR-0009、0010、0015、0018 |
 | 3 | ContentSync | Pending | ADR-0001、0002、0013、0017、0019 |
 | 4 | Conversation Workspace Controller | Pending | ADR-0005、0006、0012、0014、0017 |
 | 5 | App Navigation | Pending | ADR-0003、0010、0015 |
@@ -291,6 +291,42 @@ Archive 只搜索 Archive
 ## 执行日志
 
 ### 2026-07-27
+
+#### 补救执行顺序
+
+前一轮阶段 2 至阶段 6 只建立了部分 seam，不满足对应 ADR 的完整完成条件。后续不得直接从阶段 8 继续，而按以下顺序补齐：
+
+1. 完成 Browser Config 与 Composition Root，移除旧 Adapter 的模块级配置查找和 View/Workspace 直接基础设施依赖。
+2. 完成 ContentSync Snapshot、启动加载、Keyed Source Cache、Negative Cache 与只读发布所有权。
+3. 完成 Conversation Workspace 的线程、日期、Profile、未读、通知、页面模式与 Navigation Target 所有权。
+4. 完成 App Navigation Target 由目标 Workspace 校验、消费与清除的流程。
+5. 完成 Timeline 与 Archive Controller、Commands、Mutation Overlay 和错误恢复所有权。
+6. 重新核对 Reminder 等搜索数据的领域所有权，只在证据明确后将 ADR-0004 保持为 `Complete`。
+7. 补齐 ADR-0013、ADR-0014 与 ADR-0016 的 Snapshot、错误流和共享代码准入实现缺口。
+8. 实施 Server 分层、Server Config Parser、`createApp(dependencies)` 与独立 Server Typecheck。
+9. 按 ADR-0009 的顺序移除 `ConversationPage.tsx` 和 `App.tsx` 的 `@ts-nocheck`，不强制一次性开启全项目 strict。
+10. 运行最终全量自动验证，审计全部 ADR Implementation 状态，再执行统一浏览器和真机验收。
+
+每个补救项继续遵守 Characterization Tests 先行、一次一个 seam、独立构建、独立提交和独立回退。任何仍为 `Partial` 的 ADR 不得被描述为已经完成。
+
+#### 补救 A 执行结果：Browser Config 与 Composition Root
+
+- `src/data/api.ts` 与 `src/data/chatApi.ts` 已改为由 Composition Root 使用显式配置创建的具体 Adapter，不再在模块初始化时读取环境变量。
+- 运行时代码中只有 `main.tsx` 和 `registerServiceWorker.ts` 继续在允许的启动边界读取 `import.meta.env`。
+- App、Workspace、View 与确定性搜索逻辑不再直接导入或创建具体网络 Adapter；页面通过窄 Command、加载函数与媒体 URL Port 使用能力。
+- Browser Public Config 只把最小配置传给对应 Adapter；App 依赖只暴露 Adapter 与只读诊断开关，不暴露凭据或完整配置。
+- API URL、认证 Header、EventSource Query、媒体 URL、15 秒发送 Timeout 与 120 秒上传 Timeout 保持不变。
+- 修复前一阶段拆分 View Model 与 Commands 时遗留的 Composer 条件判断，使其继续依据 `webChatCommands` 显示；这属于恢复迁移前行为，不是产品行为变更。
+- 新增 Data Adapter 与 WebChat Adapter Factory Characterization Tests；阶段相关测试 17/17 通过。
+- 完整 `npm test`：100/100 通过。
+- `npm run typecheck:strict`：通过。
+- `npx tsc -p tsconfig.app.json --noEmit --incremental false`：通过。
+- `npm run build`：通过；既有的 500 kB Chunk Size Warning 未处理。
+- `git diff --check` 与依赖方向搜索通过。
+- 本补救项未修改 CSS、DOM 层级、React Key、滚动、窗口化、手势或动画。
+- ADR-0010 的浏览器 Composition Root 目标已完成，更新为 `Complete`。
+- ADR-0018 仍为 `Partial`：浏览器配置边界已完成，Server Config Parser 与 Server Capability 注入留在补救项 8。
+- 浏览器和真机完整交互验收仍按计划在全部架构迁移完成后统一执行。
 
 - ADR-0001 至 ADR-0019 已确认。
 - 迁移计划已写入本文档。

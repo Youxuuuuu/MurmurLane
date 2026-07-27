@@ -7,10 +7,6 @@ import { ContinuousStaticMemoryContent } from "../archive/MemoryContent";
 import { MemoryEditorShell } from "../archive/MemoryEditorShell";
 import { XiaoyeModeSwitch } from "../controls/XiaoyeModeSwitch";
 import {
-  fetchEditableMemoryDocument,
-  saveEditableMemoryDocument,
-} from "../../data/api";
-import {
   buildEditableMemoryTemplate,
   getEditableMemoryDocumentForPage,
   parseEditableMemoryContent,
@@ -27,6 +23,8 @@ export function XiaoyePage({
   onMemoryEntrySaved,
   canEdit,
   editHint,
+  onLoadEditableDocument,
+  onSaveEditableDocument,
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [isPreview, setIsPreview] = useState(false);
@@ -71,7 +69,7 @@ export function XiaoyePage({
     try {
       setIsEditorLoading(true);
       setEditorError("");
-      const result = await fetchEditableMemoryDocument(editableDocument);
+      const result = await onLoadEditableDocument(editableDocument);
       setDraftContent(
         result.content || buildEditableMemoryTemplate(editableDocument),
       );
@@ -92,7 +90,7 @@ export function XiaoyePage({
     try {
       setIsSaving(true);
       setEditorError("");
-      const result = await saveEditableMemoryDocument({
+      const result = await onSaveEditableDocument({
         ...editableDocument,
         content: draftContent,
       });

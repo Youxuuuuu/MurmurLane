@@ -7,15 +7,22 @@ import {
 } from "../src/lib/webChatSendTransaction";
 import { buildWebChatSendEnvelope } from "../src/lib/webChatSendContract";
 import {
+  createWebChatApi,
   WebChatHttpError,
   WebChatSendTimeoutError,
-  isAmbiguousWebChatSendError,
 } from "../src/data/chatApi";
 import {
   createWebChatDraftRecord,
   settleWebChatDrafts,
 } from "../src/lib/webChatRecords";
 import { getConversationRenderId } from "../src/lib/conversationIdentity";
+
+const webChatApi = createWebChatApi({
+  baseUrl: "",
+  credential: "",
+  sendTimeoutMs: 15_000,
+  uploadTimeoutMs: 120_000,
+});
 
 test("send transaction keeps request, message, turn, and segment identity across retry", () => {
   const envelope = buildWebChatSendEnvelope({
@@ -105,8 +112,8 @@ test("delivery state changes and retry preserve one mounted logical message", ()
 });
 
 test("only transport-ambiguous errors enter recovery", () => {
-  assert.equal(isAmbiguousWebChatSendError(new WebChatSendTimeoutError()), true);
-  assert.equal(isAmbiguousWebChatSendError(new TypeError("network failed")), true);
-  assert.equal(isAmbiguousWebChatSendError(new WebChatHttpError(400, "bad request")), false);
-  assert.equal(isAmbiguousWebChatSendError(new Error("application failure")), false);
+  assert.equal(webChatApi.isAmbiguousSendError(new WebChatSendTimeoutError()), true);
+  assert.equal(webChatApi.isAmbiguousSendError(new TypeError("network failed")), true);
+  assert.equal(webChatApi.isAmbiguousSendError(new WebChatHttpError(400, "bad request")), false);
+  assert.equal(webChatApi.isAmbiguousSendError(new Error("application failure")), false);
 });

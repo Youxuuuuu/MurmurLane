@@ -147,12 +147,6 @@ function getLiveMessagePreview(record) {
   return labels[getConversationVisualKind(record)] || "[新消息]";
 }
 
-if (import.meta.env.DEV && typeof console !== "undefined")
-  console.assert(
-    validateAppData(),
-    "Prototype data and timeline layout should be valid.",
-  );
-
 const themeIconByStyleId = {
   plant: {
     viewBox: "0 0 1024 1024",
@@ -207,6 +201,15 @@ export default function InsDiaryPrototype({
       toggleOpenLoopsChecklistItemApi,
   } = dependencies.murmurLaneData;
   useStableViewport();
+  useEffect(() => {
+    if (!dependencies.diagnostics.development || typeof console === "undefined") {
+      return;
+    }
+    console.assert(
+      validateAppData(),
+      "Prototype data and timeline layout should be valid.",
+    );
+  }, [dependencies.diagnostics.development]);
   const [selectedStyleId, setSelectedStyleId] = useState("cafe");
   const [selectedDate, setSelectedDate] = useState(() => getTodayDateText());
   const [datePickerOpen, setDatePickerOpen] = useState(false);
@@ -741,7 +744,14 @@ export default function InsDiaryPrototype({
     setUserProfile,
     threadProfiles,
     updateThreadProfile,
-  } = useConversationProfiles(profileThreadIds);
+  } = useConversationProfiles(profileThreadIds, {
+    fetchProfiles:
+      dependencies.murmurLaneData.fetchConversationProfiles,
+    saveUserProfile:
+      dependencies.murmurLaneData.saveConversationUserProfile,
+    saveThreadProfile:
+      dependencies.murmurLaneData.saveConversationThreadProfile,
+  });
   const effectiveThreadProfiles = useMemo(
     () => ({
       ...threadProfiles,
@@ -879,6 +889,15 @@ export default function InsDiaryPrototype({
   });
   const webChatViewModel = conversationWorkspace.viewModel;
   const webChatCommands = conversationWorkspace.commands;
+  const conversationMediaUrls = useMemo(
+    () => ({
+      resolveLocalFile:
+        dependencies.murmurLaneData.resolveFileUrl,
+      resolveWebChatAsset:
+        dependencies.webChat.resolveAssetUrl,
+    }),
+    [dependencies],
+  );
 
   const openNewConversationThread = useCallback(() => {
     const draftThreadId = `draft-${typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`}`;
@@ -921,7 +940,7 @@ export default function InsDiaryPrototype({
         ? "mock"
         : "blank";
 
-    if (import.meta.env.DEV && ENABLE_APP_DEBUG_LOG) {
+    if (dependencies.diagnostics.development && ENABLE_APP_DEBUG_LOG) {
       console.debug("[MurmurLane Debug] remoteDateIndex", remoteDateIndexState);
       console.debug("[MurmurLane Debug] selectedDate", selectedDate);
       console.debug(
@@ -951,6 +970,7 @@ export default function InsDiaryPrototype({
     remoteDateIndexState,
     remoteData,
     remoteError,
+    dependencies.diagnostics.development,
   ]);
 
   useEffect(() => {
@@ -1469,7 +1489,7 @@ export default function InsDiaryPrototype({
               pendingMissingCache[task.type][task.date] = true;
             }
           } catch (error) {
-            if (import.meta.env.DEV && !cancelled) {
+            if (dependencies.diagnostics.development && !cancelled) {
               console.debug(
                 "[MurmurLane Debug] remote search task failed",
                 task.type,
@@ -1555,6 +1575,7 @@ export default function InsDiaryPrototype({
     remoteLetterEntriesState,
     remoteSearchCacheState,
     remoteSearchMissingState,
+    dependencies.diagnostics.development,
   ]);
 
   const handleMemoryEntrySaved = (document, entry) => {
@@ -2224,6 +2245,10 @@ export default function InsDiaryPrototype({
                 threadProfiles={effectiveThreadProfiles}
                 onBack={() => setConversationView("list")}
                 onSelectResult={handleSelectGlobalConversationSearchResult}
+                searchConversations={
+                  dependencies.murmurLaneData.searchConversation
+                }
+                mediaUrls={conversationMediaUrls}
               />
             ) : conversationView === "search" ? (
               <ConversationSearchPage
@@ -2235,6 +2260,10 @@ export default function InsDiaryPrototype({
                 onBack={() => setConversationView("chat")}
                 onEditThread={handleEditSelectedConversationThread}
                 onSelectResult={handleSelectConversationSearchResult}
+                searchConversations={
+                  dependencies.murmurLaneData.searchConversation
+                }
+                mediaUrls={conversationMediaUrls}
               />
             ) : (
               <ConversationPage
@@ -2256,6 +2285,13 @@ export default function InsDiaryPrototype({
                 liveMessages={webChatViewModel.messages}
                 webChatViewModel={webChatViewModel}
                 webChatCommands={webChatCommands}
+                loadStickers={
+                  dependencies.murmurLaneData.fetchStickerAssets
+                }
+                mediaUrls={conversationMediaUrls}
+                diagnosticsEnabled={
+                  dependencies.diagnostics.development
+                }
               />
             )
           ) : (
@@ -2277,6 +2313,14 @@ export default function InsDiaryPrototype({
                     editHint={
                       editAccessState.ready ? editAccessState.message : ""
                     }
+                    commands={{
+                      fetchEvent:
+                        dependencies.murmurLaneData.fetchTimelineEvent,
+                      patchEvent:
+                        dependencies.murmurLaneData.patchTimelineEvent,
+                      deleteEvent:
+                        dependencies.murmurLaneData.deleteTimelineEvent,
+                    }}
                   />
                 ) : archiveShowsXiaoye ? (
                   <XiaoyePage
@@ -2291,6 +2335,12 @@ export default function InsDiaryPrototype({
                     canEdit={editAccessState.canWrite}
                     editHint={
                       editAccessState.ready ? editAccessState.message : ""
+                    }
+                    onLoadEditableDocument={
+                      dependencies.murmurLaneData.fetchEditableMemoryDocument
+                    }
+                    onSaveEditableDocument={
+                      dependencies.murmurLaneData.saveEditableMemoryDocument
                     }
                   />
                 ) : (
@@ -2311,6 +2361,12 @@ export default function InsDiaryPrototype({
                     canEdit={editAccessState.canWrite}
                     editHint={
                       editAccessState.ready ? editAccessState.message : ""
+                    }
+                    onLoadEditableDocument={
+                      dependencies.murmurLaneData.fetchEditableMemoryDocument
+                    }
+                    onSaveEditableDocument={
+                      dependencies.murmurLaneData.saveEditableMemoryDocument
                     }
                   />
                 )}

@@ -2,9 +2,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  uploadWebChatFile,
+  createWebChatApi,
   WebChatUploadTimeoutError,
 } from "../src/data/chatApi";
+
+const webChatApi = createWebChatApi({
+  baseUrl: "",
+  credential: "",
+  sendTimeoutMs: 15_000,
+  uploadTimeoutMs: 120_000,
+});
 
 test("web chat uploads a Blob as binary without base64 or JSON expansion", async (t) => {
   const originalFetch = globalThis.fetch;
@@ -29,7 +36,7 @@ test("web chat uploads a Blob as binary without base64 or JSON expansion", async
   });
 
   const blob = new Blob(["hello"], { type: "text/plain" });
-  const media = await uploadWebChatFile(blob, "小诗.txt", "file");
+  const media = await webChatApi.uploadFile(blob, "小诗.txt", "file");
 
   assert.equal(capturedUrl.endsWith("/api/chat/uploads"), true);
   assert.equal(capturedInit?.method, "POST");
@@ -57,7 +64,7 @@ test("web chat attachment upload has a terminal timeout", async (t) => {
   });
 
   await assert.rejects(
-    uploadWebChatFile(
+    webChatApi.uploadFile(
       new Blob(["wait"], { type: "text/plain" }),
       "wait.txt",
       "file",

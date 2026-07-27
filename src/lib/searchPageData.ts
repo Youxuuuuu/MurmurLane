@@ -37,7 +37,6 @@ import {
   sortSearchResults,
 } from "./search";
 
-const env = (import.meta as { env?: Record<string, unknown> }).env;
 const ENABLE_SEARCH_PERF_LOG = false;
 
 type ConversationSearchDocument = {
@@ -362,7 +361,6 @@ export function buildSearchResultState(
   let totalOccurrences = 0;
   const filters = { modeFilter, timeFilter };
   const perfEnabled =
-    Boolean(env?.DEV) &&
     ENABLE_SEARCH_PERF_LOG &&
     Boolean(normalizedQuery);
   const perfMarks: Array<{

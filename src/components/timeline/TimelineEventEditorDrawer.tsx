@@ -1,10 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import {
-  deleteTimelineEvent,
-  fetchTimelineEvent,
-  patchTimelineEvent,
-} from "../../data/api";
 import { PaperTexture } from "../common/PaperTexture";
 import { useModalDialog } from "../common/useModalDialog";
 
@@ -490,6 +485,7 @@ export function TimelineEventEditorDrawer({
   onClose,
   onEventSaved,
   onEventDeleted,
+  commands,
 }) {
   const dialogProps = useModalDialog(onClose);
   const [formState, setFormState] = useState(() =>
@@ -526,7 +522,7 @@ export function TimelineEventEditorDrawer({
     const refreshEvent = async () => {
       try {
         setIsRefreshing(true);
-        const result = await fetchTimelineEvent(page.date, event.id);
+        const result = await commands.fetchEvent(page.date, event.id);
 
         if (!cancelled && !formDirtyRef.current && result?.found && result.event) {
           setFormState(eventToFormState(result.event, page.date));
@@ -599,7 +595,7 @@ export function TimelineEventEditorDrawer({
     try {
       setIsSaving(true);
       setError("");
-      const result = await patchTimelineEvent({
+      const result = await commands.patchEvent({
         date: page.date,
         eventId: event.id,
         changes: {
@@ -629,7 +625,7 @@ export function TimelineEventEditorDrawer({
     try {
       setIsDeleting(true);
       setError("");
-      const result = await deleteTimelineEvent({
+      const result = await commands.deleteEvent({
         date: page.date,
         eventId: event.id,
       });

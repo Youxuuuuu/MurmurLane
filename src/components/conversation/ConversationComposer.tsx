@@ -6,7 +6,7 @@ import {
   getConversationPrimaryMediaItem,
   getConversationVisualKind,
 } from "../../lib/conversation";
-import type { StickerAsset } from "../../data/api";
+import type { StickerAsset } from "../../types/api";
 import type { ConversationQuoteObject, ConversationRecord } from "../../types/conversation";
 import type {
   WebChatComposerAttachment,
@@ -92,6 +92,8 @@ export function ConversationComposer({
   onChooseModel,
   isNewThread = false,
   error = "",
+  loadStickers,
+  mediaUrls,
 }: {
   status?: WebChatStatus | null;
   models?: WebChatModelResponse | null;
@@ -102,6 +104,8 @@ export function ConversationComposer({
   onChooseModel?: (model: string, modelProvider?: string) => Promise<unknown>;
   isNewThread?: boolean;
   error?: string;
+  loadStickers: () => Promise<{ stickers: StickerAsset[] }>;
+  mediaUrls: import("../../lib/conversation").ConversationMediaUrlPort;
 }) {
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<WebChatComposerAttachment[]>([]);
@@ -139,10 +143,12 @@ export function ConversationComposer({
         || createBubbleId(quoteRenderId, "message"),
       ),
       contentType: kind,
-      previewThumbnail: media ? getConversationMediaSrc(media) : "",
+      previewThumbnail: media
+        ? getConversationMediaSrc(media, mediaUrls)
+        : "",
       previewMeta: media || undefined,
     };
-  }, [quoteMessage]);
+  }, [mediaUrls, quoteMessage]);
 
   const usage = status?.usage;
   const currentModel = status?.model || models?.currentModel || "默认模型";
@@ -408,7 +414,7 @@ export function ConversationComposer({
                   ))}
                   <div className="flex flex-col items-center gap-2 text-[12px] text-black/25"><span className="flex h-14 w-14 items-center justify-center rounded-[18px] bg-black/[0.025]">···</span>更多</div>
                 </div>
-              ) : <div className="h-[min(38dvh,320px)]"><StickerPanel onSelect={sendSticker} /></div>}
+              ) : <div className="h-[min(38dvh,320px)]"><StickerPanel onSelect={sendSticker} loadStickers={loadStickers} /></div>}
             </motion.div>
           </>
         ) : null}

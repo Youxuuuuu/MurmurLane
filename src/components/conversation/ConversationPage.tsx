@@ -92,6 +92,9 @@ export const ConversationPage = memo(function ConversationPage({
   liveMessages = [],
   webChatViewModel = null,
   webChatCommands = null,
+  loadStickers,
+  mediaUrls,
+  diagnosticsEnabled = false,
 }) {
   const [quoteMessage, setQuoteMessage] = useState(null);
   const [activeAction, setActiveAction] = useState(null);
@@ -189,7 +192,7 @@ export const ConversationPage = memo(function ConversationPage({
         snapshot.logicalMessageMountCount,
       );
     }
-    if (!import.meta.env.DEV || typeof window === "undefined") return;
+    if (!diagnosticsEnabled || typeof window === "undefined") return;
     window.__MURMURLANE_CONVERSATION_ENTRY_METRICS__ = snapshot;
   };
 
@@ -1120,11 +1123,12 @@ export const ConversationPage = memo(function ConversationPage({
             threadProfile={threadProfile}
             onEditThread={onEditThread}
             onQuote={handleQuote}
-            onRetry={webChat?.retryMessage}
+            onRetry={webChatCommands?.retryMessage}
             activeActionId={activeAction?.id || null}
             onActionOpen={setActiveAction}
             onActionClose={handleActionClose}
             animateBubbleSequence={animateBubbleSequence}
+            mediaUrls={mediaUrls}
           />
         </div>
       </div>
@@ -1213,7 +1217,7 @@ export const ConversationPage = memo(function ConversationPage({
           <ConversationEmptyState />
         </div>
       )}
-      {webChat?.sendMessages ? (
+      {webChatCommands?.sendMessages ? (
         <ConversationComposer
           status={webChatViewModel.status}
           models={webChatViewModel.models}
@@ -1224,6 +1228,8 @@ export const ConversationPage = memo(function ConversationPage({
           onChooseModel={webChatCommands.chooseModel}
           isNewThread={String(selectedThreadId).startsWith("draft-")}
           error={webChatViewModel.error}
+          loadStickers={loadStickers}
+          mediaUrls={mediaUrls}
         />
       ) : null}
     </PageCard>

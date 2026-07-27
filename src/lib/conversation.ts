@@ -5,8 +5,6 @@ import type {
   ConversationRecordMeta,
   LegacyConversationMessage,
 } from "../types/conversation";
-import { resolveApiFileUrl } from "../data/api";
-import { resolveWebChatAssetUrl } from "../data/chatApi";
 import { toHyphenDate } from "./date";
 
 export type CloudMusicDevice = "mobile" | "desktop";
@@ -378,7 +376,15 @@ export function isFileLikeMedia(item: ConversationMediaItem) {
   return !isStickerLikeMedia(item) && !isImageLikeMedia(item) && !isAudioLikeMedia(item);
 }
 
-export function getConversationMediaSrc(item: ConversationMediaItem) {
+export interface ConversationMediaUrlPort {
+  readonly resolveLocalFile: (filePath: string) => string;
+  readonly resolveWebChatAsset: (assetPath: string) => string;
+}
+
+export function getConversationMediaSrc(
+  item: ConversationMediaItem,
+  mediaUrls: ConversationMediaUrlPort,
+) {
   const mediaPath = String(getConversationMediaPath(item) || "").trim();
 
   if (!mediaPath) {
@@ -387,7 +393,7 @@ export function getConversationMediaSrc(item: ConversationMediaItem) {
 
   const webChatMediaFilePath = getWebChatMediaFilePath(mediaPath);
   if (webChatMediaFilePath) {
-    return resolveApiFileUrl(webChatMediaFilePath);
+    return mediaUrls.resolveLocalFile(webChatMediaFilePath);
   }
 
   if (/^(https?:|data:|blob:)/i.test(mediaPath)) {
@@ -395,14 +401,15 @@ export function getConversationMediaSrc(item: ConversationMediaItem) {
   }
 
   if (mediaPath.startsWith("/api/chat/")) {
-    return resolveWebChatAssetUrl(mediaPath);
+    return mediaUrls.resolveWebChatAsset(mediaPath);
   }
 
-  return resolveApiFileUrl(mediaPath);
+  return mediaUrls.resolveLocalFile(mediaPath);
 }
 
 export function getConversationStickerFallbackSrc(
   item: ConversationMediaItem,
+  mediaUrls: ConversationMediaUrlPort,
 ) {
   const relativePath = String(item?.relativePath || "").trim();
   const fileName = String(item?.fileName || relativePath).trim();
@@ -421,7 +428,7 @@ export function getConversationStickerFallbackSrc(
     return "";
   }
 
-  return resolveApiFileUrl(`stickers/assets/${fileName}`);
+  return mediaUrls.resolveLocalFile(`stickers/assets/${fileName}`);
 }
 
 export function getConversationPrimaryMediaItem(

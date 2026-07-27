@@ -201,6 +201,7 @@ function ChatBubbleContent({
   onQuote = undefined,
   onRetry = undefined,
   animateBubbleSequence = false,
+  mediaUrls,
 }) {
   const visualKind = getConversationVisualKind(message);
   const rawDisplayText = getConversationDisplayText(message);
@@ -315,6 +316,7 @@ function ChatBubbleContent({
                       items={segmentAttachments}
                       page={page}
                       align="right"
+                      mediaUrls={mediaUrls}
                     />
                   ) : null}
                 </div>
@@ -457,7 +459,7 @@ function ChatBubbleContent({
   }
 
   if (visualKind === "voice") {
-    const mediaSrc = getConversationMediaSrc(primaryMediaItem);
+    const mediaSrc = getConversationMediaSrc(primaryMediaItem, mediaUrls);
     return (
       <BubbleRow
         message={message}
@@ -509,6 +511,7 @@ function ChatBubbleContent({
                 page={page}
                 align={fromUser ? "right" : "left"}
                 fileFallbackName={displayText || "文件"}
+                mediaUrls={mediaUrls}
               />
             </RevealedBubblePart>
           ) : null}
@@ -539,6 +542,7 @@ function ChatBubbleContent({
                 items={mediaItems}
                 page={page}
                 align={fromUser ? "right" : "left"}
+                mediaUrls={mediaUrls}
               />
             </RevealedBubblePart>
           ) : null}

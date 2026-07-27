@@ -60,6 +60,7 @@ export function ConversationSearchResultList({
   showThreadLabel = false,
   onEditThread,
   onSelectResult,
+  mediaUrls,
 }: {
   page: Record<string, any>;
   query: string;
@@ -70,6 +71,7 @@ export function ConversationSearchResultList({
   showThreadLabel?: boolean;
   onEditThread?: (threadId?: string) => void;
   onSelectResult: (record: ConversationRecord) => void | Promise<void>;
+  mediaUrls: import("../../lib/conversation").ConversationMediaUrlPort;
 }) {
   const groupedResults = useMemo(
     () => groupConversationDisplayRecords(results),
@@ -131,6 +133,7 @@ export function ConversationSearchResultList({
                 userProfile={userProfile}
                 threadProfile={threadProfile}
                 onEditThread={() => onEditThread?.(threadId)}
+                mediaUrls={mediaUrls}
               />
             </div>
           </div>

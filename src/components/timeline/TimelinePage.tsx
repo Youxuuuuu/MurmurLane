@@ -17,6 +17,7 @@ export function TimelinePage({
   onTimelineEventDeleted,
   canEdit,
   editHint,
+  commands,
 }) {
   return (
     <PageCard
@@ -39,6 +40,7 @@ export function TimelinePage({
             onTimelineEventDeleted={onTimelineEventDeleted}
             canEdit={canEdit}
             editHint={editHint}
+            commands={commands}
           />
         ) : timelineView === "stats" ? (
           <TimelineStatsView
@@ -53,6 +55,7 @@ export function TimelinePage({
             onTimelineEventDeleted={onTimelineEventDeleted}
             canEdit={canEdit}
             editHint={editHint}
+            commands={commands}
           />
         )}
       </div>

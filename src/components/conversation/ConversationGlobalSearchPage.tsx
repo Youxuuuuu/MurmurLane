@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ConversationRecord } from "../../types/conversation";
+import type { SearchConversationOptions } from "../../types/api";
 import type {
   ConversationIdentity,
   ConversationThreadProfile,
@@ -20,6 +21,8 @@ export function ConversationGlobalSearchPage({
   threadProfiles,
   onBack,
   onSelectResult,
+  searchConversations,
+  mediaUrls,
 }: {
   page: Record<string, any>;
   conversationDates: string[];
@@ -27,12 +30,15 @@ export function ConversationGlobalSearchPage({
   threadProfiles: Record<string, ConversationThreadProfile>;
   onBack: () => void;
   onSelectResult: (record: ConversationRecord) => void | Promise<void>;
+  searchConversations: (options: SearchConversationOptions) => Promise<ConversationRecord[]>;
+  mediaUrls: import("../../lib/conversation").ConversationMediaUrlPort;
 }) {
   const [selectedThreadId, setSelectedThreadId] = useState("");
   const search = useConversationSearch({
     page,
     dates: conversationDates,
     limit: 200,
+    searchConversations,
   });
   const {
     query,
@@ -201,6 +207,7 @@ export function ConversationGlobalSearchPage({
               userProfile={userProfile}
               threadProfiles={threadProfiles}
               onSelectResult={onSelectResult}
+              mediaUrls={mediaUrls}
             />
           </>
         )}

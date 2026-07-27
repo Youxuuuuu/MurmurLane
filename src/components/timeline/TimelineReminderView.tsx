@@ -12,6 +12,7 @@ export function TimelineReminderView({
   onTimelineEventDeleted,
   canEdit,
   editHint,
+  commands,
 }) {
   const [detailEvent, setDetailEvent] = useState(null);
   const [editingEvent, setEditingEvent] = useState(null);
@@ -42,6 +43,7 @@ export function TimelineReminderView({
             onClose={() => setEditingEvent(null)}
             onEventSaved={onTimelineEventSaved}
             onEventDeleted={onTimelineEventDeleted}
+            commands={commands}
           />
         )}
       </AnimatePresence>

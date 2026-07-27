@@ -17,6 +17,11 @@ import type {
 } from "../src/types/conversation";
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
+const mediaUrls = {
+  resolveLocalFile: (path: string) =>
+    `/api/file?path=${encodeURIComponent(path)}`,
+  resolveWebChatAsset: (path: string) => path,
+};
 
 test("live bubble segment media uses the same sticker and photo classification", () => {
   const record: ConversationRecord = {
@@ -81,6 +86,7 @@ test("duplicate sticker metadata renders once across attachment collections", ()
 
 test("the shared media group keeps stickers small and routes two images through PhotoStack", () => {
   const stickerMarkup = renderToStaticMarkup(createElement(ConversationMediaGroup, {
+    mediaUrls,
     align: "right",
     items: [{
       kind: "sticker",
@@ -90,6 +96,7 @@ test("the shared media group keeps stickers small and routes two images through 
     }],
   }));
   const imageMarkup = renderToStaticMarkup(createElement(ConversationMediaGroup, {
+    mediaUrls,
     align: "right",
     items: [
       { kind: "image", fileName: "first.jpg", url: "data:image/jpeg;base64,AA==" },
@@ -106,6 +113,7 @@ test("the shared media group keeps stickers small and routes two images through 
 
 function renderFileRecord(record: ConversationRecord) {
   return renderToStaticMarkup(createElement(ChatBubble, {
+    mediaUrls,
     message: record,
     messages: [record],
     page: { color: "#725f87", line: "#ded7e6" },
@@ -134,6 +142,7 @@ test("WebChat bubble segment files use the shared file card", () => {
 
   const [segment] = getStableUserBubbleSegments(record);
   const markup = renderToStaticMarkup(createElement(ConversationMediaGroup, {
+    mediaUrls,
     align: "right",
     items: segment.attachments,
   }));
@@ -194,7 +203,7 @@ test("canonical sticker paths do not opt into the basename history fallback", ()
     stickerId: "stk_001",
     fileName: "stk_001.gif",
     relativePath: "stickers/assets/stk_001.gif",
-  }), "");
+  }, mediaUrls), "");
 });
 
 test("legacy basename-only sticker paths can retry through stickers assets", () => {
@@ -203,17 +212,17 @@ test("legacy basename-only sticker paths can retry through stickers assets", () 
     stickerId: "stk_001",
     fileName: "stk_001.gif",
     relativePath: "stk_001.gif",
-  }), "/api/file?path=stickers%2Fassets%2Fstk_001.gif");
+  }, mediaUrls), "/api/file?path=stickers%2Fassets%2Fstk_001.gif");
   assert.equal(getConversationStickerFallbackSrc({
     kind: "image",
     fileName: "photo.gif",
     relativePath: "photo.gif",
-  }), "");
+  }, mediaUrls), "");
   assert.equal(getConversationStickerFallbackSrc({
     kind: "file",
     fileName: "notes.txt",
     relativePath: "notes.txt",
-  }), "");
+  }, mediaUrls), "");
 });
 
 test("conversation file rendering has no runtime or provider visual branch", () => {

@@ -2,6 +2,8 @@
 Status: Accepted
 Implementation: Partial
 Date: 2026-07-27
+Browser implementation: Complete
+Server implementation: Pending
 ---
 
 # ADR-0018：浏览器公开配置与 Server Secret 使用独立边界

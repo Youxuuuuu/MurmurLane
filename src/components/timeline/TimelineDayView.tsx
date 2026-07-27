@@ -20,6 +20,7 @@ export function TimelineDayView({
   onTimelineEventDeleted,
   canEdit,
   editHint,
+  commands,
 }) {
   const [detailEvent, setDetailEvent] = useState(null);
   const [editingEvent, setEditingEvent] = useState(null);
@@ -109,6 +110,7 @@ export function TimelineDayView({
             onClose={() => setEditingEvent(null)}
             onEventSaved={onTimelineEventSaved}
             onEventDeleted={onTimelineEventDeleted}
+            commands={commands}
           />
         )}
       </AnimatePresence>

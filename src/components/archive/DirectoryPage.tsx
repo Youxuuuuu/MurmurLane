@@ -7,10 +7,6 @@ import { CardScrollArea } from "../layout/CardScrollArea";
 import { PageCard } from "../layout/PageCard";
 import { TopModeSwitch } from "../controls/TopModeSwitch";
 import {
-  fetchEditableMemoryDocument,
-  saveEditableMemoryDocument,
-} from "../../data/api";
-import {
   buildEditableMemoryTemplate,
   getEditableMemoryDocumentForPage,
   parseEditableMemoryContent,
@@ -30,6 +26,8 @@ export function DirectoryPage({
   onToggleOpenLoop,
   canEdit,
   editHint,
+  onLoadEditableDocument,
+  onSaveEditableDocument,
 }) {
   const pageRef = useRef(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -142,7 +140,7 @@ export function DirectoryPage({
     try {
       setIsEditorLoading(true);
       setEditorError("");
-      const result = await fetchEditableMemoryDocument(editableDocument);
+      const result = await onLoadEditableDocument(editableDocument);
       setDraftContent(
         result.content || buildEditableMemoryTemplate(editableDocument),
       );
@@ -169,7 +167,7 @@ export function DirectoryPage({
     try {
       setIsSaving(true);
       setEditorError("");
-      const result = await saveEditableMemoryDocument({
+      const result = await onSaveEditableDocument({
         ...editableDocument,
         content: draftContent,
       });

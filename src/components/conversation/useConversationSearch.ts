@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { searchConversation } from "../../data/api";
 import {
   getConversationDisplayText,
   getConversationVisualKind,
   shouldHideConversationRecord,
 } from "../../lib/conversation";
 import type { ConversationRecord } from "../../types/conversation";
+import type { SearchConversationOptions } from "../../types/api";
 
 export type ConversationSearchKind = "thinking" | "dialogue" | "image" | "file" | "link";
 
@@ -43,11 +43,13 @@ export function useConversationSearch({
   dates,
   threadId,
   limit,
+  searchConversations,
 }: {
   page: Record<string, any>;
   dates: string[];
   threadId?: string;
   limit: number;
+  searchConversations: (options: SearchConversationOptions) => Promise<ConversationRecord[]>;
 }) {
   const [query, setQuery] = useState("");
   const [selectedMonth, setSelectedMonth] = useState("");
@@ -87,7 +89,7 @@ export function useConversationSearch({
       setLoading(true);
       setError("");
       try {
-        const records = await searchConversation({
+        const records = await searchConversations({
           threadId,
           query: trimmedQuery,
           month: selectedMonth ? selectedMonth.replace(/\./g, "-") : undefined,
@@ -110,7 +112,7 @@ export function useConversationSearch({
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [limit, query, selectedDate, selectedMonth, threadId]);
+  }, [limit, query, searchConversations, selectedDate, selectedMonth, threadId]);
 
   const visibleResults = useMemo(() => {
     if (!selectedKinds.length) return results;

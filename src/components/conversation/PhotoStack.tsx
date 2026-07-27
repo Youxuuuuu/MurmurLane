@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import type { ConversationMediaItem } from "../../types/conversation";
 import { getConversationMediaSrc } from "../../lib/conversation";
+import type { ConversationMediaUrlPort } from "../../lib/conversation";
 import { TinyIcon } from "../common/TinyIcon";
 import { useModalDialog } from "../common/useModalDialog";
 
@@ -731,14 +732,16 @@ export function ConversationPhotoGallery({
   items,
   page,
   controlSide = "right",
+  mediaUrls,
 }: {
   items: ConversationMediaItem[];
   page?: PhotoControlPage;
   controlSide?: "left" | "right";
+  mediaUrls: ConversationMediaUrlPort;
 }) {
   const entries = items.map((item, index) => ({
     key: getMediaKey(item, index),
-    src: getConversationMediaSrc(item),
+    src: getConversationMediaSrc(item, mediaUrls),
     label: getMediaLabel(item, index),
   }));
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);

@@ -1,4 +1,3 @@
-import { API_BASE_URL } from "./api";
 import type {
   WebChatEvent,
   WebChatMedia,
@@ -8,14 +7,15 @@ import type {
   WebChatStatus,
 } from "../types/webChat";
 
-const env = (import.meta as { env?: Record<string, string | undefined> }).env;
-const CHAT_API_BASE_URL = String(
-  env?.VITE_MURMURLANE_CHAT_API_BASE_URL ||
-    (env?.DEV ? "http://127.0.0.1:8791" : API_BASE_URL),
-).replace(/\/+$/, "");
-const CHAT_TOKEN = String(env?.VITE_MURMURLANE_CHAT_TOKEN || "").trim();
 export const WEB_CHAT_SEND_TIMEOUT_MS = 15_000;
 export const WEB_CHAT_UPLOAD_TIMEOUT_MS = 120_000;
+
+export interface WebChatApiConfig {
+  readonly baseUrl: string;
+  readonly credential: string;
+  readonly sendTimeoutMs: number;
+  readonly uploadTimeoutMs: number;
+}
 
 export class WebChatHttpError extends Error {
   statusCode: number;
@@ -40,6 +40,15 @@ export class WebChatUploadTimeoutError extends Error {
     this.name = "WebChatUploadTimeoutError";
   }
 }
+
+export function createWebChatApi({
+  baseUrl,
+  credential,
+  sendTimeoutMs,
+  uploadTimeoutMs,
+}: WebChatApiConfig) {
+const CHAT_API_BASE_URL = String(baseUrl || "").replace(/\/+$/, "");
+const CHAT_TOKEN = String(credential || "").trim();
 
 function buildChatUrl(path: string) {
   return `${CHAT_API_BASE_URL}${path}`;
@@ -69,7 +78,7 @@ async function requestChatJson<T>(path: string, init: RequestInit = {}) {
   return response.json() as Promise<T>;
 }
 
-export function fetchWebChatStatus(threadId = "", requestId = "") {
+function fetchWebChatStatus(threadId = "", requestId = "") {
   const query = new URLSearchParams();
   if (threadId) query.set("threadId", threadId);
   if (requestId) query.set("requestId", requestId);
@@ -77,11 +86,11 @@ export function fetchWebChatStatus(threadId = "", requestId = "") {
   return requestChatJson<WebChatStatus>(`/api/chat/status${suffix}`);
 }
 
-export function fetchWebChatModels() {
+function fetchWebChatModels() {
   return requestChatJson<WebChatModelResponse>("/api/chat/models");
 }
 
-export function setWebChatModel(model: string, modelProvider = "") {
+function setWebChatModel(model: string, modelProvider = "") {
   return requestChatJson<WebChatStatus>("/api/chat/model", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -89,7 +98,7 @@ export function setWebChatModel(model: string, modelProvider = "") {
   });
 }
 
-export function selectWebChatThread(threadId: string, clientId = "") {
+function selectWebChatThread(threadId: string, clientId = "") {
   return requestChatJson<WebChatStatus>("/api/chat/thread/select", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -97,9 +106,9 @@ export function selectWebChatThread(threadId: string, clientId = "") {
   });
 }
 
-export async function sendWebChatMessages(
+async function sendWebChatMessages(
   envelope: WebChatSendEnvelope,
-  { timeoutMs = WEB_CHAT_SEND_TIMEOUT_MS }: { timeoutMs?: number } = {},
+  { timeoutMs = sendTimeoutMs }: { timeoutMs?: number } = {},
 ) {
   const timeout = createSendTimeout(timeoutMs);
   try {
@@ -119,7 +128,7 @@ export async function sendWebChatMessages(
   }
 }
 
-export function isAmbiguousWebChatSendError(error: unknown) {
+function isAmbiguousWebChatSendError(error: unknown) {
   if (error instanceof WebChatHttpError) return false;
   if (error instanceof WebChatSendTimeoutError) return true;
   if (typeof DOMException !== "undefined" && error instanceof DOMException) {
@@ -146,11 +155,11 @@ function createSendTimeout(timeoutMs: number) {
   };
 }
 
-export async function uploadWebChatFile(
+async function uploadWebChatFile(
   file: File | Blob,
   fileName = "attachment",
   kind = "file",
-  { timeoutMs = WEB_CHAT_UPLOAD_TIMEOUT_MS }: { timeoutMs?: number } = {},
+  { timeoutMs = uploadTimeoutMs }: { timeoutMs?: number } = {},
 ): Promise<WebChatMedia> {
   const timeout = createSendTimeout(timeoutMs);
   try {
@@ -175,7 +184,7 @@ export async function uploadWebChatFile(
   }
 }
 
-export function subscribeToWebChat({
+function subscribeToWebChat({
   threadId = "",
   after = 0,
   clientId,
@@ -207,7 +216,7 @@ export function subscribeToWebChat({
   return () => source.close();
 }
 
-export function resolveWebChatAssetUrl(
+function resolveWebChatAssetUrl(
   assetPath: string,
   token = CHAT_TOKEN,
 ) {
@@ -227,4 +236,19 @@ export function resolveWebChatAssetUrl(
   return `${pathname}?${params.toString()}${fragment}`;
 }
 
-export { CHAT_API_BASE_URL };
+return Object.freeze({
+  sendTimeoutMs,
+  uploadTimeoutMs,
+  fetchStatus: fetchWebChatStatus,
+  fetchModels: fetchWebChatModels,
+  setModel: setWebChatModel,
+  selectThread: selectWebChatThread,
+  sendMessages: sendWebChatMessages,
+  isAmbiguousSendError: isAmbiguousWebChatSendError,
+  uploadFile: uploadWebChatFile,
+  subscribe: subscribeToWebChat,
+  resolveAssetUrl: resolveWebChatAssetUrl,
+});
+}
+
+export type WebChatApi = ReturnType<typeof createWebChatApi>;

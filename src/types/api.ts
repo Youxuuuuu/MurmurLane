@@ -24,6 +24,16 @@ export interface ApiRequestOptions {
   body?: string;
 }
 
+export interface StickerAsset {
+  id: string;
+  fileName: string;
+  name: string;
+  tags: string[];
+  category: string;
+  description: string;
+  src: string;
+}
+
 export interface LiveUpdateEvent {
   id: number;
   type:

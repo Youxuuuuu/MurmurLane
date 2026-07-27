@@ -6,7 +6,6 @@ import { buildSearchResultState } from "../../lib/searchPageData";
 import { HighlightText } from "../common/HighlightText";
 import { PaperTexture } from "../common/PaperTexture";
 
-const env = (import.meta as { env?: Record<string, unknown> }).env;
 const ENABLE_SEARCH_PERF_LOG = false;
 const conversationThreadScopeOptions = [
   { value: "all", label: "全部线程" },
@@ -70,7 +69,6 @@ export function DiarySearchBox({
   const searchState = useMemo(
     () => {
       const shouldLog =
-        Boolean(env?.DEV) &&
         ENABLE_SEARCH_PERF_LOG &&
         searchQuery.trim().length > 0;
       const startTime = shouldLog ? performance.now() : 0;
