@@ -1,9 +1,15 @@
 ---
 Status: Accepted
-Implementation: Partial
+Implementation: Complete
 ---
 
 # Workspace 通过 View Model 和 Commands 驱动 View
+
+## 当前实施结果
+
+Conversation、Timeline 与 Archive 均已形成持续挂载的 Workspace Controller，并通过 View Model 与 Commands 向现有页面提供状态和用户意图入口。Conversation Transcript、Canonical / Live 对账、发送事务、未读和通知归 Conversation Workspace；Timeline 与 Archive 的选择、导航解释、Mutation Overlay、保存回滚和等待同步状态归各自 Workspace。
+
+现有 View 继续拥有 JSX、DOM Ref、滚动、锚点、窗口化、手势、动画 Ledger、焦点和局部展开状态。Workspace 源码不导入 View、具体 Browser Adapter、DOM 或动画实现；View 也不直接调用具体数据 Adapter。当前未实现的正式线程删除命令不因本 ADR 被虚构。
 
 Workspace 通过 View Model + Commands 驱动页面。领域状态与业务流程归 Workspace Controller；DOM、滚动、手势和动画等瞬时展示状态归 View，双方不得越过 seam 操作彼此的内部实现。Controller 消费 ContentSync Snapshot 和技术 Adapter，拥有当前线程、日期、Profile、业务页面模式、Live / Canonical Records 对账、未读、删除后选择、发送与重试、navigation target 解释、请求状态和领域错误，并推导 View Model、提供 Commands。
 

@@ -68,6 +68,11 @@ import {
 } from "../../lib/conversationPageData";
 import { getTodayDateText, toDotDate } from "../../lib/date";
 import { buildConversationTranscript } from "./buildConversationTranscript";
+import {
+  createCanonicalConversationObserver,
+  type CanonicalConversationBatch,
+  type CanonicalConversationObservation,
+} from "./canonicalConversationObserver";
 
 interface StagedWebChatSend {
   requestId: string;
@@ -240,6 +245,19 @@ export function useConversationWorkspace({
   );
   const threadProfilesRef = useRef(effectiveThreadProfiles);
   threadProfilesRef.current = effectiveThreadProfiles;
+  const activityRef = useRef({
+    active,
+    pageMode: workspaceState.view,
+    selectedThreadId: workspaceState.selectedThreadId,
+  });
+  activityRef.current = {
+    active,
+    pageMode: workspaceState.view,
+    selectedThreadId: workspaceState.selectedThreadId,
+  };
+  const canonicalObserverRef = useRef(
+    createCanonicalConversationObserver(),
+  );
   const clientIdRef = useRef(createClientId());
   const cursorByThreadRef = useRef(new Map<string, number>());
   const currentThreadIdRef = useRef(threadId);
@@ -821,6 +839,28 @@ export function useConversationWorkspace({
     [],
   );
 
+  const observeCanonicalBatches = useCallback(
+    (
+      batches: readonly CanonicalConversationBatch[],
+      observation: CanonicalConversationObservation,
+    ) => {
+      canonicalObserverRef.current
+        .observe(batches, observation, {
+          ...activityRef.current,
+          threadProfiles: threadProfilesRef.current,
+          now: Date.now(),
+        })
+        .forEach(({ notification, enqueue }) => {
+          dispatch({
+            type: "receive-notification",
+            notification,
+            enqueue,
+          });
+        });
+    },
+    [],
+  );
+
   const dismissNotification = useCallback(() => {
     dispatch({ type: "dismiss-notification" });
   }, []);
@@ -846,6 +886,12 @@ export function useConversationWorkspace({
         const records = await loadConversationRecords(date, {
           threadId: targetThreadId,
         });
+        if (records) {
+          observeCanonicalBatches(
+            [{ date, records }],
+            "cache-fill",
+          );
+        }
         return Boolean(
           records?.some(
             (record) =>
@@ -859,6 +905,7 @@ export function useConversationWorkspace({
     },
     [
       loadConversationRecords,
+      observeCanonicalBatches,
       remoteData.conversationEntries,
       remoteData.searchCache.conversations,
       workspaceState.selectedThreadId,
@@ -1146,6 +1193,7 @@ export function useConversationWorkspace({
       setJumpDate,
       openNewThread,
       receiveNotification,
+      observeCanonicalBatches,
       dismissNotification,
       loadThreadDate,
       openThread,
@@ -1162,6 +1210,7 @@ export function useConversationWorkspace({
       openSearchResult,
       openThread,
       receiveNotification,
+      observeCanonicalBatches,
       refreshModels,
       retryMessage,
       selectThread,

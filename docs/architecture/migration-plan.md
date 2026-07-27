@@ -797,3 +797,28 @@ src/content-sync/liveUpdateCoordinator.ts
 src/content-sync/sourceSnapshotStore.ts
 src/workspaces/conversation/useConversationWorkspace.ts
 ```
+
+### 阶段 10 执行结果
+
+- 将 Canonical Conversation 批次的已见身份、加载日期、首次同步基线和后台刷新通知资格迁入 Conversation Workspace。
+- ContentSync 继续只负责文件事件失效、读取、提交 Snapshot 与返回已完成的来源批次，不读取当前 Workspace、Thread、页面模式、未读或通知队列。
+- `App.tsx` 只把 `baseline`、`cache-fill` 和 `background-refresh` 三种同步事实转交 Conversation Workspace，不再合并、隐藏、判断 Assistant Record 或生成通知文案。
+- 首次日期加载、线程列表补载、搜索补载和 Conversation 历史按需加载只建立已见基线，不产生未读。
+- 保持既有规则：首次文件刷新不产生通知；之后只对已加载日期中的新 Assistant Record 计数；当前正在查看的 Thread 不产生通知；离开 Conversation 时通知进入全局队列。
+- 新增 Characterization Tests，覆盖首次同步、补载、后台刷新和当前 Thread 排除。
+- ADR-0001、ADR-0002 与 ADR-0005 标记为 `Implementation: Complete`。
+- 本阶段没有修改 View JSX、CSS、DOM、React Key、滚动、窗口化或动画。
+
+### 阶段 10 实际修改文件
+
+```text
+docs/adr/0001-domain-ownership-before-technical-organization.md
+docs/adr/0002-content-sync-validity-workspaces-meaning.md
+docs/adr/0005-workspaces-drive-views-through-models-and-commands.md
+docs/architecture/migration-plan.md
+src/App.tsx
+src/workspaces/conversation/canonicalConversationObserver.ts
+src/workspaces/conversation/index.ts
+src/workspaces/conversation/useConversationWorkspace.ts
+test/canonicalConversationObserver.test.ts
+```

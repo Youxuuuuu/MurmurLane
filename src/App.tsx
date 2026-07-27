@@ -17,7 +17,6 @@ import {
 } from "./content-sync";
 import type { LiveUpdateCoordinator } from "./content-sync";
 import type { RemoteData } from "./types/api";
-import type { ConversationRecord } from "./types/conversation";
 import type { ConversationThreadProfile } from "./lib/conversationProfiles";
 import { styleThemes } from "./config/theme";
 import {
@@ -73,12 +72,6 @@ import { ThemeIconButton } from "./components/controls/ThemeIconButton";
 import { TimelineModeSwitch } from "./components/controls/TimelineModeSwitch";
 import { validateAppData } from "./dev/validateAppData";
 import { useConversationWorkspace } from "./workspaces/conversation/useConversationWorkspace";
-import {
-  getConversationDisplayText,
-  getConversationVisualKind,
-  shouldHideConversationRecord,
-} from "./lib/conversation";
-import { getConversationRenderId } from "./lib/conversationIdentity";
 
 const ENABLE_APP_DEBUG_LOG = false;
 const searchDataVersions = new WeakMap<RemoteData, number>();
@@ -97,45 +90,6 @@ function resolveStateAction(
   current: string,
 ) {
   return typeof action === "function" ? action(current) : action;
-}
-
-function getLiveConversationRecordKey(
-  date: string,
-  threadId: string,
-  record: ConversationRecord,
-) {
-  return `${toDotDate(date)}:${getConversationRenderId(record, threadId)}`;
-}
-
-function rememberConversationRecords(
-  knownSet: Set<string>,
-  date: string,
-  records: readonly ConversationRecord[] = [],
-) {
-  records.forEach((record) => {
-    const threadId = String(record?.threadId || "");
-    if (!threadId) return;
-    knownSet.add(
-      getLiveConversationRecordKey(date, threadId, record),
-    );
-  });
-}
-
-function getLiveMessagePreview(record) {
-  const text = String(getConversationDisplayText(record) || "")
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .find(Boolean);
-  if (text) return text;
-
-  const labels = {
-    image: "[图片]",
-    sticker: "[表情]",
-    file: "[文件]",
-    voice: "[语音]",
-    music: "[音乐]",
-  };
-  return labels[getConversationVisualKind(record)] || "[新消息]";
 }
 
 const themeIconByStyleId = {
@@ -300,7 +254,6 @@ export default function InsDiaryPrototype({
     xiaoyeEntries: remoteXiaoyeEntriesState,
     reminderHistoryEntries: remoteReminderHistoryEntriesState,
     dateIndex: remoteDateIndexState,
-    searchCache: remoteSearchCacheState,
   } = contentSyncSnapshot.data;
   const remoteData = contentSyncSnapshot.data;
   const timelinePort = useMemo(
@@ -478,8 +431,6 @@ export default function InsDiaryPrototype({
   const setConversationPlaceholder =
     conversationCommands.setPlaceholder;
   const setConversationJumpDate = conversationCommands.setJumpDate;
-  const receiveConversationNotification =
-    conversationCommands.receiveNotification;
   const setConversationCalendarDate = useCallback(
     (date) => conversationCommands.openDate(date),
     [conversationCommands.openDate],
@@ -513,106 +464,25 @@ export default function InsDiaryPrototype({
   });
 
   const selectedDateRef = useRef(selectedDate);
-  const activeSectionRef = useRef(activeSection);
-  const conversationViewRef = useRef(conversationView);
-  const selectedThreadIdRef = useRef(selectedThreadId);
-  const threadProfilesRef = useRef<
-    Record<string, ConversationThreadProfile>
-  >({});
-  const knownConversationRecordIdsRef = useRef(
-    new Set<string>(),
-  );
-  const loadedConversationDatesRef = useRef(new Set<string>());
-  const conversationBaselineReadyRef = useRef(false);
-  const initialLiveRefreshCompleteRef = useRef(false);
   const liveSearchActiveRef = useRef(false);
   const liveUpdateCoordinatorRef =
     useRef<LiveUpdateCoordinator | null>(null);
-  threadProfilesRef.current = effectiveThreadProfiles;
-
   selectedDateRef.current = selectedDate;
-  activeSectionRef.current = activeSection;
-  conversationViewRef.current = conversationView;
-  selectedThreadIdRef.current = selectedThreadId;
   liveSearchActiveRef.current =
     Boolean(String(searchQuery ?? "").trim()) ||
     conversationView === "search" ||
     conversationView === "global-search";
 
   const refreshLiveEvents = useCallback(async (events) => {
-    const canNotifyConversationChanges =
-      conversationBaselineReadyRef.current &&
-      initialLiveRefreshCompleteRef.current;
-    const registerIncomingMessages = (date, records, allowNotify = true) => {
-      const dotDate = toDotDate(date);
-      const incomingByThread = new Map();
-
-      records.forEach((record, index) => {
-        const threadId = String(record?.threadId || "");
-        if (!threadId) return;
-        const recordKey = getLiveConversationRecordKey(
-          dotDate,
-          threadId,
-          record,
-        );
-        const alreadyKnown = knownConversationRecordIdsRef.current.has(recordKey);
-        knownConversationRecordIdsRef.current.add(recordKey);
-
-        const visualKind = getConversationVisualKind(record);
-        const incoming =
-          !alreadyKnown &&
-          (record?.type === "assistant" || record?.role === "assistant") &&
-          !shouldHideConversationRecord(record) &&
-          !["thinking", "operation", "hidden"].includes(visualKind);
-        if (!incoming) return;
-
-        const items = incomingByThread.get(threadId) || [];
-        items.push(record);
-        incomingByThread.set(threadId, items);
-      });
-
-      if (!canNotifyConversationChanges || !allowNotify || !incomingByThread.size) return;
-
-      incomingByThread.forEach((incomingRecords, threadId) => {
-        const viewingThread =
-          activeSectionRef.current === "Conversation" &&
-          conversationViewRef.current === "chat" &&
-          selectedThreadIdRef.current === threadId;
-        if (viewingThread) return;
-
-        const incomingCount = incomingRecords.length;
-        const latestRecord = incomingRecords[incomingRecords.length - 1];
-        const profile = threadProfilesRef.current[threadId];
-        receiveConversationNotification(
-          {
-            threadId,
-            date: dotDate,
-            name:
-              profile?.name || `对话 ${threadId.slice(0, 6)}`,
-            avatar: profile?.avatar || "",
-            message: getLiveMessagePreview(latestRecord),
-            count: incomingCount,
-            version: Date.now(),
-          },
-          {
-            enqueue:
-              activeSectionRef.current !== "Conversation",
-          },
-        );
-      });
-    };
-
     const refreshResult = await contentSync.refreshEvents(
       events,
       selectedDateRef.current,
     );
-    refreshResult.conversations.forEach(({ date, records }) => {
-      const dateWasLoaded = loadedConversationDatesRef.current.has(date);
-      registerIncomingMessages(date, records, dateWasLoaded);
-      loadedConversationDatesRef.current.add(date);
-    });
-    initialLiveRefreshCompleteRef.current = true;
-  }, [contentSync, receiveConversationNotification]);
+    conversationCommands.observeCanonicalBatches(
+      refreshResult.conversations,
+      "background-refresh",
+    );
+  }, [contentSync, conversationCommands.observeCanonicalBatches]);
 
   useEffect(() => {
     const coordinator = createLiveUpdateCoordinator({
@@ -666,20 +536,6 @@ export default function InsDiaryPrototype({
     }, 220);
     return () => window.clearTimeout(timer);
   }, [searchQuery, conversationView]);
-
-  useEffect(() => {
-    const rememberEntries = (entries) => {
-      Object.entries(entries ?? {}).forEach(([date, threads]) => {
-        loadedConversationDatesRef.current.add(toDotDate(date));
-        Object.entries(threads ?? {}).forEach(([threadId, records]) => {
-          rememberConversationRecords(knownConversationRecordIdsRef.current, date, records ?? []);
-        });
-      });
-    };
-
-    rememberEntries(remoteConversationsState);
-    rememberEntries(remoteSearchCacheState.conversations);
-  }, [remoteConversationsState, remoteSearchCacheState.conversations]);
 
   const conversationMediaUrls = useMemo(
     () => ({
@@ -814,15 +670,12 @@ export default function InsDiaryPrototype({
       ]);
 
       if (cancelled) return;
-      if (Array.isArray(conversations)) {
-        loadedConversationDatesRef.current.add(dotDate);
-        rememberConversationRecords(
-          knownConversationRecordIdsRef.current,
-          dotDate,
-          conversations,
-        );
-      }
-      conversationBaselineReadyRef.current = true;
+      conversationCommands.observeCanonicalBatches(
+        Array.isArray(conversations)
+          ? [{ date: dotDate, records: conversations }]
+          : [],
+        "baseline",
+      );
     };
 
     loadDatedData();
@@ -830,7 +683,11 @@ export default function InsDiaryPrototype({
     return () => {
       cancelled = true;
     };
-  }, [contentSync, selectedDate]);
+  }, [
+    contentSync,
+    conversationCommands.observeCanonicalBatches,
+    selectedDate,
+  ]);
 
   useEffect(() => {
     void contentSync.loadMoments(3);
@@ -849,14 +706,10 @@ export default function InsDiaryPrototype({
     const loadThreadDates = async () => {
       const batches = await contentSync.loadLatestConversationDates();
       if (cancelled) return;
-      batches.forEach(({ date, records }) => {
-        loadedConversationDatesRef.current.add(toDotDate(date));
-        rememberConversationRecords(
-          knownConversationRecordIdsRef.current,
-          date,
-          records,
-        );
-      });
+      conversationCommands.observeCanonicalBatches(
+        batches,
+        "cache-fill",
+      );
     };
 
     void loadThreadDates();
@@ -868,6 +721,7 @@ export default function InsDiaryPrototype({
     conversationView,
     remoteDateIndexState,
     contentSync,
+    conversationCommands.observeCanonicalBatches,
   ]);
 
   useEffect(() => {
@@ -882,14 +736,10 @@ export default function InsDiaryPrototype({
     const loadSearchData = async () => {
       const batches = await contentSync.loadIndexedSearchSources();
       if (cancelled) return;
-      batches.forEach(({ date, records }) => {
-        loadedConversationDatesRef.current.add(toDotDate(date));
-        rememberConversationRecords(
-          knownConversationRecordIdsRef.current,
-          date,
-          records,
-        );
-      });
+      conversationCommands.observeCanonicalBatches(
+        batches,
+        "cache-fill",
+      );
     };
 
     void loadSearchData();
@@ -901,6 +751,7 @@ export default function InsDiaryPrototype({
     searchQuery,
     remoteDateIndexState,
     contentSync,
+    conversationCommands.observeCanonicalBatches,
   ]);
 
   const searchRemoteData =

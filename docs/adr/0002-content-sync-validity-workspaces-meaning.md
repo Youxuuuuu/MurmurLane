@@ -1,11 +1,17 @@
 ---
 Status: Accepted
-Implementation: Partial
+Implementation: Complete
 ContentSync implementation: Complete
-Workspace consumption: Partial
+Workspace consumption: Complete
 ---
 
 # ContentSync 管理有效性，Workspace 解释意义
+
+## 当前实施结果
+
+ContentSync 根据文件事件决定失效与刷新范围，并通过只读 Snapshot 发布 Canonical 数据及同步元数据。Conversation Workspace 对 ContentSync 完成的 Canonical 批次维护已见身份和加载基线，解释哪些新增 Assistant Record 应累计未读、是否进入通知队列，以及当前正在查看的 Thread 是否应被排除。
+
+首次加载、搜索补载和线程列表补载只建立 Workspace 基线，不产生新消息通知；文件后台刷新在基线和首次重同步完成后才按既有规则解释为可能的新消息。ContentSync 不读取页面模式、当前 Thread、Profile 或通知队列。
 
 ContentSync 管理来源数据何时有效，Workspace 决定数据意味着什么以及页面如何响应。ContentSync 负责启动加载、文件 SSE 与连接生命周期、失效范围判断、刷新、重试、重新同步、缓存、数据版本，并发布来源数据快照及 `loading`、`error`、`updatedAt`、`connectionStatus`、`revision` 等同步元数据；它可以提供 `refresh(source)`、`retry(source)` 和 `invalidate(source)` 等窄的技术操作。
 
