@@ -483,8 +483,6 @@ export function TimelineEventEditorDrawer({
   page,
   event,
   onClose,
-  onEventSaved,
-  onEventDeleted,
   commands,
 }) {
   const dialogProps = useModalDialog(onClose);
@@ -611,7 +609,6 @@ export function TimelineEventEditorDrawer({
         },
       });
 
-      onEventSaved?.(result?.date || page.date, result?.event);
       onClose();
     } catch (error) {
       setError(String(error?.bodyText || error?.message || error));
@@ -630,7 +627,6 @@ export function TimelineEventEditorDrawer({
         eventId: event.id,
       });
 
-      onEventDeleted?.(result?.date || page.date, event.id);
       onClose();
     } catch (error) {
       setError(String(error?.bodyText || error?.message || error));

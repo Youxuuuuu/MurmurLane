@@ -1,6 +1,6 @@
 ---
 Status: Accepted
-Implementation: Partial
+Implementation: Complete
 ---
 
 # Workspace Controller 在应用会话内持续存在
@@ -63,3 +63,12 @@ App Composition Root 创建并注入 Adapter，持续挂载的 AppRoot 创建 Wo
 实施前刻画 Workspace 往返切换后的线程、日期和页面状态，Live Records、Usage、Web Thread、Profile、未读与通知的保留，EventSource 关闭与 Cursor 恢复，各 Conversation 子页面连接策略，重复订阅防护，切页后发送结算、Draft Thread 迁移、未激活时 Snapshot 消费，以及只有明确 Reset Command 或会话结束才清理领域状态。
 
 第一轮只迁移 Controller 的挂载层级和生命周期所有权。必须保持 JSX、CSS、DOM、Conversation View 条件渲染、WebChat 启用条件、EventSource 时机、Cursor、Live Records、Usage、Draft Thread 迁移、未读、通知、滚动、窗口化和动画行为。不得强制所有页面 DOM 常驻，也不得增加后台常连接、跨刷新持久化、滚动恢复或新的缓存淘汰策略。
+
+## Implementation status
+
+2026-07-27 已完成：
+
+- Conversation、Timeline 与 Archive Controller 都由持续挂载的 AppRoot 组合层无条件创建。
+- Workspace View 条件卸载不再销毁线程、日期、页面模式、Live State、Mutation Overlay 或 Command 事务。
+- WebChat EventSource 继续只按 Conversation Chat 的现有 Activity 条件启停；暂停不清空领域状态。
+- DOM、滚动、窗口化、焦点、手势与高亮 Timer 继续由对应 View 持有。

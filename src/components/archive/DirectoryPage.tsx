@@ -14,7 +14,7 @@ import {
 
 export function DirectoryPage({
   page,
-  highlightResult,
+  highlightResult: requestedHighlightResult,
   onOpenDatePicker,
   onMonthSelect,
   onOpenShare,
@@ -22,13 +22,24 @@ export function DirectoryPage({
   selectedMode,
   onSelectedShareTextChange,
   scrollHitIntoView,
-  onMemoryEntrySaved,
   onToggleOpenLoop,
   canEdit,
   editHint,
   onLoadEditableDocument,
   onSaveEditableDocument,
 }) {
+  const [highlightResult, setHighlightResult] = useState(
+    requestedHighlightResult,
+  );
+  useEffect(() => {
+    setHighlightResult(requestedHighlightResult);
+    if (!requestedHighlightResult) return;
+    const timer = window.setTimeout(
+      () => setHighlightResult(null),
+      3000,
+    );
+    return () => window.clearTimeout(timer);
+  }, [requestedHighlightResult]);
   const pageRef = useRef(null);
   const [isEditing, setIsEditing] = useState(false);
   const [isPreview, setIsPreview] = useState(false);
@@ -171,7 +182,6 @@ export function DirectoryPage({
         ...editableDocument,
         content: draftContent,
       });
-      onMemoryEntrySaved?.(editableDocument, result.entry);
       setDraftContent(result.content);
       setIsEditing(false);
       setIsPreview(false);

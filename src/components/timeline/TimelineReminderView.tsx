@@ -8,8 +8,6 @@ import { TimelinePeriodList } from "./TimelinePeriodList";
 
 export function TimelineReminderView({
   page,
-  onTimelineEventSaved,
-  onTimelineEventDeleted,
   canEdit,
   editHint,
   commands,
@@ -41,8 +39,6 @@ export function TimelineReminderView({
             event={editingEvent}
             page={page}
             onClose={() => setEditingEvent(null)}
-            onEventSaved={onTimelineEventSaved}
-            onEventDeleted={onTimelineEventDeleted}
             commands={commands}
           />
         )}

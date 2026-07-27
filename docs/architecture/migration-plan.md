@@ -67,8 +67,8 @@
 | 2 | Browser Config、Composition Root 与最小 Adapter | Implemented / Final Device Pending | ADR-0009、0010、0015、0018 |
 | 3 | ContentSync | Implemented / Final Device Pending | ADR-0001、0002、0013、0017、0019 |
 | 4 | Conversation Workspace Controller | Implemented / Final Device Pending | ADR-0005、0006、0012、0014、0017 |
-| 5 | App Navigation | Partial（Conversation 已接管） | ADR-0003、0010、0015 |
-| 6 | Timeline 与 Archive Workspace | Pending | ADR-0005、0013、0014、0019 |
+| 5 | App Navigation | Implemented / Final Device Pending | ADR-0003、0010、0015 |
+| 6 | Timeline 与 Archive Workspace | Implemented / Final Device Pending | ADR-0005、0013、0014、0019 |
 | 7 | 搜索所有权 | Pending | ADR-0004、0011、0016 |
 | 8 | Server 分层与 Server Typecheck | Pending | ADR-0007、0009、0014、0018 |
 | 9 | 严格类型收尾 | Pending | ADR-0009、0011 |
@@ -546,7 +546,7 @@ test/conversationWorkspace.test.ts
 - Conversation 通知和 Conversation 搜索跳转不再由 `App.tsx` 同时调用目标 Workspace 的多个 setter。
 - 消息高亮的三秒视觉生命周期进入 Conversation View，Controller 不持有 Timer、DOM 或滚动能力。
 - App Navigation 不校验 Thread、Date、Message、Event 或 Document，也不操作目标 Workspace Store、DOM、滚动或高亮。
-- Timeline 与 Archive Target 的消费仍需由阶段 6 的对应 Controller 接管，ADR-0003 因此继续为 `Partial`，不得提前标记完成。
+- Timeline 与 Archive Target 已在阶段 6 由对应 Controller 接管；ADR-0003 现标记为 `Complete`。
 - App Navigation 与 Conversation Navigation Characterization Tests 覆盖目标转交、未知 Workspace、确认清除、目标校验与过期 Revision 拒绝。
 - `npm test`：110/110 通过。
 - `npm run typecheck:strict`：通过。
@@ -584,13 +584,18 @@ test/conversationWorkspace.test.ts
 
 ### 阶段 6 执行结果
 
-- 新增 Timeline 与 Archive Workspace View Model builder。
-- `App.tsx` 不再直接选择并调用 Timeline、Memory 与 Xiaoye 页面 builder，而是通过对应 Workspace seam 生成页面模型。
+- 新增持续挂载的 Timeline 与 Archive Workspace Controller，并继续复用现有 View Model builder。
+- Timeline 的日期、视图、统计周期、Navigation Target、Mutation Sequence 与 Mutation Overlay 已归 Timeline Controller。
+- Archive 的日期、Subject、Memory Mode、Xiaoye Mode、Navigation Target、Open Loops 乐观事务与 Mutation Overlay 已归 Archive Controller。
+- 两个 Workspace 只读消费 ContentSync Snapshot；保存和删除不再由 `App.tsx` 直接修改 Timeline、Memory、Search Cache 或 Date Index Snapshot。
+- 页面、领域搜索和日期可用性从 `Canonical Snapshot + Workspace Mutation Overlay` 的同一 Effective State 派生。
+- Timeline 的 Fetch、Save、Delete 与 Archive 的 Load、Save、Toggle 通过窄 Port 注入 Controller；View 只调用 Workspace Commands，不再接收具体 Adapter。
+- Timeline 与 Archive 自行校验并消费各自 Navigation Target，确认后通过 App Navigation 的 Workspace/Revision seam 清除 Target。
+- 高亮的三秒计时器继续属于对应 View；Controller 不持有 DOM、滚动、Timer 或动画能力。
+- 原来 Timeline 与 Archive 共用浏览日期的行为通过明确的 `BrowseDateFlow` 保持，不再依赖同一个 App `useState` 偶然耦合。
 - 新 seam 继续复用现有页面构建逻辑，没有复制 Timeline、Diary、Memory、Letters 或 Xiaoye 规则。
-- 通过显式 builder 能力隔离尚未完成 strict 的旧大型纯逻辑文件，避免本阶段夹带一次性类型整改。
-- Timeline 与 Archive 的选择状态、Mutation Overlay 和 Commands 仍在 `App.tsx`，本阶段只完成页面模型所有权入口。
-- 新增 2 个 Workspace View Model 等价 Characterization Tests。
-- `npm test`：96/96 通过。
+- 新增 Workspace View Model、Mutation Overlay 与共享浏览日期 Application Flow Characterization Tests。
+- `npm test`：113/113 通过。
 - `npm run typecheck:strict`：通过。
 - `npx tsc -p tsconfig.app.json --noEmit --incremental false`：通过。
 - `npm run build`：通过。
@@ -604,10 +609,22 @@ test/conversationWorkspace.test.ts
 AGENTS.md
 docs/architecture/migration-plan.md
 src/App.tsx
+src/app/flows/browseDateFlow.ts
+src/app/navigation/appNavigation.ts
+src/components/archive/DirectoryPage.tsx
+src/components/timeline/TimelineDayView.tsx
+src/components/timeline/TimelineEventEditorDrawer.tsx
+src/components/timeline/TimelinePage.tsx
+src/components/timeline/TimelineReminderView.tsx
+src/components/xiaoye/XiaoyePage.tsx
+src/workspaces/archive/archiveMutationOverlay.ts
 src/workspaces/archive/buildArchiveWorkspaceViewModel.ts
 src/workspaces/archive/index.ts
+src/workspaces/archive/useArchiveWorkspace.ts
+src/workspaces/timeline/timelineMutationOverlay.ts
 src/workspaces/timeline/buildTimelineWorkspaceViewModel.ts
 src/workspaces/timeline/index.ts
+src/workspaces/timeline/useTimelineWorkspace.ts
 test/workspaceViewModels.test.ts
 ```
 

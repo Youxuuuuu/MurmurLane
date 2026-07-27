@@ -14,18 +14,29 @@ import {
 
 export function XiaoyePage({
   page,
-  highlightResult,
+  highlightResult: requestedHighlightResult,
   onOpenDatePicker,
   onMonthSelect,
   onSelectXiaoyeMode,
   selectedXiaoyeMode,
   scrollHitIntoView,
-  onMemoryEntrySaved,
   canEdit,
   editHint,
   onLoadEditableDocument,
   onSaveEditableDocument,
 }) {
+  const [highlightResult, setHighlightResult] = useState(
+    requestedHighlightResult,
+  );
+  useEffect(() => {
+    setHighlightResult(requestedHighlightResult);
+    if (!requestedHighlightResult) return;
+    const timer = window.setTimeout(
+      () => setHighlightResult(null),
+      3000,
+    );
+    return () => window.clearTimeout(timer);
+  }, [requestedHighlightResult]);
   const [isEditing, setIsEditing] = useState(false);
   const [isPreview, setIsPreview] = useState(false);
   const [draftContent, setDraftContent] = useState("");
@@ -94,7 +105,6 @@ export function XiaoyePage({
         ...editableDocument,
         content: draftContent,
       });
-      onMemoryEntrySaved?.(editableDocument, result.entry);
       setDraftContent(result.content);
       setIsEditing(false);
       setIsPreview(false);

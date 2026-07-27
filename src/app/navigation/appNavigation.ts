@@ -14,12 +14,16 @@ export interface TimelineNavigationTarget {
   readonly date?: string;
   readonly eventId?: string;
   readonly view?: string;
+  readonly query?: string;
 }
 
 export interface ArchiveNavigationTarget {
   readonly subject?: string;
   readonly date?: string;
   readonly documentId?: string;
+  readonly mode?: string;
+  readonly xiaoyeMode?: string;
+  readonly query?: string;
 }
 
 export type AppNavigationIntent =

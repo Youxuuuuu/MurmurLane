@@ -16,8 +16,6 @@ export function TimelineDayView({
   page,
   highlightResult,
   scrollHitIntoView,
-  onTimelineEventSaved,
-  onTimelineEventDeleted,
   canEdit,
   editHint,
   commands,
@@ -108,8 +106,6 @@ export function TimelineDayView({
             event={editingEvent}
             page={page}
             onClose={() => setEditingEvent(null)}
-            onEventSaved={onTimelineEventSaved}
-            onEventDeleted={onTimelineEventDeleted}
             commands={commands}
           />
         )}

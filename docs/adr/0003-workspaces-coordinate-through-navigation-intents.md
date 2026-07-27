@@ -1,6 +1,6 @@
 ---
 Status: Accepted
-Implementation: Partial
+Implementation: Complete
 ---
 
 # Workspace 通过导航意图协作
@@ -20,8 +20,9 @@ App Navigation 只负责切换当前 Workspace、保存或转交类型明确的 
 - View 从 Conversation View Model 接收定位目标，并拥有高亮计时器等瞬时视觉状态。
 - App Navigation 与 Conversation Target 的 Characterization Tests 已覆盖过期 Revision 和错误 Workspace 不得消费 Target。
 
-仍待阶段 6 完成：
+2026-07-27 阶段 6 已补齐：
 
 - Timeline Workspace 自行解释 Date、Event 与 View Target。
-- Archive Workspace 自行解释 Subject、Date 与 Document Target。
-- 移除 `App.tsx` 对这两个目标 Workspace 内部状态的直接协调后，才能将本 ADR 标记为 `Complete`。
+- Archive Workspace 自行解释 Subject、Date、Mode 与 Document Target。
+- `App.tsx` 不再在发送 Navigation Intent 后直接修改目标 Workspace 的内部状态。
+- 三个 Workspace 都只消费属于自己的 Target，并按 Workspace 与 Revision 确认清除。

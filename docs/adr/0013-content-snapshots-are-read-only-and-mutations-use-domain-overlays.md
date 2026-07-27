@@ -86,3 +86,18 @@ Live Records 是 Conversation Workspace 的领域 Overlay，不写入 ContentSyn
 实施前刻画 Diary 保存成功与失败、日期可用状态、Timeline 页面与搜索即时更新、新增与删除日期、Open Loops 乐观回滚、写成功但刷新失败、旧刷新保护、无关 revision、Canonical 确认清除、连续写入最后一次生效，以及 SSE 不重复、不复活删除内容、不丢失保存内容。
 
 第一轮只建立只读 Snapshot、领域 Mutation Overlay 和 invalidate / refresh seam。必须保持编辑器 UI、保存按钮与 Loading、错误提示、Timeline 与 Archive 页面、领域搜索、日期结果、SSE、动画、交互以及各操作当前的更新时机。不得引入通用 Optimistic Store、Entity Cache、Repository、跨 Workspace Mutation Store、新 Server 版本协议或新的 UI 保存状态设计。
+
+## Implementation status
+
+2026-07-27 已完成：
+
+- App 与 Workspace 不再直接修改 ContentSync Snapshot。
+- Timeline Upsert/Delete 与 Archive 文档保存、Open Loops 乐观状态分别进入领域专属 Mutation Overlay。
+- 页面、领域搜索与日期可用性从同一 Effective State 派生，不再手工同步三份状态。
+- 同一 Timeline Event 与 Open Loops 操作已有本地 Mutation Sequence，迟到结果不能覆盖较新操作。
+
+仍待后续补救项完成后才能标记 `Complete`：
+
+- Canonical Snapshot 按领域身份确认后清除对应 Overlay。
+- 写成功后的精确 ContentSync invalidate/refresh 与 waiting-for-sync 状态。
+- Timeline、Archive 的领域错误与安全 View Model 错误状态。

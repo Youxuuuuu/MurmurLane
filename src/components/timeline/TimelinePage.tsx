@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { CalendarStrip } from "../calendar/CalendarStrip";
 import { PageCard } from "../layout/PageCard";
 import { TimelineDayView } from "./TimelineDayView";
@@ -8,17 +9,27 @@ export function TimelinePage({
   page,
   timelineView,
   statsPeriod,
-  highlightResult,
+  highlightResult: requestedHighlightResult,
   onSelectStatsPeriod,
   onOpenDatePicker,
   onMonthSelect,
   scrollHitIntoView,
-  onTimelineEventSaved,
-  onTimelineEventDeleted,
   canEdit,
   editHint,
   commands,
 }) {
+  const [highlightResult, setHighlightResult] = useState(
+    requestedHighlightResult,
+  );
+  useEffect(() => {
+    setHighlightResult(requestedHighlightResult);
+    if (!requestedHighlightResult) return;
+    const timer = window.setTimeout(
+      () => setHighlightResult(null),
+      3000,
+    );
+    return () => window.clearTimeout(timer);
+  }, [requestedHighlightResult]);
   return (
     <PageCard
       page={page}
@@ -36,8 +47,6 @@ export function TimelinePage({
             page={page}
             highlightResult={highlightResult}
             scrollHitIntoView={scrollHitIntoView}
-            onTimelineEventSaved={onTimelineEventSaved}
-            onTimelineEventDeleted={onTimelineEventDeleted}
             canEdit={canEdit}
             editHint={editHint}
             commands={commands}
@@ -51,8 +60,6 @@ export function TimelinePage({
         ) : (
           <TimelineReminderView
             page={page}
-            onTimelineEventSaved={onTimelineEventSaved}
-            onTimelineEventDeleted={onTimelineEventDeleted}
             canEdit={canEdit}
             editHint={editHint}
             commands={commands}

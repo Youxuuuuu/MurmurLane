@@ -10,6 +10,7 @@ import {
 import { AnimatePresence, MotionConfig } from "framer-motion";
 import type { AppDependencies } from "./app/composition/appDependencies";
 import { createAppNavigation } from "./app/navigation/appNavigation";
+import { createBrowseDateFlow } from "./app/flows/browseDateFlow";
 import {
   createContentSyncService,
   createContentSyncStore,
@@ -38,12 +39,13 @@ import {
   getRemoteEntryByDate,
 } from "./lib/memoryPageData";
 import {
-  applyOpenLoopToggleToEntry,
-  removeDateIndexDate,
-  upsertDateIndexDate,
-} from "./lib/editableMemory";
-import { createArchiveWorkspaceViewModelBuilder } from "./workspaces/archive";
-import { createTimelineWorkspaceViewModelBuilder } from "./workspaces/timeline";
+  createArchiveWorkspaceViewModelBuilder,
+  useArchiveWorkspace,
+} from "./workspaces/archive";
+import {
+  createTimelineWorkspaceViewModelBuilder,
+  useTimelineWorkspace,
+} from "./workspaces/timeline";
 import { buildTimelinePage } from "./lib/timelinePageData";
 import { DatePickerModal } from "./components/calendar/DatePickerModal";
 import { DiaryShareModal } from "./components/archive/DiaryShareModal";
@@ -160,8 +162,6 @@ export default function InsDiaryPrototype({
     fetchEditableMemoryDocument,
     hasEditCredential,
     subscribeToLiveUpdates,
-    toggleOpenLoopsChecklistItem:
-      toggleOpenLoopsChecklistItemApi,
   } = dependencies.murmurLaneData;
   useStableViewport();
   useEffect(() => {
@@ -180,9 +180,13 @@ export default function InsDiaryPrototype({
       styleThemes[0],
     [selectedStyleId],
   );
-  const [selectedDate, setSelectedDate] = useState(() => getTodayDateText());
+  const timelineStyleTheme = useMemo(
+    () =>
+      styleThemes.find((item) => item.id === "cafe") ??
+      styleThemes[0],
+    [],
+  );
   const [datePickerOpen, setDatePickerOpen] = useState(false);
-  const [selectedMode, setSelectedMode] = useState("Diary");
   const [appNavigation] = useState(() =>
     createAppNavigation("conversation"),
   );
@@ -199,6 +203,36 @@ export default function InsDiaryPrototype({
             acknowledge: (revision) =>
               appNavigation.acknowledgeTarget(
                 "conversation",
+                revision,
+              ),
+          }
+        : null,
+    [appNavigation, navigationSnapshot],
+  );
+  const timelineNavigation = useMemo(
+    () =>
+      navigationSnapshot.workspace === "timeline"
+        ? {
+            revision: navigationSnapshot.revision,
+            target: navigationSnapshot.target,
+            acknowledge: (revision) =>
+              appNavigation.acknowledgeTarget(
+                "timeline",
+                revision,
+              ),
+          }
+        : null,
+    [appNavigation, navigationSnapshot],
+  );
+  const archiveNavigation = useMemo(
+    () =>
+      navigationSnapshot.workspace === "archive"
+        ? {
+            revision: navigationSnapshot.revision,
+            target: navigationSnapshot.target,
+            acknowledge: (revision) =>
+              appNavigation.acknowledgeTarget(
+                "archive",
                 revision,
               ),
           }
@@ -224,13 +258,8 @@ export default function InsDiaryPrototype({
     [appNavigation],
   );
   const [conversationFloatingDate, setConversationFloatingDate] = useState("");
-  const [timelineView, setTimelineView] = useState("line");
-  const [statsPeriod, setStatsPeriod] = useState("day");
-  const [highlightResult, setHighlightResult] = useState(null);
   const [diaryShareOpen, setDiaryShareOpen] = useState(false);
   const [selectedShareText, setSelectedShareText] = useState("");
-  const [archiveSubject, setArchiveSubject] = useState("Me");
-  const [selectedXiaoyeMode, setSelectedXiaoyeMode] = useState("Ins");
   const [contentSyncStore] = useState(() => createContentSyncStore());
   const contentSync = useMemo(
     () =>
@@ -258,6 +287,94 @@ export default function InsDiaryPrototype({
     searchCache: remoteSearchCacheState,
   } = contentSyncSnapshot.data;
   const remoteData = contentSyncSnapshot.data;
+  const timelinePort = useMemo(
+    () => ({
+      fetchEvent:
+        dependencies.murmurLaneData.fetchTimelineEvent,
+      patchEvent:
+        dependencies.murmurLaneData.patchTimelineEvent,
+      deleteEvent:
+        dependencies.murmurLaneData.deleteTimelineEvent,
+    }),
+    [dependencies.murmurLaneData],
+  );
+  const archivePort = useMemo(
+    () => ({
+      loadDocument:
+        dependencies.murmurLaneData.fetchEditableMemoryDocument,
+      saveDocument:
+        dependencies.murmurLaneData.saveEditableMemoryDocument,
+      toggleOpenLoop:
+        dependencies.murmurLaneData.toggleOpenLoopsChecklistItem,
+    }),
+    [dependencies.murmurLaneData],
+  );
+  const timelineWorkspace = useTimelineWorkspace({
+    initialDate: getTodayDateText(),
+    remoteData,
+    sourceRevision:
+      contentSyncSnapshot.sources.timeline?.revision ?? 0,
+    theme: timelineStyleTheme,
+    buildPage: buildTimelineWorkspaceViewModel,
+    port: timelinePort,
+    navigation: timelineNavigation,
+  });
+  const archiveWorkspace = useArchiveWorkspace({
+    initialDate: getTodayDateText(),
+    remoteData,
+    sourceRevision: contentSyncSnapshot.revision,
+    theme: styleTheme,
+    buildPage: buildArchiveWorkspaceViewModel,
+    port: archivePort,
+    navigation: archiveNavigation,
+  });
+  const timelineViewModel = timelineWorkspace.viewModel;
+  const timelineCommands = timelineWorkspace.commands;
+  const archiveViewModel = archiveWorkspace.viewModel;
+  const archiveCommands = archiveWorkspace.commands;
+  const browseDateFlow = useMemo(
+    () =>
+      createBrowseDateFlow({
+        timeline: {
+          openDate: timelineCommands.openDate,
+        },
+        archive: {
+          openDate: archiveCommands.openDate,
+        },
+      }),
+    [archiveCommands.openDate, timelineCommands.openDate],
+  );
+  const timelineView = timelineViewModel.view;
+  const statsPeriod = timelineViewModel.statsPeriod;
+  const archiveSubject = archiveViewModel.subject;
+  const selectedMode = archiveViewModel.mode;
+  const selectedXiaoyeMode = archiveViewModel.xiaoyeMode;
+  const selectedDate =
+    activeSection === "Timeline"
+      ? timelineViewModel.date
+      : archiveViewModel.date;
+  const setSelectedDate = useCallback(
+    (action) => {
+      const current =
+        activeSection === "Timeline"
+          ? timelineViewModel.date
+          : archiveViewModel.date;
+      const nextDate = resolveStateAction(action, current);
+      browseDateFlow.openDate(nextDate);
+    },
+    [
+      activeSection,
+      archiveViewModel.date,
+      browseDateFlow,
+      timelineViewModel.date,
+    ],
+  );
+  const setTimelineView = timelineCommands.selectView;
+  const setStatsPeriod = timelineCommands.selectStatsPeriod;
+  const setArchiveSubject = archiveCommands.selectSubject;
+  const setSelectedMode = archiveCommands.selectMode;
+  const setSelectedXiaoyeMode =
+    archiveCommands.selectXiaoyeMode;
   const conversationProfileCommands = useMemo(
     () => ({
       saveUserProfile:
@@ -333,68 +450,6 @@ export default function InsDiaryPrototype({
     conversationCommands.updateThreadProfile;
   const dismissMessageNotification =
     conversationCommands.dismissNotification;
-  const updateContentSyncField = useCallback(
-    (source, field, action, key = "global") => {
-      contentSyncStore.update(source, key, (current) => ({
-        ...current,
-        [field]: resolveStateAction(action, current[field]),
-      }));
-    },
-    [contentSyncStore],
-  );
-  const setRemoteTimelineStateValue = useCallback(
-    (action) =>
-      updateContentSyncField("timeline", "timelineState", action),
-    [updateContentSyncField],
-  );
-  const setRemoteDiaryEntriesState = useCallback(
-    (action) =>
-      updateContentSyncField("diary", "diaryEntries", action),
-    [updateContentSyncField],
-  );
-  const setRemoteDailySummaryEntriesState = useCallback(
-    (action) =>
-      updateContentSyncField(
-        "dailySummary",
-        "dailySummaryEntries",
-        action,
-      ),
-    [updateContentSyncField],
-  );
-  const setRemoteLetterEntriesState = useCallback(
-    (action) =>
-      updateContentSyncField("letters", "letterEntries", action),
-    [updateContentSyncField],
-  );
-  const setRemoteStaticModeEntriesState = useCallback(
-    (action) =>
-      updateContentSyncField(
-        "staticMemory",
-        "staticModeEntries",
-        action,
-      ),
-    [updateContentSyncField],
-  );
-  const setRemoteXiaoyeEntriesState = useCallback(
-    (action) =>
-      updateContentSyncField("xiaoye", "xiaoyeEntries", action),
-    [updateContentSyncField],
-  );
-  const setRemoteDateIndexState = useCallback(
-    (action) =>
-      updateContentSyncField("dateIndex", "dateIndex", action),
-    [updateContentSyncField],
-  );
-  const setRemoteSearchCacheState = useCallback(
-    (action) =>
-      updateContentSyncField(
-        "conversation",
-        "searchCache",
-        action,
-        "search-cache",
-      ),
-    [updateContentSyncField],
-  );
   const [searchQuery, setSearchQuery] = useState("");
   const remoteError = useMemo(
     () =>
@@ -414,16 +469,6 @@ export default function InsDiaryPrototype({
     message: "",
   });
 
-  useEffect(() => {
-    if (!highlightResult) return;
-    const activeHighlight = highlightResult;
-    const timer = window.setTimeout(() => {
-      setHighlightResult((current) =>
-        current === activeHighlight ? null : current,
-      );
-    }, 3000);
-    return () => window.clearTimeout(timer);
-  }, [highlightResult]);
   const selectedDateRef = useRef(selectedDate);
   const activeSectionRef = useRef(activeSection);
   const conversationViewRef = useRef(conversationView);
@@ -810,227 +855,13 @@ export default function InsDiaryPrototype({
     contentSync,
   ]);
 
-  const handleMemoryEntrySaved = (document, entry) => {
-    if (!document || !entry) {
-      return;
-    }
+  const searchRemoteData =
+    activeSection === "Timeline"
+      ? timelineViewModel.effectiveRemoteData
+      : archiveViewModel.effectiveRemoteData;
+  const searchDataVersion =
+    getSearchDataVersion(searchRemoteData);
 
-    const dotDate = document.date ? toDotDate(document.date) : "";
-
-    if (document.documentId === "diary") {
-      setRemoteDiaryEntriesState((current) => ({
-        ...current,
-        [dotDate]: entry,
-      }));
-      setRemoteDateIndexState((current) =>
-        current
-          ? {
-              ...current,
-              diary: upsertDateIndexDate(current.diary, document.date),
-            }
-          : current,
-      );
-      return;
-    }
-
-    if (document.documentId === "daily-summary") {
-      setRemoteDailySummaryEntriesState((current) => ({
-        ...current,
-        [dotDate]: entry,
-      }));
-      setRemoteDateIndexState((current) =>
-        current
-          ? {
-              ...current,
-              dailySummary: upsertDateIndexDate(
-                current.dailySummary,
-                document.date,
-              ),
-            }
-          : current,
-      );
-      return;
-    }
-
-    if (document.documentId === "letters") {
-      setRemoteLetterEntriesState((current) => ({
-        ...current,
-        [dotDate]: entry,
-      }));
-      setRemoteDateIndexState((current) =>
-        current
-          ? {
-              ...current,
-              letters: upsertDateIndexDate(current.letters, document.date),
-            }
-          : current,
-      );
-      return;
-    }
-
-    if (document.documentType === "xiaoye-memory-document") {
-      const xiaoyeMode =
-        document.documentId === "personality_anchor"
-          ? "PersonalityAnchor"
-          : "Ins";
-
-      setRemoteXiaoyeEntriesState((current) => ({
-        ...current,
-        [xiaoyeMode]: entry,
-      }));
-      return;
-    }
-
-    const staticMode =
-      document.documentId === "projects"
-        ? "Project"
-        : document.documentId === "preferences"
-          ? "Preference"
-          : document.documentId === "facts"
-            ? "Facts"
-            : document.documentId === "patterns"
-              ? "Patterns"
-              : "Openloops";
-
-    setRemoteStaticModeEntriesState((current) => ({
-      ...current,
-      [staticMode]: entry,
-    }));
-  };
-
-  const handleToggleOpenLoop = async (no, checked) => {
-    const previousEntry = remoteStaticModeEntriesState.Openloops;
-
-    if (previousEntry) {
-      setRemoteStaticModeEntriesState((current) => ({
-        ...current,
-        Openloops: applyOpenLoopToggleToEntry(previousEntry, no, checked),
-      }));
-    }
-
-    try {
-      const result = await toggleOpenLoopsChecklistItemApi({
-        no: String(no),
-        checked,
-      });
-
-      if (result?.entry) {
-        setRemoteStaticModeEntriesState((current) => ({
-          ...current,
-          Openloops: result.entry,
-        }));
-      }
-    } catch (error) {
-      if (previousEntry) {
-        setRemoteStaticModeEntriesState((current) => ({
-          ...current,
-          Openloops: previousEntry,
-        }));
-      }
-
-      throw error;
-    }
-  };
-
-  const handleTimelineEventSaved = (date, event) => {
-    if (!event) {
-      return;
-    }
-
-    const dotDate = toDotDate(date);
-    const replaceEvent = (currentTimelineState) => {
-      const currentDay = currentTimelineState?.[dotDate] ?? {
-        status: "draft",
-        updatedAt: "",
-        source: null,
-        events: [],
-      };
-      const currentEvents = Array.isArray(currentDay.events)
-        ? currentDay.events
-        : [];
-      const nextEvents = currentEvents.some((item) => item.id === event.id)
-        ? currentEvents.map((item) => (item.id === event.id ? event : item))
-        : [...currentEvents, event];
-
-      return {
-        ...currentTimelineState,
-        [dotDate]: {
-          ...currentDay,
-          updatedAt: new Date().toISOString(),
-          events: nextEvents,
-        },
-      };
-    };
-
-    setRemoteTimelineStateValue((current) => replaceEvent(current));
-    setRemoteSearchCacheState((current) => ({
-      ...current,
-      timeline: replaceEvent(current.timeline),
-    }));
-    setRemoteDateIndexState((current) =>
-      current
-        ? {
-            ...current,
-            timeline: upsertDateIndexDate(
-              current.timeline,
-              dotDate.replace(/\./g, "-"),
-            ),
-          }
-        : current,
-    );
-  };
-
-  const handleTimelineEventDeleted = (date, eventId) => {
-    const dotDate = toDotDate(date);
-    const removeEvent = (currentTimelineState) => {
-      const currentDay = currentTimelineState?.[dotDate];
-
-      if (!currentDay || !Array.isArray(currentDay.events)) {
-        return currentTimelineState;
-      }
-
-      const nextEvents = currentDay.events.filter((item) => item.id !== eventId);
-
-      return {
-        ...currentTimelineState,
-        [dotDate]: {
-          ...currentDay,
-          updatedAt: new Date().toISOString(),
-          events: nextEvents,
-        },
-      };
-    };
-
-    setRemoteTimelineStateValue((current) => removeEvent(current));
-    setRemoteSearchCacheState((current) => ({
-      ...current,
-      timeline: removeEvent(current.timeline),
-    }));
-    setRemoteDateIndexState((current) => {
-      if (!current) {
-        return current;
-      }
-
-      const currentDay = remoteTimelineStateValue?.[dotDate];
-      const currentEvents = Array.isArray(currentDay?.events) ? currentDay.events : [];
-      const nextEventsCount = currentEvents.filter((item) => item.id !== eventId).length;
-
-      return {
-        ...current,
-        timeline:
-          nextEventsCount > 0
-            ? current.timeline
-            : removeDateIndexDate(current.timeline, dotDate.replace(/\./g, "-")),
-      };
-    });
-  };
-
-  const searchDataVersion = getSearchDataVersion(remoteData);
-
-  const timelineStyleTheme = useMemo(
-    () => styleThemes.find((item) => item.id === "cafe") ?? styleThemes[0],
-    [],
-  );
   const archiveShowsXiaoye =
     activeSection === "Xiaoye" ||
     (activeSection === "Archive" && archiveSubject === "Xiaoye");
@@ -1039,56 +870,24 @@ export default function InsDiaryPrototype({
     if (activeSection === "Conversation")
       return conversationViewModel.page;
     if (activeSection === "Timeline")
-      return buildTimelineWorkspaceViewModel(
-        timelineStyleTheme,
-        selectedDate,
-        remoteData,
-      );
-    return buildArchiveWorkspaceViewModel({
-      theme: styleTheme,
-      date: selectedDate,
-      mode: selectedMode,
-      subject: archiveShowsXiaoye ? "Xiaoye" : "Me",
-      xiaoyeMode: selectedXiaoyeMode,
-      remoteData,
-    });
+      return timelineViewModel.page;
+    return archiveViewModel.page;
   }, [
-    styleTheme,
-    timelineStyleTheme,
-    selectedDate,
-    selectedMode,
-    selectedXiaoyeMode,
     activeSection,
-    archiveSubject,
-    conversationCalendarDate,
-    selectedThreadId,
-    remoteConversationsState,
-    remoteTimelineStateValue,
-    remoteDiaryEntriesState,
-    remoteDailySummaryEntriesState,
-    remoteLetterEntriesState,
-    remoteStaticModeEntriesState,
-    remoteXiaoyeEntriesState,
-    remoteReminderHistoryEntriesState,
-    remoteDateIndexState,
-    remoteSearchCacheState,
+    archiveViewModel.page,
     conversationViewModel.page,
+    timelineViewModel.page,
   ]);
 
   const handleSwipeDate = (offset) => {
-    setHighlightResult(null);
     setSelectedDate((current) => shiftDate(current, offset));
   };
   const handleSelectDate = (dateText) => {
-    setHighlightResult(null);
     setSelectedDate(dateText);
   };
   const handleSelectMonth = (month) => {
-    setHighlightResult(null);
     setSelectedDate((current) => changeDateMonth(current, month));
   };
-  const isValidDotDate = (value) =>
-    /^\d{4}\.\d{2}\.\d{2}$/.test(String(value ?? ""));
   const topToolbarControl =
     activeSection === "Timeline" ? (
       <TimelineModeSwitch
@@ -1108,7 +907,6 @@ export default function InsDiaryPrototype({
 
   const handleSelectSection = (section) => {
     activateSection(section);
-    setHighlightResult(null);
   };
 
   const openConversationThread = (summary) => {
@@ -1273,7 +1071,7 @@ export default function InsDiaryPrototype({
                       selectedDate={selectedDate}
                       selectedThreadId={selectedThreadId}
                       onSearchQueryChange={setSearchQuery}
-                      searchRemoteData={remoteData}
+                      searchRemoteData={searchRemoteData}
                       searchDataVersion={searchDataVersion}
                       workspaceScope={
                         activeSection === "Timeline"
@@ -1298,9 +1096,10 @@ export default function InsDiaryPrototype({
                               date: result.date,
                               eventId: result.targetId,
                               view: result.timelineView,
+                              query: result.query,
                             },
                           });
-                          setTimelineView(result.timelineView || "line");
+                          browseDateFlow.openDate(result.date);
                         } else if (result.mode === "Xiaoye") {
                           appNavigation.requestNavigation({
                             workspace: "archive",
@@ -1308,10 +1107,11 @@ export default function InsDiaryPrototype({
                               subject: "Xiaoye",
                               date: result.date,
                               documentId: result.targetId,
+                              xiaoyeMode: result.xiaoyeMode,
+                              query: result.query,
                             },
                           });
-                          setArchiveSubject("Xiaoye");
-                          if (result.xiaoyeMode) setSelectedXiaoyeMode(result.xiaoyeMode);
+                          browseDateFlow.openDate(result.date);
                         } else {
                           appNavigation.requestNavigation({
                             workspace: "archive",
@@ -1319,16 +1119,11 @@ export default function InsDiaryPrototype({
                               subject: "Me",
                               date: result.date,
                               documentId: result.targetId,
+                              mode: result.mode,
+                              query: result.query,
                             },
                           });
-                          setArchiveSubject("Me");
-                          setSelectedMode(result.mode);
-                        }
-                        if (result.mode !== "Conversation") {
-                          if (isValidDotDate(result.date)) {
-                            setSelectedDate(result.date);
-                          }
-                          setHighlightResult(result);
+                          browseDateFlow.openDate(result.date);
                         }
                       }}
                     />
@@ -1414,8 +1209,7 @@ export default function InsDiaryPrototype({
                 page={page}
                 selectedThreadId={selectedThreadId}
                 highlightResult={
-                  conversationViewModel.navigationTarget ??
-                  highlightResult
+                  conversationViewModel.navigationTarget
                 }
                 userProfile={userProfile}
                 threadProfile={effectiveThreadProfiles[selectedThreadId]}
@@ -1449,51 +1243,54 @@ export default function InsDiaryPrototype({
                     page={page}
                     timelineView={timelineView}
                     statsPeriod={statsPeriod}
-                    highlightResult={highlightResult}
+                    highlightResult={
+                      timelineViewModel.navigationTarget
+                    }
                     onSelectStatsPeriod={setStatsPeriod}
                     onOpenDatePicker={() => setDatePickerOpen(true)}
                     onMonthSelect={handleSelectMonth}
                     scrollHitIntoView={scrollHitIntoView}
-                    onTimelineEventSaved={handleTimelineEventSaved}
-                    onTimelineEventDeleted={handleTimelineEventDeleted}
                     canEdit={editAccessState.canWrite}
                     editHint={
                       editAccessState.ready ? editAccessState.message : ""
                     }
                     commands={{
                       fetchEvent:
-                        dependencies.murmurLaneData.fetchTimelineEvent,
+                        timelineCommands.fetchEvent,
                       patchEvent:
-                        dependencies.murmurLaneData.patchTimelineEvent,
+                        timelineCommands.saveEvent,
                       deleteEvent:
-                        dependencies.murmurLaneData.deleteTimelineEvent,
+                        timelineCommands.deleteEvent,
                     }}
                   />
                 ) : archiveShowsXiaoye ? (
                   <XiaoyePage
                     page={page}
-                    highlightResult={highlightResult}
+                    highlightResult={
+                      archiveViewModel.navigationTarget
+                    }
                     onOpenDatePicker={() => setDatePickerOpen(true)}
                     onMonthSelect={handleSelectMonth}
                     onSelectXiaoyeMode={setSelectedXiaoyeMode}
                     selectedXiaoyeMode={selectedXiaoyeMode}
                     scrollHitIntoView={scrollHitIntoView}
-                    onMemoryEntrySaved={handleMemoryEntrySaved}
                     canEdit={editAccessState.canWrite}
                     editHint={
                       editAccessState.ready ? editAccessState.message : ""
                     }
                     onLoadEditableDocument={
-                      dependencies.murmurLaneData.fetchEditableMemoryDocument
+                      archiveCommands.loadDocument
                     }
                     onSaveEditableDocument={
-                      dependencies.murmurLaneData.saveEditableMemoryDocument
+                      archiveCommands.saveDocument
                     }
                   />
                 ) : (
                   <DirectoryPage
                     page={page}
-                    highlightResult={highlightResult}
+                    highlightResult={
+                      archiveViewModel.navigationTarget
+                    }
                     onOpenDatePicker={() => setDatePickerOpen(true)}
                     onMonthSelect={handleSelectMonth}
                     onOpenShare={() => setDiaryShareOpen(true)}
@@ -1501,19 +1298,20 @@ export default function InsDiaryPrototype({
                     selectedMode={selectedMode}
                     onSelectedShareTextChange={setSelectedShareText}
                     scrollHitIntoView={scrollHitIntoView}
-                    onMemoryEntrySaved={handleMemoryEntrySaved}
                     onToggleOpenLoop={
-                      editAccessState.canWrite ? handleToggleOpenLoop : undefined
+                      editAccessState.canWrite
+                        ? archiveCommands.toggleOpenLoop
+                        : undefined
                     }
                     canEdit={editAccessState.canWrite}
                     editHint={
                       editAccessState.ready ? editAccessState.message : ""
                     }
                     onLoadEditableDocument={
-                      dependencies.murmurLaneData.fetchEditableMemoryDocument
+                      archiveCommands.loadDocument
                     }
                     onSaveEditableDocument={
-                      dependencies.murmurLaneData.saveEditableMemoryDocument
+                      archiveCommands.saveDocument
                     }
                   />
                 )}
