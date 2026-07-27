@@ -1,17 +1,27 @@
 ---
 Status: Accepted
 Implementation: Partial
+Automated migration: Complete
+Browser and device validation: Pending
 ---
 
 # 架构迁移先刻画行为并一次迁移一个 seam
+
+## 当前实施状态
+
+Conversation Transcript、Composition Root、ContentSync、三个 Workspace Controller、App Navigation、搜索所有权、Server 分层、严格类型渐进移除、领域所有权补救、静态依赖边界和安全错误链均已按照独立 seam 实施、验证并提交。自动验证包括 138 项 Node Characterization Tests、应用类型检查、新 seam 严格检查、Server 严格检查和生产构建。
+
+本 ADR 保持 `Implementation: Partial` 的唯一原因是浏览器与真机交互验收尚未执行。用户已经明确允许在全部代码迁移完成后统一验收，因此此前各阶段没有伪称 DOM、Effect 时序、真实 EventSource、触摸、滚动和 Framer Motion 已经经过真机证明。
+
+完成固定人工验收清单并记录结果后，本 ADR 才可以改为 `Implementation: Complete`。若验收发现回归，修复应继续按单一 seam 独立提交，不得借机混入新功能或视觉改版。
 
 架构迁移采用 Characterization Tests 先行、一次迁移一个 seam 的增量策略。每一步独立构建、验证、提交和回退，并保持当前可观察行为。任何有意行为变化必须单独实施、单独说明，不得伪装成架构重构。UI、CSS、DOM、滚动、窗口化和动画不得在行为保持型迁移中发生无意变化。
 
 ## 当前源码事实
 
-`npm test` 当前只运行 `test/*.test.ts` 的 Node 测试。现有测试覆盖 Conversation Identity、Assistant Turn、历史窗口、Scroll Policy、媒体展示、Bubble Reveal、WebChat 上传、状态与发送事务等重要纯逻辑。
+ADR 接受时，`npm test` 只运行 `test/*.test.ts` 的 Node 测试，已有测试覆盖 Conversation Identity、Assistant Turn、历史窗口、Scroll Policy、媒体展示、Bubble Reveal、WebChat 上传、状态与发送事务等重要纯逻辑。
 
-当前尚无正式的 ContentSync、Workspace Controller、App Navigation 和唯一 Transcript seam，因此没有相应的完整 seam 测试。`ConversationPage.tsx` 直接组合 Merge、隐藏规则、Display Identity、Assistant Turn、历史窗口、滚动策略和动画 Ledger；`useWebChat.ts` 同时管理具体 WebChat Adapter 调用、SSE Cursor、Live Records、线程创建迁移、发送事务、Usage 和连接状态；`App.tsx` 同时拥有远程数据加载、文件 SSE、缓存刷新和多个 Workspace 的协调状态；`server/index.ts` 同时负责启动、Express 路由、文件访问、缓存、编辑、媒体限制与静态托管。
+当时尚无正式的 ContentSync、Workspace Controller、App Navigation 和唯一 Transcript seam，因此没有相应的完整 seam 测试。`ConversationPage.tsx` 直接组合 Merge、隐藏规则、Display Identity、Assistant Turn、历史窗口、滚动策略和动画 Ledger；`useWebChat.ts` 同时管理具体 WebChat Adapter 调用、SSE Cursor、Live Records、线程创建迁移、发送事务、Usage 和连接状态；`App.tsx` 同时拥有远程数据加载、文件 SSE、缓存刷新和多个 Workspace 的协调状态；`server/index.ts` 同时负责启动、Express 路由、文件访问、缓存、编辑、媒体限制与静态托管。上述是迁移前事实，不描述当前实现。
 
 因此，仅有 `npm test` 和 `npm run build` 通过，不能证明浏览器 DOM、Effect 时序、SSE 生命周期、滚动和 Framer Motion 行为完全未变。
 

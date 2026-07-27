@@ -885,3 +885,71 @@ test/architectureBoundaries.test.ts
 test/contentSync.test.ts
 test/workspaceErrors.test.ts
 ```
+
+## 最终迁移状态
+
+截至阶段 12，ADR-0001～0010、ADR-0012～0019 的代码实施均为 `Complete`。ADR-0011 保持 `Partial`，唯一未完成项是统一浏览器与真机交互验收。
+
+最终自动基线：
+
+```text
+npm test
+→ 138/138 通过
+
+npx tsc -p tsconfig.app.json --noEmit --incremental false
+→ 通过
+
+npm run typecheck:strict
+→ 通过
+
+npm run typecheck:server
+→ 通过
+
+npm run build
+→ 通过，保留既有 500 kB Chunk Size Warning
+```
+
+代码审计结果：
+
+- `App.tsx` 与 `ConversationPage.tsx` 已移除 `@ts-nocheck`。
+- Workspace 与 ContentSync 不导入具体 Adapter、View 或其他 Workspace 内部模块。
+- Workspace 外部调用方不深层导入 Workspace 内部文件。
+- Workspace 与 ContentSync 不直接使用 `fetch`、EventSource、环境变量、DOM、滚动或动画能力。
+- View 不读取 `bodyText`、HTTP 状态或具体 Adapter Error Class。
+- 工作区没有未提交改动。
+
+## 统一浏览器与真机验收清单
+
+### 应用与导航
+
+- 冷启动后确认 Conversation、Timeline、Archive、日期索引和远程内容正常出现。
+- 在 Conversation、Timeline 与 Archive 间多次往返，确认当前 Thread、日期、页面模式、Profile、未读和草稿不意外清空。
+- 打开日期选择器、切换日期和月份，确认页面内容与高亮目标正确。
+
+### Conversation
+
+- 从线程列表进入聊天、返回列表、打开线程内搜索和全局 Conversation 搜索。
+- 点击搜索结果，确认 Thread、日期、消息定位、高亮和返回行为不变。
+- 上下滚动长 Transcript，触发更早与更晚历史加载，确认锚点、高度补偿、浮动日期和窗口化不跳动。
+- 观察 Canonical Record 替换 Live Record，确认气泡不重新挂载、入场动画不重播、React Key 与滚动位置稳定。
+- 发送文字、多段排队消息、图片、文件和 Sticker；确认请求只发送一次，失败、未知与重试仍复用既有事务身份。
+- 切换模型，离开 Chat View 再返回，确认 EventSource 关闭与恢复、Cursor、Usage、Live Records 和发送事务保留。
+- 在非当前 Thread 收到新 Canonical Assistant 消息，确认未读与通知；当前正在查看的 Thread 不应产生额外通知。
+- 检查 Composer 焦点、移动端键盘、左滑、触摸、图片预览和局部展开。
+
+### Timeline 与 Archive
+
+- 切换 Timeline 日/月视图与统计周期，确认布局、事件排序、颜色和搜索范围不变。
+- 保存和删除 Timeline Event，确认成功后的即时显示、日期可用性、搜索结果和失败时编辑界面保留。
+- 切换 Diary、Daily Summary、Letters、Facts、Preference、Open Loops、Project、Patterns 与 Xiaoye。
+- 保存 Archive 文档并切换 Open Loops，确认乐观状态、失败回滚、草稿和错误位置不变。
+- 确认 Timeline 搜索不出现 Conversation 或 Archive 内容，Archive 搜索不出现 Conversation 或 Timeline 内容。
+
+### 视觉与真机
+
+- 对比迁移前页面，确认 JSX 可见结构、CSS、字号、间距、颜色、圆角和底部导航没有无意变化。
+- 确认 Framer Motion 入场、Bubble Reveal、页面切换、搜索高亮和按钮反馈没有重复或消失。
+- 在目标手机上检查竖屏、软键盘、输入框 16px 行为、页面缩放策略、触摸滚动和安全区域。
+- 切换前后台和网络连接，确认文件 SSE 重同步、WebChat 重连以及旧 Snapshot 保留行为。
+
+验收完成后，应在 ADR-0011 中记录设备、浏览器、结果与发现的问题，再将 `Browser and device validation` 和 `Implementation` 更新为 `Complete` 并单独提交。
