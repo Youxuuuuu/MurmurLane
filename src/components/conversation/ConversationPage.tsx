@@ -1288,7 +1288,11 @@ export const ConversationPage = memo(function ConversationPage({
           {newMessageCount > 0 && (
             <button
               type="button"
-              className="absolute bottom-4 left-1/2 z-30 -translate-x-1/2 rounded-full border border-black/[0.08] bg-white/95 px-4 py-2 font-sans text-[12px] font-semibold text-black/[0.68] shadow-[0_8px_24px_rgba(0,0,0,.14)] backdrop-blur"
+              className="absolute left-1/2 z-30 -translate-x-1/2 rounded-full border border-black/[0.08] bg-white/95 px-4 py-2 font-sans text-[12px] font-semibold text-black/[0.68] shadow-[0_8px_24px_rgba(0,0,0,.14)] backdrop-blur"
+              style={{
+                bottom:
+                  "calc(var(--conversation-composer-height, 106px) + var(--app-keyboard-inset, 0px) + 12px)",
+              }}
               onClick={handleShowNewMessages}
             >
               {newMessageCount} 条新消息

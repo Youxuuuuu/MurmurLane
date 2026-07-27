@@ -1,5 +1,11 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   getConversationDisplayText,
   getConversationMediaSrc,
@@ -164,6 +170,30 @@ export function ConversationComposer({
     : "0%";
   const compactStatus = `${currentModel} · context ${formatTokens(usage?.currentTokens || usage?.inputTokens)} · cache ${formatTokens(cacheValue)}`;
   const canSend = Boolean(queuedMessages.length || text.trim() || attachments.length);
+
+  useLayoutEffect(() => {
+    const composer = composerRef.current;
+    const conversationPage = composer?.parentElement;
+    if (!composer || !conversationPage) return undefined;
+
+    const publishComposerHeight = () => {
+      conversationPage.style.setProperty(
+        "--conversation-composer-height",
+        `${Math.ceil(composer.getBoundingClientRect().height)}px`,
+      );
+    };
+    publishComposerHeight();
+    const observer = new ResizeObserver(
+      publishComposerHeight,
+    );
+    observer.observe(composer);
+    return () => {
+      observer.disconnect();
+      conversationPage.style.removeProperty(
+        "--conversation-composer-height",
+      );
+    };
+  }, []);
 
   useEffect(() => {
     if (!detailsOpen && !panel) return undefined;
