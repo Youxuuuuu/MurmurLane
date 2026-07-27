@@ -1,4 +1,3 @@
-// @ts-nocheck
 import {
   useCallback,
   useEffect,
@@ -7,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ComponentProps,
 } from "react";
 import { useReducedMotion } from "framer-motion";
 import { getConversationMergeKey } from "../../lib/conversationMerge";
@@ -25,6 +25,8 @@ import {
   resolveConversationViewportAnchorTop,
   shouldAnimateConversationBubble,
   shouldShowFloatingDate,
+  type ConversationScrollCause,
+  type ConversationVisibleRange,
 } from "../../lib/conversationScrollPolicy";
 import { CardScrollArea } from "../layout/CardScrollArea";
 import { PageCard } from "../layout/PageCard";
@@ -39,6 +41,64 @@ import {
 import {
   selectConversationTranscriptWindow,
 } from "../../workspaces/conversation";
+import type { useConversationWorkspace } from "../../workspaces/conversation/useConversationWorkspace";
+import type { ConversationMediaUrlPort } from "../../lib/conversation";
+import type { ConversationRecord } from "../../types/conversation";
+
+type ConversationWorkspace = ReturnType<
+  typeof useConversationWorkspace
+>;
+type ConversationViewModel =
+  ConversationWorkspace["viewModel"];
+type ConversationCommands =
+  ConversationWorkspace["commands"];
+type ComposerProps = ComponentProps<typeof ConversationComposer>;
+
+interface ConversationPageProps {
+  page: ConversationViewModel["page"] & {
+    paper?: string;
+  };
+  selectedThreadId: string;
+  highlightResult: ConversationViewModel["navigationTarget"];
+  userProfile: ConversationViewModel["userProfile"];
+  threadProfile:
+    | ConversationViewModel["threadProfiles"][string]
+    | undefined;
+  onEditThread?: () => void;
+  targetDate?: string | null;
+  onTargetDateHandled?: () => void;
+  onLoadEarlier?: () => Promise<unknown> | void;
+  hasEarlierDate?: boolean;
+  onLoadLater?: () => Promise<unknown> | void;
+  hasLaterDate?: boolean;
+  earlierDateLoading?: boolean;
+  laterDateLoading?: boolean;
+  onFloatingDateChange?: (date: string) => void;
+  transcript: ConversationViewModel["transcript"];
+  webChatViewModel:
+    | Pick<
+        ConversationViewModel,
+        "status" | "models" | "connection" | "error"
+      >
+    | null;
+  webChatCommands:
+    | Pick<
+        ConversationCommands,
+        "sendMessages" | "retryMessage" | "chooseModel"
+      >
+    | null;
+  loadStickers: ComposerProps["loadStickers"];
+  mediaUrls: ConversationMediaUrlPort;
+  diagnosticsEnabled?: boolean;
+}
+
+declare global {
+  interface Window {
+    __MURMURLANE_CONVERSATION_ENTRY_METRICS__?: ReturnType<
+      ConversationEntryMetrics["snapshot"]
+    >;
+  }
+}
 
 const CONVERSATION_RECENT_RENDER_LIMIT = 120;
 const CONVERSATION_HIT_CONTEXT_LIMIT = 80;
@@ -58,8 +118,14 @@ function formatFloatingDate(dateText) {
   return year && month && day ? `${year}/${month}/${day}` : "";
 }
 
-function getBubbleAnimationEntries(messages, selectedThreadId) {
-  const byKey = new Map();
+function getBubbleAnimationEntries(
+  messages: readonly ConversationRecord[],
+  selectedThreadId: string,
+) {
+  const byKey = new Map<
+    string,
+    { key: string; live: boolean }
+  >();
   messages.forEach((message) => {
     if (!["assistant", "user"].includes(message?.type)) return;
     const key = getConversationMergeKey(message, selectedThreadId);
@@ -94,7 +160,7 @@ export const ConversationPage = memo(function ConversationPage({
   loadStickers,
   mediaUrls,
   diagnosticsEnabled = false,
-}) {
+}: ConversationPageProps) {
   const [quoteMessage, setQuoteMessage] = useState(null);
   const [activeAction, setActiveAction] = useState(null);
   const [highlightResult, setHighlightResult] = useState(
@@ -199,7 +265,11 @@ export const ConversationPage = memo(function ConversationPage({
     window.__MURMURLANE_CONVERSATION_ENTRY_METRICS__ = snapshot;
   };
 
-  const scrollWithCause = (scrollBox, requestedTop, cause) => {
+  const scrollWithCause = (
+    scrollBox: HTMLElement,
+    requestedTop: number,
+    cause: Exclude<ConversationScrollCause, "user">,
+  ) => {
     const plan = scrollCauseLedgerRef.current.beginProgrammaticScroll({
       cause,
       requestedTop,
@@ -216,10 +286,15 @@ export const ConversationPage = memo(function ConversationPage({
     scrollBox.scrollTo({ top: plan.targetTop, behavior: "auto" });
     return true;
   };
-  const captureViewportAnchor = (scrollBox, expectedRange) => {
+  const captureViewportAnchor = (
+    scrollBox: HTMLElement,
+    expectedRange: ConversationVisibleRange,
+  ) => {
     const boxRect = scrollBox.getBoundingClientRect();
     const anchors = Array.from(
-      scrollBox.querySelectorAll("[data-message-render-id]"),
+      scrollBox.querySelectorAll<HTMLElement>(
+        "[data-message-render-id]",
+      ),
     );
     const anchor = anchors.find(
       (element) => element.getBoundingClientRect().bottom > boxRect.top + 1,
@@ -772,10 +847,12 @@ export const ConversationPage = memo(function ConversationPage({
     highlightResult?.targetId,
   ]);
 
-  const updateFloatingDate = (scrollBox) => {
+  const updateFloatingDate = (scrollBox: HTMLElement) => {
     const boxTop = scrollBox.getBoundingClientRect().top;
     const messageElements = Array.from(
-      scrollBox.querySelectorAll("[data-conversation-date]"),
+      scrollBox.querySelectorAll<HTMLElement>(
+        "[data-conversation-date]",
+      ),
     );
     const current =
       messageElements.find(

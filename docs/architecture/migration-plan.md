@@ -754,3 +754,24 @@ test/serverApp.test.ts
 test/serverConfig.test.ts
 tsconfig.server.json
 ```
+
+### 阶段 9A 执行结果
+
+- 按既定顺序先移除 `ConversationPage.tsx` 的 `@ts-nocheck`。
+- 页面 Props 直接复用 Conversation Workspace 的 View Model、Commands 与 Transcript 类型，不建立第二套页面领域模型。
+- DOM 查询、滚动原因、可视范围、媒体 Port、Composer 能力和诊断快照均获得明确类型。
+- 没有使用 `any`、类型忽略指令或无校验断言绕过问题。
+- `npm test`：127/127 通过。
+- `npm run typecheck:strict`：通过。
+- `npm run typecheck:server`：通过。
+- `npx tsc -p tsconfig.app.json --noEmit --incremental false`：通过。
+- `npm run build`：通过；保留既有的 500 kB Chunk Size Warning。
+- 未修改 JSX 结构、CSS、DOM 层级、React Key、滚动策略、窗口化算法或动画。
+
+### 阶段 9A 实际修改文件
+
+```text
+docs/adr/0009-strict-types-grow-from-new-seams.md
+docs/architecture/migration-plan.md
+src/components/conversation/ConversationPage.tsx
+```
