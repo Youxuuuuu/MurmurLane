@@ -190,6 +190,21 @@ export default function InsDiaryPrototype({
     appNavigation.subscribe,
     appNavigation.getSnapshot,
   );
+  const conversationNavigation = useMemo(
+    () =>
+      navigationSnapshot.workspace === "conversation"
+        ? {
+            revision: navigationSnapshot.revision,
+            target: navigationSnapshot.target,
+            acknowledge: (revision) =>
+              appNavigation.acknowledgeTarget(
+                "conversation",
+                revision,
+              ),
+          }
+        : null,
+    [appNavigation, navigationSnapshot],
+  );
   const activeSection =
     navigationSnapshot.workspace === "conversation"
       ? "Conversation"
@@ -264,6 +279,7 @@ export default function InsDiaryPrototype({
     initialDate: getTodayDateText(),
     profileCommands: conversationProfileCommands,
     loadConversationRecords,
+    navigation: conversationNavigation,
     remoteData,
     styleTheme,
   });
@@ -1093,25 +1109,13 @@ export default function InsDiaryPrototype({
   const handleSelectSection = (section) => {
     activateSection(section);
     setHighlightResult(null);
-    setConversationPlaceholder(null);
-    if (section === "Conversation") setConversationView("list");
   };
 
   const openConversationThread = (summary) => {
-    handleSelectThread(summary.threadId);
-    const indexedDates = (remoteDateIndexState?.conversationThreads?.[summary.threadId] ?? [])
-      .map(toDotDate)
-      .sort();
-    const latestDate = indexedDates[indexedDates.length - 1] || toDotDate(summary.latestDate || "");
-    if (latestDate) {
-      setConversationCalendarDate(latestDate);
-      void loadConversationThreadDate(latestDate, summary.threadId);
-    }
-    // 打开线程时应落在最新消息；只有明确的日期或搜索跳转
-    // 才定位到目标日期的第一条消息。
-    setConversationJumpDate(null);
-    setConversationPlaceholder(null);
-    setConversationView("chat");
+    conversationCommands.openThread(
+      summary.threadId,
+      summary.latestDate,
+    );
   };
 
   const handleOpenMessageNotification = (notification) => {
@@ -1122,14 +1126,6 @@ export default function InsDiaryPrototype({
         date: notification.date,
       },
     });
-    handleSelectThread(notification.threadId);
-    if (notification.date) {
-      setConversationCalendarDate(notification.date);
-      void loadConversationThreadDate(notification.date, notification.threadId);
-    }
-    setConversationJumpDate(null);
-    setConversationPlaceholder(null);
-    setConversationView("chat");
   };
 
   const loadConversationThreadDate = useCallback(async (
@@ -1167,17 +1163,11 @@ export default function InsDiaryPrototype({
 
   const handleSelectConversationSearchResult = async (record) => {
     const date = toDotDate(record?.conversationDate || record?.timestamp?.slice(0, 10));
-    handleSelectThread(selectedThreadId);
-    await loadConversationThreadDate(date);
-    setConversationCalendarDate(date);
-    setConversationJumpDate(null);
-    setHighlightResult({
-      mode: "Conversation",
+    await conversationCommands.openSearchResult({
       threadId: selectedThreadId,
       date,
-      targetId: record.id,
+      messageId: record.id,
     });
-    setConversationView("chat");
   };
 
   const handleSelectGlobalConversationSearchResult = async (record) => {
@@ -1186,18 +1176,14 @@ export default function InsDiaryPrototype({
     const date = toDotDate(
       record?.conversationDate || record?.timestamp?.slice(0, 10),
     );
-    handleSelectThread(threadId);
-    await loadConversationThreadDate(date, threadId);
-    setConversationCalendarDate(date);
-    setConversationJumpDate(null);
-    setHighlightResult({
-      mode: "Conversation",
-      threadId,
-      date,
-      targetId: record.id,
+    appNavigation.requestNavigation({
+      workspace: "conversation",
+      target: {
+        threadId,
+        date,
+        messageId: record.id,
+      },
     });
-    setConversationPlaceholder(null);
-    setConversationView("chat");
   };
 
   const hasEarlierConversationDate = Boolean(earlierConversationDateToLoad);
@@ -1302,10 +1288,9 @@ export default function InsDiaryPrototype({
                               threadId: result.threadId,
                               date: result.date,
                               messageId: result.targetId,
+                              query: result.query,
                             },
                           });
-                          setConversationView("chat");
-                          if (result.threadId) handleSelectThread(result.threadId);
                         } else if (result.mode === "Timeline") {
                           appNavigation.requestNavigation({
                             workspace: "timeline",
@@ -1339,8 +1324,12 @@ export default function InsDiaryPrototype({
                           setArchiveSubject("Me");
                           setSelectedMode(result.mode);
                         }
-                        if (isValidDotDate(result.date)) setSelectedDate(result.date);
-                        setHighlightResult(result);
+                        if (result.mode !== "Conversation") {
+                          if (isValidDotDate(result.date)) {
+                            setSelectedDate(result.date);
+                          }
+                          setHighlightResult(result);
+                        }
                       }}
                     />
                   </div>
@@ -1424,7 +1413,10 @@ export default function InsDiaryPrototype({
               <ConversationPage
                 page={page}
                 selectedThreadId={selectedThreadId}
-                highlightResult={highlightResult}
+                highlightResult={
+                  conversationViewModel.navigationTarget ??
+                  highlightResult
+                }
                 userProfile={userProfile}
                 threadProfile={effectiveThreadProfiles[selectedThreadId]}
                 onEditThread={handleEditSelectedConversationThread}

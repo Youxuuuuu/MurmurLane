@@ -4,8 +4,10 @@ export {
   type ConversationNotification,
   type ConversationPageMode,
   type ConversationPlaceholder,
+  type ResolvedConversationNavigationTarget,
   type ConversationWorkspaceAction,
   type ConversationWorkspaceState,
+  resolveConversationNavigationTarget,
 } from "./conversationWorkspaceState";
 export {
   buildConversationTranscript,

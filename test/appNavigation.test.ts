@@ -38,3 +38,22 @@ test("未知 Workspace 由 App Navigation 作为应用级错误拒绝", () => {
   );
   assert.equal(navigation.getSnapshot().workspace, "timeline");
 });
+
+test("只有目标 Workspace 能确认并清除当前 Navigation Target", () => {
+  const navigation = createAppNavigation("timeline");
+  navigation.requestNavigation({
+    workspace: "conversation",
+    target: {
+      threadId: "thread-1",
+      date: "2026.07.27",
+    },
+  });
+
+  navigation.acknowledgeTarget("timeline", 1);
+  assert.notEqual(navigation.getSnapshot().target, undefined);
+
+  navigation.acknowledgeTarget("conversation", 1);
+  assert.equal(navigation.getSnapshot().target, undefined);
+  assert.equal(navigation.getSnapshot().revision, 1);
+  assert.equal(navigation.getSnapshot().workspace, "conversation");
+});

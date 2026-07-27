@@ -1,4 +1,5 @@
 import type { ConversationThreadProfile } from "../../lib/conversationProfiles";
+import type { ConversationNavigationTarget } from "../../app/navigation/appNavigation";
 
 export type ConversationPageMode =
   | "list"
@@ -21,6 +22,37 @@ export interface ConversationPlaceholder {
   readonly description: string;
 }
 
+export interface ResolvedConversationNavigationTarget {
+  readonly threadId: string;
+  readonly date: string;
+  readonly messageId: string;
+  readonly query: string;
+}
+
+export function resolveConversationNavigationTarget(
+  target: ConversationNavigationTarget,
+  current: {
+    readonly currentThreadId: string;
+    readonly currentDate: string;
+  },
+): ResolvedConversationNavigationTarget | null {
+  const threadId = String(target.threadId ?? current.currentThreadId).trim();
+  const rawDate = String(target.date ?? current.currentDate)
+    .trim()
+    .replace(/-/g, ".");
+  const messageId = String(target.messageId ?? "").trim();
+  const query = String(target.query ?? "").trim();
+  if (!threadId || !/^\d{4}\.\d{2}\.\d{2}$/.test(rawDate)) {
+    return null;
+  }
+  return {
+    threadId,
+    date: rawDate,
+    messageId,
+    query,
+  };
+}
+
 export interface ConversationWorkspaceState {
   readonly selectedThreadId: string;
   readonly calendarDate: string;
@@ -39,6 +71,8 @@ export interface ConversationWorkspaceState {
   >;
   readonly unreadCounts: Readonly<Record<string, number>>;
   readonly notificationQueue: readonly ConversationNotification[];
+  readonly navigationTarget: ResolvedConversationNavigationTarget | null;
+  readonly navigationRevision: number;
 }
 
 export type ConversationWorkspaceAction =
@@ -101,6 +135,15 @@ export type ConversationWorkspaceAction =
     }
   | {
       readonly type: "clear-notifications";
+    }
+  | {
+      readonly type: "apply-navigation";
+      readonly revision: number;
+      readonly target: ResolvedConversationNavigationTarget | null;
+    }
+  | {
+      readonly type: "open-target";
+      readonly target: ResolvedConversationNavigationTarget;
     };
 
 export function createConversationWorkspaceState({
@@ -123,6 +166,8 @@ export function createConversationWorkspaceState({
     webThreadProfileOverrides: {},
     unreadCounts: {},
     notificationQueue: [],
+    navigationTarget: null,
+    navigationRevision: -1,
   };
 }
 
@@ -130,6 +175,28 @@ export function reduceConversationWorkspaceState(
   state: ConversationWorkspaceState,
   action: ConversationWorkspaceAction,
 ): ConversationWorkspaceState {
+  const openTarget = (
+    target: ResolvedConversationNavigationTarget,
+    navigationRevision = state.navigationRevision,
+  ): ConversationWorkspaceState => ({
+    ...state,
+    selectedThreadId: target.threadId,
+    calendarDate: target.date,
+    view: "chat",
+    placeholder: null,
+    jumpDate: null,
+    threadSelectionTouched: true,
+    unreadCounts: {
+      ...state.unreadCounts,
+      [target.threadId]: 0,
+    },
+    notificationQueue: state.notificationQueue.filter(
+      (notification) => notification.threadId !== target.threadId,
+    ),
+    navigationTarget: target.messageId ? target : null,
+    navigationRevision,
+  });
+
   if (action.type === "select-thread") {
     return {
       ...state,
@@ -254,6 +321,24 @@ export function reduceConversationWorkspaceState(
   }
   if (action.type === "clear-notifications") {
     return { ...state, notificationQueue: [] };
+  }
+  if (action.type === "apply-navigation") {
+    if (action.revision <= state.navigationRevision) {
+      return state;
+    }
+    if (!action.target) {
+      return {
+        ...state,
+        view: "list",
+        placeholder: null,
+        navigationTarget: null,
+        navigationRevision: action.revision,
+      };
+    }
+    return openTarget(action.target, action.revision);
+  }
+  if (action.type === "open-target") {
+    return openTarget(action.target);
   }
   return state;
 }

@@ -43,6 +43,7 @@ import type {
   WebChatUsage,
 } from "../../types/webChat";
 import type { WebChatPort } from "./webChatPort";
+import type { ConversationNavigationTarget } from "../../app/navigation/appNavigation";
 import { createConversationWorkspaceOutput } from "./conversationWorkspaceContract";
 import {
   createDefaultThreadProfile,
@@ -55,6 +56,7 @@ import {
   type ConversationNotification,
   type ConversationPageMode,
   type ConversationPlaceholder,
+  resolveConversationNavigationTarget,
 } from "./conversationWorkspaceState";
 import {
   buildConversationThreadPage,
@@ -145,6 +147,7 @@ export function useConversationWorkspace({
   initialDate,
   profileCommands,
   loadConversationRecords,
+  navigation,
   remoteData,
   styleTheme,
 }: {
@@ -153,6 +156,11 @@ export function useConversationWorkspace({
   initialThreadId: string;
   initialDate: string;
   profileCommands: ConversationProfileCommands;
+  navigation: {
+    readonly revision: number;
+    readonly target?: ConversationNavigationTarget;
+    acknowledge(revision: number): void;
+  } | null;
   loadConversationRecords(
     date: string,
     options?: FetchConversationsOptions,
@@ -233,6 +241,7 @@ export function useConversationWorkspace({
   const [error, setError] = useState("");
   const [dateLoading, setDateLoading] = useState(false);
   const dateLoadingKeysRef = useRef(new Set<string>());
+  const lastNavigationRevisionRef = useRef(-1);
 
   useEffect(() => {
     if (String(threadId).startsWith("draft-")) return;
@@ -842,6 +851,118 @@ export function useConversationWorkspace({
     ],
   );
 
+  useEffect(() => {
+    if (!navigation) return;
+    if (
+      navigation.revision <=
+      lastNavigationRevisionRef.current
+    ) {
+      return;
+    }
+    lastNavigationRevisionRef.current = navigation.revision;
+    if (!navigation.target) {
+      dispatch({
+        type: "apply-navigation",
+        revision: navigation.revision,
+        target: null,
+      });
+      return;
+    }
+    const target = resolveConversationNavigationTarget(
+      navigation.target,
+      {
+        currentThreadId: workspaceState.selectedThreadId,
+        currentDate: workspaceState.calendarDate,
+      },
+    );
+    dispatch({
+      type: "apply-navigation",
+      revision: navigation.revision,
+      target,
+    });
+    navigation.acknowledge(navigation.revision);
+    if (target) {
+      void loadThreadDate(target.date, target.threadId);
+    }
+  }, [
+    loadThreadDate,
+    navigation,
+    workspaceState.calendarDate,
+    workspaceState.selectedThreadId,
+  ]);
+
+  const openThread = useCallback(
+    (
+      targetThreadId: string,
+      fallbackLatestDate = "",
+    ) => {
+      const indexedDates = (
+        remoteData.dateIndex?.conversationThreads?.[
+          targetThreadId
+        ] ?? []
+      )
+        .map(toDotDate)
+        .sort();
+      const date =
+        indexedDates[indexedDates.length - 1] ||
+        toDotDate(fallbackLatestDate) ||
+        workspaceState.calendarDate;
+      const target = resolveConversationNavigationTarget(
+        { threadId: targetThreadId, date },
+        {
+          currentThreadId: workspaceState.selectedThreadId,
+          currentDate: workspaceState.calendarDate,
+        },
+      );
+      if (!target) return false;
+      dispatch({ type: "open-target", target });
+      void loadThreadDate(target.date, target.threadId);
+      return true;
+    },
+    [
+      loadThreadDate,
+      remoteData.dateIndex,
+      workspaceState.calendarDate,
+      workspaceState.selectedThreadId,
+    ],
+  );
+
+  const openSearchResult = useCallback(
+    async ({
+      threadId: targetThreadId,
+      date,
+      messageId,
+      query = "",
+    }: {
+      readonly threadId?: string;
+      readonly date: string;
+      readonly messageId?: string;
+      readonly query?: string;
+    }) => {
+      const target = resolveConversationNavigationTarget(
+        {
+          threadId: targetThreadId,
+          date,
+          messageId,
+          query,
+        },
+        {
+          currentThreadId: workspaceState.selectedThreadId,
+          currentDate: workspaceState.calendarDate,
+        },
+      );
+      if (!target) return false;
+      await loadThreadDate(target.date, target.threadId);
+      dispatch({ type: "open-target", target });
+      return true;
+    },
+    [
+      loadThreadDate,
+      workspaceState.calendarDate,
+      workspaceState.selectedThreadId,
+    ],
+  );
+
   const page = useMemo(
     () =>
       buildConversationThreadPage(
@@ -924,6 +1045,19 @@ export function useConversationWorkspace({
       ),
     [loadedSelectedThreadDates, selectedThreadDates],
   );
+  const navigationHighlightTarget = useMemo(
+    () =>
+      workspaceState.navigationTarget
+        ? {
+            mode: "Conversation" as const,
+            threadId: workspaceState.navigationTarget.threadId,
+            date: workspaceState.navigationTarget.date,
+            targetId: workspaceState.navigationTarget.messageId,
+            query: workspaceState.navigationTarget.query,
+          }
+        : null,
+    [workspaceState.navigationTarget],
+  );
 
   const viewModel = useMemo(
     () => ({
@@ -946,6 +1080,7 @@ export function useConversationWorkspace({
       threadIds: profileThreadIds,
       unreadCounts: workspaceState.unreadCounts,
       notificationQueue: workspaceState.notificationQueue,
+      navigationTarget: navigationHighlightTarget,
       userProfile,
       threadProfiles: effectiveThreadProfiles,
       profileError,
@@ -964,6 +1099,7 @@ export function useConversationWorkspace({
       error,
       messagesByThread,
       models,
+      navigationHighlightTarget,
       page,
       earlierDateToLoad,
       status,
@@ -998,6 +1134,8 @@ export function useConversationWorkspace({
       receiveNotification,
       dismissNotification,
       loadThreadDate,
+      openThread,
+      openSearchResult,
       saveUserProfile: setUserProfile,
       updateThreadProfile,
     }),
@@ -1007,6 +1145,8 @@ export function useConversationWorkspace({
       loadThreadDate,
       openDate,
       openNewThread,
+      openSearchResult,
+      openThread,
       receiveNotification,
       refreshModels,
       retryMessage,

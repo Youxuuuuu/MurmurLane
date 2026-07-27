@@ -4,6 +4,7 @@ import {
   createConversationWorkspaceOutput,
   createConversationWorkspaceState,
   reduceConversationWorkspaceState,
+  resolveConversationNavigationTarget,
 } from "../src/workspaces/conversation";
 
 test("Conversation Workspace 只通过 View Model 与 Commands 暴露页面契约", () => {
@@ -121,4 +122,73 @@ test("Conversation Workspace 在页面内只累计未读，不错误创建全局
 
   assert.equal(received.unreadCounts["thread-b"], 2);
   assert.deepEqual(received.notificationQueue, []);
+});
+
+test("Conversation Workspace 自己校验并解释 App Navigation Target", () => {
+  assert.deepEqual(
+    resolveConversationNavigationTarget(
+      {
+        threadId: " thread-b ",
+        date: "2026-07-27",
+        messageId: " message-2 ",
+        query: " 关键词 ",
+      },
+      {
+        currentThreadId: "thread-a",
+        currentDate: "2026.07.26",
+      },
+    ),
+    {
+      threadId: "thread-b",
+      date: "2026.07.27",
+      messageId: "message-2",
+      query: "关键词",
+    },
+  );
+
+  assert.equal(
+    resolveConversationNavigationTarget(
+      { date: "not-a-date" },
+      {
+        currentThreadId: "thread-a",
+        currentDate: "2026.07.26",
+      },
+    ),
+    null,
+  );
+});
+
+test("Conversation Workspace 只消费更新的 Navigation Revision", () => {
+  const initial = createConversationWorkspaceState({
+    threadId: "thread-a",
+    date: "2026.07.26",
+  });
+  const target = resolveConversationNavigationTarget(
+    {
+      threadId: "thread-b",
+      date: "2026.07.27",
+      messageId: "message-2",
+    },
+    {
+      currentThreadId: initial.selectedThreadId,
+      currentDate: initial.calendarDate,
+    },
+  );
+  assert.notEqual(target, null);
+  const navigated = reduceConversationWorkspaceState(initial, {
+    type: "apply-navigation",
+    revision: 3,
+    target,
+  });
+  const stale = reduceConversationWorkspaceState(navigated, {
+    type: "apply-navigation",
+    revision: 2,
+    target: null,
+  });
+
+  assert.equal(navigated.selectedThreadId, "thread-b");
+  assert.equal(navigated.calendarDate, "2026.07.27");
+  assert.equal(navigated.view, "chat");
+  assert.equal(navigated.navigationTarget?.messageId, "message-2");
+  assert.equal(stale, navigated);
 });

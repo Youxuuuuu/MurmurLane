@@ -67,7 +67,7 @@
 | 2 | Browser Config、Composition Root 与最小 Adapter | Implemented / Final Device Pending | ADR-0009、0010、0015、0018 |
 | 3 | ContentSync | Implemented / Final Device Pending | ADR-0001、0002、0013、0017、0019 |
 | 4 | Conversation Workspace Controller | Implemented / Final Device Pending | ADR-0005、0006、0012、0014、0017 |
-| 5 | App Navigation | Pending | ADR-0003、0010、0015 |
+| 5 | App Navigation | Partial（Conversation 已接管） | ADR-0003、0010、0015 |
 | 6 | Timeline 与 Archive Workspace | Pending | ADR-0005、0013、0014、0019 |
 | 7 | 搜索所有权 | Pending | ADR-0004、0011、0016 |
 | 8 | Server 分层与 Server Typecheck | Pending | ADR-0007、0009、0014、0018 |
@@ -541,11 +541,14 @@ test/conversationWorkspace.test.ts
 - Navigation Intent 明确区分 Conversation、Timeline 与 Archive Target。
 - 未知 Workspace 由 `UnknownWorkspaceError` 作为应用级错误拒绝。
 - `App.tsx` 的当前 Workspace 激活状态改为消费 App Navigation Snapshot。
-- Bottom Navigation、Conversation 通知和现有跨页面搜索结果已通过 Navigation Intent 激活目标 Workspace。
+- App Navigation 新增按 Workspace 与 Revision 确认 Target 的窄操作；只有当前目标 Workspace 可以清除对应 Target，确认不会创建新的导航 Revision。
+- Conversation Workspace 已自行校验 Thread、Date 与 Message Target，加载所需日期、更新自身页面状态，并将消息定位目标作为 View Model 交给 View。
+- Conversation 通知和 Conversation 搜索跳转不再由 `App.tsx` 同时调用目标 Workspace 的多个 setter。
+- 消息高亮的三秒视觉生命周期进入 Conversation View，Controller 不持有 Timer、DOM 或滚动能力。
 - App Navigation 不校验 Thread、Date、Message、Event 或 Document，也不操作目标 Workspace Store、DOM、滚动或高亮。
-- 目标 Target 的完整消费与清除仍随各 Workspace Controller 迁移，ADR-0003 因此为 `Partial`。
-- 新增 2 个 App Navigation Characterization Tests。
-- `npm test`：94/94 通过。
+- Timeline 与 Archive Target 的消费仍需由阶段 6 的对应 Controller 接管，ADR-0003 因此继续为 `Partial`，不得提前标记完成。
+- App Navigation 与 Conversation Navigation Characterization Tests 覆盖目标转交、未知 Workspace、确认清除、目标校验与过期 Revision 拒绝。
+- `npm test`：110/110 通过。
 - `npm run typecheck:strict`：通过。
 - `npx tsc -p tsconfig.app.json --noEmit --incremental false`：通过。
 - `npm run build`：通过。
@@ -562,7 +565,12 @@ docs/adr/0003-workspaces-coordinate-through-navigation-intents.md
 docs/architecture/migration-plan.md
 src/App.tsx
 src/app/navigation/appNavigation.ts
+src/components/conversation/ConversationPage.tsx
+src/workspaces/conversation/conversationWorkspaceState.ts
+src/workspaces/conversation/index.ts
+src/workspaces/conversation/useConversationWorkspace.ts
 test/appNavigation.test.ts
+test/conversationWorkspace.test.ts
 ```
 
 ### 阶段 5 最终人工验收项

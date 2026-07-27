@@ -7,6 +7,7 @@ export interface ConversationNavigationTarget {
   readonly threadId?: string;
   readonly date?: string;
   readonly messageId?: string;
+  readonly query?: string;
 }
 
 export interface TimelineNavigationTarget {
@@ -57,6 +58,7 @@ export interface AppNavigation {
   subscribe(listener: () => void): () => void;
   requestNavigation(intent: AppNavigationIntent): void;
   activate(workspace: WorkspaceId): void;
+  acknowledgeTarget(workspace: WorkspaceId, revision: number): void;
 }
 
 function isWorkspaceId(value: unknown): value is WorkspaceId {
@@ -105,6 +107,20 @@ export function createAppNavigation(
       } else {
         requestNavigation({ workspace: "archive" });
       }
+    },
+    acknowledgeTarget(workspace, revision) {
+      if (
+        snapshot.workspace !== workspace ||
+        snapshot.revision !== revision ||
+        snapshot.target === undefined
+      ) {
+        return;
+      }
+      snapshot = Object.freeze({
+        ...snapshot,
+        target: undefined,
+      });
+      listeners.forEach((listener) => listener());
     },
   };
 }

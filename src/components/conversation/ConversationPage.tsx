@@ -75,7 +75,7 @@ function getBubbleAnimationEntries(messages, selectedThreadId) {
 export const ConversationPage = memo(function ConversationPage({
   page,
   selectedThreadId,
-  highlightResult,
+  highlightResult: requestedHighlightResult,
   userProfile,
   threadProfile,
   onEditThread,
@@ -97,6 +97,18 @@ export const ConversationPage = memo(function ConversationPage({
 }) {
   const [quoteMessage, setQuoteMessage] = useState(null);
   const [activeAction, setActiveAction] = useState(null);
+  const [highlightResult, setHighlightResult] = useState(
+    requestedHighlightResult,
+  );
+  useEffect(() => {
+    setHighlightResult(requestedHighlightResult);
+    if (!requestedHighlightResult) return;
+    const timer = window.setTimeout(
+      () => setHighlightResult(null),
+      3000,
+    );
+    return () => window.clearTimeout(timer);
+  }, [requestedHighlightResult]);
   const handleQuote = useCallback((nextMessage) => {
     setQuoteMessage(nextMessage);
     setActiveAction(null);
