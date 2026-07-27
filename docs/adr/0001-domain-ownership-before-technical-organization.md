@@ -1,6 +1,8 @@
 ---
 Status: Accepted
 Implementation: Partial
+ContentSync implementation: Complete
+Workspace implementation: Partial
 ---
 
 # 领域所有权优先于技术分类

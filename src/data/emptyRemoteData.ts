@@ -2,6 +2,8 @@ import type { RemoteData } from "../types/api";
 
 export const emptyRemoteData: RemoteData = {
   conversationEntries: {},
+  conversationMoments: [],
+  conversationProfiles: null,
   timelineState: {},
   diaryEntries: {},
   dailySummaryEntries: {},

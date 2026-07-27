@@ -11,11 +11,10 @@ import { AnimatePresence, MotionConfig } from "framer-motion";
 import type { AppDependencies } from "./app/composition/appDependencies";
 import { createAppNavigation } from "./app/navigation/appNavigation";
 import {
-  createContentSyncGeneration,
+  createContentSyncService,
+  createContentSyncStore,
   createLiveUpdateCoordinator,
 } from "./content-sync";
-import { staticModeApiMap } from "./config/contentSources";
-import { xiaoyeModeMeta, xiaoyeModes } from "./config/pageModes";
 import { styleThemes } from "./config/theme";
 import {
   diaryEntries,
@@ -37,7 +36,6 @@ import {
   getContiguousLoadedConversationDates,
   getLatestConversationThreadId,
   getConversationThreadSummaries,
-  groupConversationRecordsByThread,
 } from "./lib/conversationPageData";
 import {
   buildMemoryPage,
@@ -99,23 +97,8 @@ function getSearchDataVersion(source) {
   return version;
 }
 
-function normalizeTimelineResponse(response) {
-  if (!response || response.found === false || typeof response !== "object") {
-    return {};
-  }
-
-  const timelineFacts = response.facts ?? response;
-  return {
-    ...Object.fromEntries(
-      Object.entries(timelineFacts)
-        .filter(([, value]) => value?.events)
-        .map(([key, value]) => [toDotDate(key), value]),
-    ),
-    ...(response.taxonomy ? { taxonomy: response.taxonomy } : {}),
-    ...(response.version != null ? { version: response.version } : {}),
-    ...(response.timezone ? { timezone: response.timezone } : {}),
-    ...(Array.isArray(response.proposals) ? { proposals: response.proposals } : {}),
-  };
+function resolveStateAction(action, current) {
+  return typeof action === "function" ? action(current) : action;
 }
 
 function getLiveConversationRecordKey(date, threadId, record) {
@@ -185,16 +168,6 @@ export default function InsDiaryPrototype({
 }) {
   const {
     fetchEditableMemoryDocument,
-    fetchConversations,
-    fetchConversationMoments,
-    fetchDateIndex,
-    fetchMemoryDailySummary,
-    fetchMemoryDiary,
-    fetchMemoryLetters,
-    fetchMemoryStatic,
-    fetchReminderHistory,
-    fetchTimeline,
-    fetchXiaoyeStatic,
     hasEditCredential,
     subscribeToLiveUpdates,
     toggleOpenLoopsChecklistItem:
@@ -243,7 +216,6 @@ export default function InsDiaryPrototype({
   const [conversationSettingsMode, setConversationSettingsMode] = useState(null);
   const [conversationProfilePreview, setConversationProfilePreview] = useState(null);
   const [conversationPlaceholder, setConversationPlaceholder] = useState(null);
-  const [conversationMoments, setConversationMoments] = useState([]);
   const [conversationDateLoading, setConversationDateLoading] = useState(false);
   const [conversationJumpDate, setConversationJumpDate] = useState(null);
   const [conversationCalendarDate, setConversationCalendarDate] = useState(
@@ -262,34 +234,107 @@ export default function InsDiaryPrototype({
   const [selectedShareText, setSelectedShareText] = useState("");
   const [archiveSubject, setArchiveSubject] = useState("Me");
   const [selectedXiaoyeMode, setSelectedXiaoyeMode] = useState("Ins");
-  const [remoteConversationsState, setRemoteConversationsState] = useState({});
-  const [remoteTimelineStateValue, setRemoteTimelineStateValue] = useState({});
-  const [remoteDiaryEntriesState, setRemoteDiaryEntriesState] = useState({});
-  const [remoteDailySummaryEntriesState, setRemoteDailySummaryEntriesState] =
-    useState({});
-  const [remoteLetterEntriesState, setRemoteLetterEntriesState] = useState({});
-  const [remoteStaticModeEntriesState, setRemoteStaticModeEntriesState] =
-    useState({});
-  const [remoteXiaoyeEntriesState, setRemoteXiaoyeEntriesState] = useState({});
-  const [
-    remoteReminderHistoryEntriesState,
-    setRemoteReminderHistoryEntriesState,
-  ] = useState([]);
-  const [remoteDateIndexState, setRemoteDateIndexState] = useState(null);
-  const [remoteSearchCacheState, setRemoteSearchCacheState] = useState({
-    conversations: {},
-    diary: {},
-    dailySummary: {},
-    letters: {},
-    timeline: {},
-  });
-  const [remoteSearchMissingState, setRemoteSearchMissingState] = useState({
-    diary: {},
-    dailySummary: {},
-    letters: {},
-  });
+  const [contentSyncStore] = useState(() => createContentSyncStore());
+  const contentSync = useMemo(
+    () =>
+      createContentSyncService({
+        store: contentSyncStore,
+        port: dependencies.murmurLaneData,
+      }),
+    [contentSyncStore, dependencies.murmurLaneData],
+  );
+  const contentSyncSnapshot = useSyncExternalStore(
+    contentSyncStore.subscribe,
+    contentSyncStore.getSnapshot,
+  );
+  const {
+    conversationEntries: remoteConversationsState,
+    conversationMoments,
+    timelineState: remoteTimelineStateValue,
+    diaryEntries: remoteDiaryEntriesState,
+    dailySummaryEntries: remoteDailySummaryEntriesState,
+    letterEntries: remoteLetterEntriesState,
+    staticModeEntries: remoteStaticModeEntriesState,
+    xiaoyeEntries: remoteXiaoyeEntriesState,
+    reminderHistoryEntries: remoteReminderHistoryEntriesState,
+    dateIndex: remoteDateIndexState,
+    searchCache: remoteSearchCacheState,
+  } = contentSyncSnapshot.data;
+  const updateContentSyncField = useCallback(
+    (source, field, action, key = "global") => {
+      contentSyncStore.update(source, key, (current) => ({
+        ...current,
+        [field]: resolveStateAction(action, current[field]),
+      }));
+    },
+    [contentSyncStore],
+  );
+  const setRemoteTimelineStateValue = useCallback(
+    (action) =>
+      updateContentSyncField("timeline", "timelineState", action),
+    [updateContentSyncField],
+  );
+  const setRemoteDiaryEntriesState = useCallback(
+    (action) =>
+      updateContentSyncField("diary", "diaryEntries", action),
+    [updateContentSyncField],
+  );
+  const setRemoteDailySummaryEntriesState = useCallback(
+    (action) =>
+      updateContentSyncField(
+        "dailySummary",
+        "dailySummaryEntries",
+        action,
+      ),
+    [updateContentSyncField],
+  );
+  const setRemoteLetterEntriesState = useCallback(
+    (action) =>
+      updateContentSyncField("letters", "letterEntries", action),
+    [updateContentSyncField],
+  );
+  const setRemoteStaticModeEntriesState = useCallback(
+    (action) =>
+      updateContentSyncField(
+        "staticMemory",
+        "staticModeEntries",
+        action,
+      ),
+    [updateContentSyncField],
+  );
+  const setRemoteXiaoyeEntriesState = useCallback(
+    (action) =>
+      updateContentSyncField("xiaoye", "xiaoyeEntries", action),
+    [updateContentSyncField],
+  );
+  const setRemoteDateIndexState = useCallback(
+    (action) =>
+      updateContentSyncField("dateIndex", "dateIndex", action),
+    [updateContentSyncField],
+  );
+  const setRemoteSearchCacheState = useCallback(
+    (action) =>
+      updateContentSyncField(
+        "conversation",
+        "searchCache",
+        action,
+        "search-cache",
+      ),
+    [updateContentSyncField],
+  );
   const [searchQuery, setSearchQuery] = useState("");
-  const [remoteError, setRemoteError] = useState({});
+  const remoteError = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(contentSyncSnapshot.sources)
+          .filter(([, metadata]) => metadata.error != null)
+          .map(([source, metadata]) => [
+            source,
+            String(metadata.error?.message || metadata.error),
+          ]),
+      ),
+    [contentSyncSnapshot.sources],
+  );
   const [editAccessState, setEditAccessState] = useState({
     ready: false,
     canWrite: false,
@@ -323,15 +368,6 @@ export default function InsDiaryPrototype({
   const initialLiveRefreshCompleteRef = useRef(false);
   const liveSearchActiveRef = useRef(false);
   const liveUpdateCoordinatorRef = useRef(null);
-  const contentSyncGenerationRef = useRef(
-    createContentSyncGeneration(),
-  );
-  const searchPendingRef = useRef({
-    conversations: new Set(),
-    diary: new Set(),
-    dailySummary: new Set(),
-    letters: new Set(),
-  });
   const dismissMessageNotification = useCallback(() => {
     setMessageNotificationQueue((current) => current.slice(1));
   }, []);
@@ -349,110 +385,6 @@ export default function InsDiaryPrototype({
     const canNotifyConversationChanges =
       conversationBaselineReadyRef.current &&
       initialLiveRefreshCompleteRef.current;
-    const uniqueEvents = Array.from(
-      new Map(
-        events.map((event) => [
-          `${event.type}:${event.date || ""}:${event.mode || ""}:${event.threadId || ""}`,
-          event,
-        ]),
-      ).values(),
-    );
-    const hasResync = uniqueEvents.some((event) => event.type === "resync");
-    const currentDate = selectedDateRef.current;
-    let resyncDateIndex = null;
-    if (hasResync) {
-      const requestIdentity =
-        contentSyncGenerationRef.current.begin(
-          "date-index",
-          "global",
-        );
-      try {
-        resyncDateIndex = await fetchDateIndex();
-        if (
-          !contentSyncGenerationRef.current.isCurrent(
-            requestIdentity,
-          )
-        ) {
-          return;
-        }
-        setRemoteDateIndexState(resyncDateIndex);
-      } catch {
-        // Keep current data and retry on the next event/reconnect.
-      }
-    }
-    const resyncConversationDates = resyncDateIndex
-      ? Array.from(
-          new Set([
-            currentDate.replace(/\./g, "-"),
-            ...Object.values(resyncDateIndex.conversationThreads ?? {})
-              .map((dates) => dates?.[dates.length - 1])
-              .filter(Boolean),
-          ]),
-        )
-      : [currentDate];
-    const expandedEventsRaw = hasResync
-      ? [
-          ...resyncConversationDates.map((date) => ({
-            type: "conversations",
-            date,
-          })),
-          { type: "diary", date: currentDate },
-          { type: "dailySummary", date: currentDate },
-          { type: "letters", date: currentDate },
-          { type: "timeline" },
-          { type: "reminders" },
-          { type: "profiles" },
-          { type: "moments" },
-          ...Object.values(staticModeApiMap).map((mode) => ({
-            type: "staticMemory",
-            mode,
-          })),
-          ...xiaoyeModes.map((mode) => ({
-            type: "xiaoye",
-            mode: xiaoyeModeMeta[mode].apiMode,
-          })),
-          ...uniqueEvents.filter((event) => event.type !== "resync"),
-        ]
-      : uniqueEvents;
-    const expandedEvents = Array.from(
-      new Map(
-        expandedEventsRaw.map((event) => [
-          `${event.type}:${event.date || ""}:${event.mode || ""}:${event.threadId || ""}`,
-          event,
-        ]),
-      ).values(),
-    );
-
-    const updateDatedMemory = (type, date, result) => {
-      const dotDate = toDotDate(date);
-      const stateSetter =
-        type === "diary"
-          ? setRemoteDiaryEntriesState
-          : type === "dailySummary"
-            ? setRemoteDailySummaryEntriesState
-            : setRemoteLetterEntriesState;
-      const cacheKey = type;
-
-      stateSetter((current) => {
-        const next = { ...current };
-        if (result?.found === true && result.entry) next[dotDate] = result.entry;
-        else delete next[dotDate];
-        return next;
-      });
-      setRemoteSearchCacheState((current) => {
-        const nextBucket = { ...current[cacheKey] };
-        if (result?.found === true && result.entry) nextBucket[dotDate] = result.entry;
-        else delete nextBucket[dotDate];
-        return { ...current, [cacheKey]: nextBucket };
-      });
-      setRemoteSearchMissingState((current) => {
-        const nextBucket = { ...current[cacheKey] };
-        if (result?.found === false) nextBucket[dotDate] = true;
-        else delete nextBucket[dotDate];
-        return { ...current, [cacheKey]: nextBucket };
-      });
-    };
-
     const registerIncomingMessages = (date, records, allowNotify = true) => {
       const dotDate = toDotDate(date);
       const incomingByThread = new Map();
@@ -531,146 +463,34 @@ export default function InsDiaryPrototype({
       });
     };
 
-    const tasks = expandedEvents.map(async (event) => {
-      const requestIdentity =
-        contentSyncGenerationRef.current.begin(
-          event.type,
-          event.date || event.mode || event.threadId || "global",
-        );
-      const canCommit = () =>
-        contentSyncGenerationRef.current.isCurrent(
-          requestIdentity,
-        );
-
-      if (event.type === "conversations" && event.date) {
-        const dotDate = toDotDate(event.date);
-        const records = await fetchConversations(dotDate);
-        if (!canCommit()) return;
-        const dateWasLoaded = loadedConversationDatesRef.current.has(dotDate);
-        registerIncomingMessages(dotDate, records, dateWasLoaded);
-        loadedConversationDatesRef.current.add(dotDate);
-        const grouped = records.length ? groupConversationRecordsByThread(records) : {};
-        setRemoteConversationsState((current) => ({ ...current, [dotDate]: grouped }));
-        setRemoteSearchCacheState((current) => ({
-          ...current,
-          conversations: { ...current.conversations, [dotDate]: grouped },
-        }));
-        return;
-      }
-
-      if (["diary", "dailySummary", "letters"].includes(event.type) && event.date) {
-        const loader =
-          event.type === "diary"
-            ? fetchMemoryDiary
-            : event.type === "dailySummary"
-              ? fetchMemoryDailySummary
-              : fetchMemoryLetters;
-        const result = await loader(event.date);
-        if (!canCommit()) return;
-        updateDatedMemory(event.type, event.date, result);
-        return;
-      }
-
-      if (event.type === "timeline") {
-        const nextTimelineState = normalizeTimelineResponse(await fetchTimeline());
-        if (!canCommit()) return;
-        setRemoteTimelineStateValue(nextTimelineState);
-        setRemoteSearchCacheState((current) => ({
-          ...current,
-          timeline: nextTimelineState,
-        }));
-        return;
-      }
-
-      if (event.type === "staticMemory" && event.mode) {
-        const normalizedMode = event.mode === "patterrns" ? "patterns" : event.mode;
-        const modeEntry = Object.entries(staticModeApiMap).find(
-          ([, apiMode]) => apiMode === normalizedMode,
-        );
-        if (!modeEntry) return;
-        const result = await fetchMemoryStatic(normalizedMode);
-        if (!canCommit()) return;
-        const [mode] = modeEntry;
-        setRemoteStaticModeEntriesState((current) => {
-          const next = { ...current };
-          if (result?.found === true && result.entry) next[mode] = result.entry;
-          else delete next[mode];
-          return next;
-        });
-        return;
-      }
-
-      if (event.type === "xiaoye" && event.mode) {
-        const modeEntry = xiaoyeModes.find(
-          (mode) => xiaoyeModeMeta[mode].apiMode === event.mode,
-        );
-        if (!modeEntry) return;
-        const result = await fetchXiaoyeStatic(event.mode);
-        if (!canCommit()) return;
-        setRemoteXiaoyeEntriesState((current) => {
-          const next = { ...current };
-          if (result?.found === true && result.entry) next[modeEntry] = result.entry;
-          else delete next[modeEntry];
-          return next;
-        });
-        return;
-      }
-
-      if (event.type === "reminders") {
-        const result = await fetchReminderHistory();
-        if (!canCommit()) return;
-        setRemoteReminderHistoryEntriesState(
-          Array.isArray(result?.entries) ? result.entries : [],
-        );
-        return;
-      }
-
-      if (event.type === "profiles") {
-        window.dispatchEvent(new Event("murmurlane:profiles-changed"));
-        return;
-      }
-
-      if (event.type === "moments") {
-        const result = await fetchConversationMoments(3);
-        if (!canCommit()) return;
-        setConversationMoments(result.moments ?? []);
-      }
+    const refreshResult = await contentSync.refreshEvents(
+      events,
+      selectedDateRef.current,
+    );
+    refreshResult.conversations.forEach(({ date, records }) => {
+      const dateWasLoaded = loadedConversationDatesRef.current.has(date);
+      registerIncomingMessages(date, records, dateWasLoaded);
+      loadedConversationDatesRef.current.add(date);
     });
-
-    await Promise.allSettled(tasks);
-
-    if (
-      !resyncDateIndex &&
-      expandedEvents.some((event) =>
-        ["conversations", "diary", "dailySummary", "letters", "timeline"].includes(
-          event.type,
-        ),
-      )
-    ) {
-      const requestIdentity =
-        contentSyncGenerationRef.current.begin(
-          "date-index",
-          "global",
-        );
-      try {
-        const dateIndex = await fetchDateIndex();
-        if (
-          contentSyncGenerationRef.current.isCurrent(
-            requestIdentity,
-          )
-        ) {
-          setRemoteDateIndexState(dateIndex);
-        }
-      } catch {
-        // A later file event or foreground resync will retry the lightweight index.
-      }
-    }
     initialLiveRefreshCompleteRef.current = true;
-  }, []);
+  }, [contentSync]);
 
   useEffect(() => {
     const coordinator = createLiveUpdateCoordinator({
-      subscribe: subscribeToLiveUpdates,
+      subscribe: (onEvent) => {
+        contentSyncStore.setConnectionStatus("connecting");
+        const unsubscribe = subscribeToLiveUpdates(
+          onEvent,
+          (connected) =>
+            contentSyncStore.setConnectionStatus(
+              connected ? "connected" : "disconnected",
+            ),
+        );
+        return () => {
+          unsubscribe();
+          contentSyncStore.setConnectionStatus("idle");
+        };
+      },
       refresh: refreshLiveEvents,
       schedule: (callback, delayMs) =>
         window.setTimeout(callback, delayMs),
@@ -693,7 +513,11 @@ export default function InsDiaryPrototype({
         liveUpdateCoordinatorRef.current = null;
       }
     };
-  }, []);
+  }, [
+    contentSyncStore,
+    refreshLiveEvents,
+    subscribeToLiveUpdates,
+  ]);
 
   useEffect(() => {
     if (liveSearchActiveRef.current || document.hidden) return;
@@ -704,32 +528,7 @@ export default function InsDiaryPrototype({
     return () => window.clearTimeout(timer);
   }, [searchQuery, conversationView]);
 
-  const remoteData = useMemo(
-    () => ({
-      conversationEntries: remoteConversationsState,
-      timelineState: remoteTimelineStateValue,
-      diaryEntries: remoteDiaryEntriesState,
-      dailySummaryEntries: remoteDailySummaryEntriesState,
-      letterEntries: remoteLetterEntriesState,
-      staticModeEntries: remoteStaticModeEntriesState,
-      xiaoyeEntries: remoteXiaoyeEntriesState,
-      reminderHistoryEntries: remoteReminderHistoryEntriesState,
-      dateIndex: remoteDateIndexState,
-      searchCache: remoteSearchCacheState,
-    }),
-    [
-      remoteConversationsState,
-      remoteTimelineStateValue,
-      remoteDiaryEntriesState,
-      remoteDailySummaryEntriesState,
-      remoteLetterEntriesState,
-      remoteStaticModeEntriesState,
-      remoteXiaoyeEntriesState,
-      remoteReminderHistoryEntriesState,
-      remoteDateIndexState,
-      remoteSearchCacheState,
-    ],
-  );
+  const remoteData = contentSyncSnapshot.data;
 
   const availableThreadIds = useMemo(
     () => getAllConversationThreadIds(remoteData),
@@ -744,14 +543,16 @@ export default function InsDiaryPrototype({
     setUserProfile,
     threadProfiles,
     updateThreadProfile,
-  } = useConversationProfiles(profileThreadIds, {
-    fetchProfiles:
-      dependencies.murmurLaneData.fetchConversationProfiles,
-    saveUserProfile:
-      dependencies.murmurLaneData.saveConversationUserProfile,
-    saveThreadProfile:
-      dependencies.murmurLaneData.saveConversationThreadProfile,
-  });
+  } = useConversationProfiles(
+    profileThreadIds,
+    contentSyncSnapshot.data.conversationProfiles,
+    {
+      saveUserProfile:
+        dependencies.murmurLaneData.saveConversationUserProfile,
+      saveThreadProfile:
+        dependencies.murmurLaneData.saveConversationThreadProfile,
+    },
+  );
   const effectiveThreadProfiles = useMemo(
     () => ({
       ...threadProfiles,
@@ -977,41 +778,13 @@ export default function InsDiaryPrototype({
     let cancelled = false;
 
     const loadBootstrapData = async () => {
-      const staticRequests = [
-        ["Project", staticModeApiMap.Project],
-        ["Preference", staticModeApiMap.Preference],
-        ["Openloops", staticModeApiMap.Openloops],
-        ["Facts", staticModeApiMap.Facts],
-        ["Patterns", staticModeApiMap.Patterns],
-      ];
-      const xiaoyeRequests = xiaoyeModes.map((mode) => [
-        mode,
-        xiaoyeModeMeta[mode].apiMode,
+      const [, editStatusResult] = await Promise.allSettled([
+        contentSync.bootstrap(),
+        fetchEditableMemoryDocument({
+          documentType: "static-memory-document",
+          documentId: "preferences",
+        }),
       ]);
-
-      const [
-        timelineResult,
-        dateIndexResult,
-        reminderHistoryResult,
-        editStatusResult,
-        ...staticAndXiaoyeResults
-      ] =
-        await Promise.allSettled([
-          fetchTimeline(),
-          fetchDateIndex(),
-          fetchReminderHistory(),
-          fetchEditableMemoryDocument({
-            documentType: "static-memory-document",
-            documentId: "preferences",
-          }),
-          ...staticRequests.map(([, mode]) => fetchMemoryStatic(mode)),
-          ...xiaoyeRequests.map(([, mode]) => fetchXiaoyeStatic(mode)),
-        ]);
-      const staticResults = staticAndXiaoyeResults.slice(
-        0,
-        staticRequests.length,
-      );
-      const xiaoyeResults = staticAndXiaoyeResults.slice(staticRequests.length);
 
       if (cancelled) return;
 
@@ -1039,130 +812,6 @@ export default function InsDiaryPrototype({
           message: "编辑状态不可用。",
         });
       }
-
-      if (
-        timelineResult.status === "fulfilled" &&
-        timelineResult.value &&
-        timelineResult.value.found !== false &&
-        typeof timelineResult.value === "object"
-      ) {
-        const timelineFacts = timelineResult.value.facts ?? timelineResult.value;
-        const nextTimelineDates = Object.fromEntries(
-          Object.entries(timelineFacts)
-            .filter(([, value]) => value?.events)
-            .map(([key, value]) => [toDotDate(key), value]),
-        );
-        const nextTimelineState = {
-          ...nextTimelineDates,
-          ...(timelineResult.value.taxonomy
-            ? { taxonomy: timelineResult.value.taxonomy }
-            : {}),
-          ...(timelineResult.value.version != null
-            ? { version: timelineResult.value.version }
-            : {}),
-          ...(timelineResult.value.timezone
-            ? { timezone: timelineResult.value.timezone }
-            : {}),
-          ...(Array.isArray(timelineResult.value.proposals)
-            ? { proposals: timelineResult.value.proposals }
-            : {}),
-        };
-        setRemoteTimelineStateValue(nextTimelineState);
-        setRemoteSearchCacheState((current) => ({
-          ...current,
-          timeline: {
-            ...current.timeline,
-            ...nextTimelineState,
-          },
-        }));
-      } else if (timelineResult.status === "rejected") {
-        setRemoteError((current) => ({
-          ...current,
-          timeline: String(timelineResult.reason?.message || timelineResult.reason),
-        }));
-      }
-
-      if (
-        dateIndexResult.status === "fulfilled" &&
-        dateIndexResult.value &&
-        typeof dateIndexResult.value === "object"
-      ) {
-        setRemoteDateIndexState(dateIndexResult.value);
-      } else if (dateIndexResult.status === "rejected") {
-        setRemoteError((current) => ({
-          ...current,
-          dateIndex: String(
-            dateIndexResult.reason?.message || dateIndexResult.reason,
-          ),
-        }));
-      }
-
-      if (reminderHistoryResult.status === "fulfilled") {
-        const entries = reminderHistoryResult.value?.entries;
-        setRemoteReminderHistoryEntriesState(Array.isArray(entries) ? entries : []);
-      } else {
-        setRemoteError((current) => ({
-          ...current,
-          reminders: String(
-            reminderHistoryResult.reason?.message ||
-              reminderHistoryResult.reason,
-          ),
-        }));
-      }
-
-      const nextStaticEntries = {};
-      staticResults.forEach((result, index) => {
-        const [mode] = staticRequests[index];
-        if (
-          result.status === "fulfilled" &&
-          result.value?.found === true &&
-          result.value?.entry
-        ) {
-          nextStaticEntries[mode] = result.value.entry;
-          return;
-        }
-
-        if (result.status === "rejected") {
-          setRemoteError((current) => ({
-            ...current,
-            [mode]: String(result.reason?.message || result.reason),
-          }));
-        }
-      });
-
-      if (Object.keys(nextStaticEntries).length) {
-        setRemoteStaticModeEntriesState((current) => ({
-          ...current,
-          ...nextStaticEntries,
-        }));
-      }
-
-      const nextXiaoyeEntries = {};
-      xiaoyeResults.forEach((result, index) => {
-        const [mode] = xiaoyeRequests[index];
-        if (
-          result.status === "fulfilled" &&
-          result.value?.found === true &&
-          result.value?.entry
-        ) {
-          nextXiaoyeEntries[mode] = result.value.entry;
-          return;
-        }
-
-        if (result.status === "rejected") {
-          setRemoteError((current) => ({
-            ...current,
-            [`Xiaoye:${mode}`]: String(result.reason?.message || result.reason),
-          }));
-        }
-      });
-
-      if (Object.keys(nextXiaoyeEntries).length) {
-        setRemoteXiaoyeEntriesState((current) => ({
-          ...current,
-          ...nextXiaoyeEntries,
-        }));
-      }
     };
 
     loadBootstrapData();
@@ -1170,7 +819,11 @@ export default function InsDiaryPrototype({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [
+    contentSync,
+    fetchEditableMemoryDocument,
+    hasEditCredential,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1178,104 +831,23 @@ export default function InsDiaryPrototype({
 
     const loadDatedData = async () => {
       const [
-        conversationsResult,
-        diaryResult,
-        dailySummaryResult,
-        lettersResult,
-      ] = await Promise.allSettled([
-        fetchConversations(dotDate),
-        fetchMemoryDiary(dotDate),
-        fetchMemoryDailySummary(dotDate),
-        fetchMemoryLetters(dotDate),
+        conversations,
+      ] = await Promise.all([
+        contentSync.loadConversations(dotDate),
+        contentSync.loadDatedMemory("diary", dotDate),
+        contentSync.loadDatedMemory("dailySummary", dotDate),
+        contentSync.loadDatedMemory("letters", dotDate),
       ]);
 
       if (cancelled) return;
-
-      if (
-        conversationsResult.status === "fulfilled" &&
-        Array.isArray(conversationsResult.value) &&
-        conversationsResult.value.length
-      ) {
+      if (Array.isArray(conversations)) {
         loadedConversationDatesRef.current.add(dotDate);
-        conversationsResult.value.forEach((record, index) => {
-          const threadId = String(record?.threadId || "");
-          if (!threadId) return;
-          knownConversationRecordIdsRef.current.add(
-            getLiveConversationRecordKey(dotDate, threadId, record, index),
-          );
-        });
-        const grouped = groupConversationRecordsByThread(
-          conversationsResult.value,
+        rememberConversationRecords(
+          knownConversationRecordIdsRef.current,
+          dotDate,
+          conversations,
         );
-
-        setRemoteConversationsState((current) => ({
-          ...current,
-          [dotDate]: grouped,
-        }));
-      } else {
-        if (conversationsResult.status === "fulfilled") {
-          loadedConversationDatesRef.current.add(dotDate);
-        }
-        setRemoteConversationsState((current) => {
-          const next = { ...current };
-          delete next[dotDate];
-          return next;
-        });
-
-        if (conversationsResult.status === "rejected") {
-          setRemoteError((current) => ({
-            ...current,
-            [`conversations:${dotDate}`]: String(
-              conversationsResult.reason?.message || conversationsResult.reason,
-            ),
-          }));
-        }
       }
-
-      const memoryLoaders = [
-        [
-          diaryResult,
-          setRemoteDiaryEntriesState,
-          `diary:${dotDate}`,
-        ],
-        [
-          dailySummaryResult,
-          setRemoteDailySummaryEntriesState,
-          `daily-summary:${dotDate}`,
-        ],
-        [
-          lettersResult,
-          setRemoteLetterEntriesState,
-          `letters:${dotDate}`,
-        ],
-      ];
-
-      memoryLoaders.forEach(([result, setter, errorKey]) => {
-        if (
-          result.status === "fulfilled" &&
-          result.value?.found === true &&
-          result.value?.entry
-        ) {
-          setter((current) => ({
-            ...current,
-            [dotDate]: result.value.entry,
-          }));
-          return;
-        }
-
-        setter((current) => {
-          const next = { ...current };
-          delete next[dotDate];
-          return next;
-        });
-
-        if (result.status === "rejected") {
-          setRemoteError((current) => ({
-            ...current,
-            [errorKey]: String(result.reason?.message || result.reason),
-          }));
-        }
-      });
       conversationBaselineReadyRef.current = true;
     };
 
@@ -1284,23 +856,11 @@ export default function InsDiaryPrototype({
     return () => {
       cancelled = true;
     };
-  }, [selectedDate]);
+  }, [contentSync, selectedDate]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    fetchConversationMoments(3)
-      .then((result) => {
-        if (!cancelled) setConversationMoments(result.moments ?? []);
-      })
-      .catch(() => {
-        if (!cancelled) setConversationMoments([]);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    void contentSync.loadMoments(3);
+  }, [contentSync]);
 
   useEffect(() => {
     if (
@@ -1310,64 +870,30 @@ export default function InsDiaryPrototype({
     )
       return;
 
-    const threadIndex = remoteDateIndexState.conversationThreads ?? {};
-    const requestedDates = Object.values(threadIndex)
-      .map((dates) => dates?.[dates.length - 1])
-      .filter(Boolean);
-    const dates = Array.from(new Set(requestedDates.map(toDotDate))).filter(
-      (date) =>
-        !remoteConversationsState[date] &&
-        !remoteSearchCacheState.conversations[date] &&
-        !searchPendingRef.current.conversations.has(date),
-    );
-
-    if (!dates.length) return;
-
     let cancelled = false;
-    dates.forEach((date) => searchPendingRef.current.conversations.add(date));
 
     const loadThreadDates = async () => {
-      const results = await Promise.allSettled(
-        dates.map((date) => fetchConversations(date)),
-      );
+      const batches = await contentSync.loadLatestConversationDates();
       if (cancelled) return;
-
-      const conversations = {};
-      results.forEach((result, index) => {
-        const date = dates[index];
-        searchPendingRef.current.conversations.delete(date);
-        if (result.status === "fulfilled" && Array.isArray(result.value)) {
-          loadedConversationDatesRef.current.add(toDotDate(date));
-          rememberConversationRecords(
-            knownConversationRecordIdsRef.current,
-            date,
-            result.value,
-          );
-          conversations[date] = result.value.length
-            ? groupConversationRecordsByThread(result.value)
-            : {};
-        }
+      batches.forEach(({ date, records }) => {
+        loadedConversationDatesRef.current.add(toDotDate(date));
+        rememberConversationRecords(
+          knownConversationRecordIdsRef.current,
+          date,
+          records,
+        );
       });
-
-      if (Object.keys(conversations).length) {
-        setRemoteSearchCacheState((current) => ({
-          ...current,
-          conversations: { ...current.conversations, ...conversations },
-        }));
-      }
     };
 
-    loadThreadDates();
+    void loadThreadDates();
     return () => {
       cancelled = true;
-      dates.forEach((date) => searchPendingRef.current.conversations.delete(date));
     };
   }, [
     activeSection,
     conversationView,
     remoteDateIndexState,
-    remoteConversationsState,
-    remoteSearchCacheState.conversations,
+    contentSync,
   ]);
 
   useEffect(() => {
@@ -1379,189 +905,20 @@ export default function InsDiaryPrototype({
 
     let cancelled = false;
 
-    const isConversationDateCached = (date) =>
-      Boolean(
-        remoteConversationsState[date] ||
-          remoteSearchCacheState.conversations[date] ||
-          searchPendingRef.current.conversations.has(date),
-      );
-    const isDiaryDateCached = (date) =>
-      Boolean(
-        remoteDiaryEntriesState[date] ||
-          remoteSearchCacheState.diary[date] ||
-          remoteSearchMissingState.diary[date] ||
-          searchPendingRef.current.diary.has(date),
-      );
-    const isDailySummaryDateCached = (date) =>
-      Boolean(
-        remoteDailySummaryEntriesState[date] ||
-          remoteSearchCacheState.dailySummary[date] ||
-          remoteSearchMissingState.dailySummary[date] ||
-          searchPendingRef.current.dailySummary.has(date),
-      );
-    const isLettersDateCached = (date) =>
-      Boolean(
-        remoteLetterEntriesState[date] ||
-          remoteSearchCacheState.letters[date] ||
-          remoteSearchMissingState.letters[date] ||
-          searchPendingRef.current.letters.has(date),
-      );
-
-    const tasks = [
-      ...(remoteDateIndexState.conversations ?? [])
-        .map(toDotDate)
-        .filter((date) => !isConversationDateCached(date))
-        .map((date) => ({
-          type: "conversations",
-          date,
-          loader: () => fetchConversations(date),
-        })),
-      ...(remoteDateIndexState.diary ?? [])
-        .map(toDotDate)
-        .filter((date) => !isDiaryDateCached(date))
-        .map((date) => ({
-          type: "diary",
-          date,
-          loader: () => fetchMemoryDiary(date),
-        })),
-      ...(remoteDateIndexState.dailySummary ?? [])
-        .map(toDotDate)
-        .filter((date) => !isDailySummaryDateCached(date))
-        .map((date) => ({
-          type: "dailySummary",
-          date,
-          loader: () => fetchMemoryDailySummary(date),
-        })),
-      ...(remoteDateIndexState.letters ?? [])
-        .map(toDotDate)
-        .filter((date) => !isLettersDateCached(date))
-        .map((date) => ({
-          type: "letters",
-          date,
-          loader: () => fetchMemoryLetters(date),
-        })),
-    ];
-
-    if (!tasks.length) {
-      return;
-    }
-
     const loadSearchData = async () => {
-      const concurrency = 4;
-      let cursor = 0;
-      const pendingSearchCache = {
-        conversations: {},
-        diary: {},
-        dailySummary: {},
-        letters: {},
-      };
-      const pendingMissingCache = {
-        diary: {},
-        dailySummary: {},
-        letters: {},
-      };
-
-      const runTask = async () => {
-        while (!cancelled && cursor < tasks.length) {
-          const task = tasks[cursor];
-          cursor += 1;
-          searchPendingRef.current[task.type].add(task.date);
-
-          try {
-            const result = await task.loader();
-            if (cancelled) continue;
-
-            if (task.type === "conversations") {
-              if (Array.isArray(result)) {
-                loadedConversationDatesRef.current.add(toDotDate(task.date));
-                rememberConversationRecords(
-                  knownConversationRecordIdsRef.current,
-                  task.date,
-                  result,
-                );
-                pendingSearchCache.conversations[task.date] = result.length
-                  ? groupConversationRecordsByThread(result)
-                  : {};
-              }
-            } else if (result?.found === true && result?.entry) {
-              pendingSearchCache[task.type][task.date] = result.entry;
-            } else if (result?.found === false) {
-              pendingMissingCache[task.type][task.date] = true;
-            }
-          } catch (error) {
-            if (dependencies.diagnostics.development && !cancelled) {
-              console.debug(
-                "[MurmurLane Debug] remote search task failed",
-                task.type,
-                task.date,
-                error,
-              );
-            }
-          } finally {
-            searchPendingRef.current[task.type].delete(task.date);
-          }
-        }
-      };
-
-      await Promise.all(
-        Array.from({ length: Math.min(concurrency, tasks.length) }, () =>
-          runTask(),
-        ),
-      );
-
-      if (!cancelled) {
-        const hasPendingSearchCache =
-          Object.keys(pendingSearchCache.conversations).length > 0 ||
-          Object.keys(pendingSearchCache.diary).length > 0 ||
-          Object.keys(pendingSearchCache.dailySummary).length > 0 ||
-          Object.keys(pendingSearchCache.letters).length > 0;
-        const hasPendingMissingCache =
-          Object.keys(pendingMissingCache.diary).length > 0 ||
-          Object.keys(pendingMissingCache.dailySummary).length > 0 ||
-          Object.keys(pendingMissingCache.letters).length > 0;
-
-        if (hasPendingSearchCache) {
-          setRemoteSearchCacheState((current) => ({
-            ...current,
-            conversations: {
-              ...current.conversations,
-              ...pendingSearchCache.conversations,
-            },
-            diary: {
-              ...current.diary,
-              ...pendingSearchCache.diary,
-            },
-            dailySummary: {
-              ...current.dailySummary,
-              ...pendingSearchCache.dailySummary,
-            },
-            letters: {
-              ...current.letters,
-              ...pendingSearchCache.letters,
-            },
-          }));
-        }
-        if (hasPendingMissingCache) {
-          setRemoteSearchMissingState((current) => ({
-            ...current,
-            diary: {
-              ...current.diary,
-              ...pendingMissingCache.diary,
-            },
-            dailySummary: {
-              ...current.dailySummary,
-              ...pendingMissingCache.dailySummary,
-            },
-            letters: {
-              ...current.letters,
-              ...pendingMissingCache.letters,
-            },
-          }));
-        }
-      }
+      const batches = await contentSync.loadIndexedSearchSources();
+      if (cancelled) return;
+      batches.forEach(({ date, records }) => {
+        loadedConversationDatesRef.current.add(toDotDate(date));
+        rememberConversationRecords(
+          knownConversationRecordIdsRef.current,
+          date,
+          records,
+        );
+      });
     };
 
-    loadSearchData();
+    void loadSearchData();
 
     return () => {
       cancelled = true;
@@ -1569,13 +926,7 @@ export default function InsDiaryPrototype({
   }, [
     searchQuery,
     remoteDateIndexState,
-    remoteConversationsState,
-    remoteDiaryEntriesState,
-    remoteDailySummaryEntriesState,
-    remoteLetterEntriesState,
-    remoteSearchCacheState,
-    remoteSearchMissingState,
-    dependencies.diagnostics.development,
+    contentSync,
   ]);
 
   const handleMemoryEntrySaved = (document, entry) => {
@@ -1941,28 +1292,19 @@ export default function InsDiaryPrototype({
     conversationDateLoadingRef.current.add(loadingKey);
     setConversationDateLoading(true);
     try {
-      const records = await fetchConversations(date, {
+      const records = await contentSync.loadConversations(date, {
         threadId,
       });
+      if (!records) return false;
       loadedConversationDatesRef.current.add(date);
       rememberConversationRecords(
         knownConversationRecordIdsRef.current,
         date,
         records,
       );
-      const grouped = groupConversationRecordsByThread(records);
-      setRemoteSearchCacheState((current) => ({
-        ...current,
-        conversations: {
-          ...current.conversations,
-          [date]: {
-            ...(current.conversations[date] ?? {}),
-            ...grouped,
-            [threadId]: grouped[threadId] ?? [],
-          },
-        },
-      }));
-      return Boolean(grouped[threadId]?.length);
+      return records.some(
+        (record) => String(record?.threadId || "") === threadId,
+      );
     } finally {
       conversationDateLoadingRef.current.delete(loadingKey);
       setConversationDateLoading(conversationDateLoadingRef.current.size > 0);
@@ -1971,6 +1313,7 @@ export default function InsDiaryPrototype({
     remoteConversationsState,
     remoteSearchCacheState.conversations,
     selectedThreadId,
+    contentSync,
   ]);
 
   const handleLoadEarlierConversationDate = useCallback(async () => {

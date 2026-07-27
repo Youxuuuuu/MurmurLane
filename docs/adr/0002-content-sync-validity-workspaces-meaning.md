@@ -1,6 +1,8 @@
 ---
 Status: Accepted
 Implementation: Partial
+ContentSync implementation: Complete
+Workspace consumption: Partial
 ---
 
 # ContentSync 管理有效性，Workspace 解释意义

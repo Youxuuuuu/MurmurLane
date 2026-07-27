@@ -81,6 +81,7 @@ function readStoredThreadProfiles() {
 
 export function useConversationProfiles(
   threadIds: string[],
+  profilesSnapshot,
   profileCommands,
 ) {
   const [userProfile, setUserProfile] = useState<ConversationIdentity>(() =>
@@ -94,32 +95,19 @@ export function useConversationProfiles(
   storedThreadProfilesRef.current = storedThreadProfiles;
 
   useEffect(() => {
-    let cancelled = false;
-    const refreshProfiles = () => {
-      profileCommands.fetchProfiles().then((result) => {
-        if (cancelled) return;
-        if (result.user) {
-          setUserProfile((current) => ({ ...current, ...result.user }));
-        }
-        setStoredThreadProfiles((current) => ({
-          ...current,
-          ...(result.threads ?? {}),
-        }));
-        setProfileError("");
-      })
-      .catch((error) => {
-        if (!cancelled) setProfileError(String(error?.message || error));
-      });
-    };
-
-    refreshProfiles();
-    window.addEventListener("murmurlane:profiles-changed", refreshProfiles);
-
-    return () => {
-      cancelled = true;
-      window.removeEventListener("murmurlane:profiles-changed", refreshProfiles);
-    };
-  }, []);
+    if (!profilesSnapshot) return;
+    if (profilesSnapshot.user) {
+      setUserProfile((current) => ({
+        ...current,
+        ...profilesSnapshot.user,
+      }));
+    }
+    setStoredThreadProfiles((current) => ({
+      ...current,
+      ...(profilesSnapshot.threads ?? {}),
+    }));
+    setProfileError("");
+  }, [profilesSnapshot]);
 
   const threadProfiles = useMemo(
     () =>

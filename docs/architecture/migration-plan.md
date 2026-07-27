@@ -65,7 +65,7 @@
 | --- | --- | --- | --- |
 | 1 | Conversation Transcript | Implemented / Final Device Pending | ADR-0006、0009、0011、0019 |
 | 2 | Browser Config、Composition Root 与最小 Adapter | Implemented / Final Device Pending | ADR-0009、0010、0015、0018 |
-| 3 | ContentSync | Pending | ADR-0001、0002、0013、0017、0019 |
+| 3 | ContentSync | Implemented / Final Device Pending | ADR-0001、0002、0013、0017、0019 |
 | 4 | Conversation Workspace Controller | Pending | ADR-0005、0006、0012、0014、0017 |
 | 5 | App Navigation | Pending | ADR-0003、0010、0015 |
 | 6 | Timeline 与 Archive Workspace | Pending | ADR-0005、0013、0014、0019 |
@@ -326,6 +326,27 @@ Archive 只搜索 Archive
 - 本补救项未修改 CSS、DOM 层级、React Key、滚动、窗口化、手势或动画。
 - ADR-0010 的浏览器 Composition Root 目标已完成，更新为 `Complete`。
 - ADR-0018 仍为 `Partial`：浏览器配置边界已完成，Server Config Parser 与 Server Capability 注入留在补救项 8。
+- 浏览器和真机完整交互验收仍按计划在全部架构迁移完成后统一执行。
+
+#### 补救 B 执行结果：ContentSync
+
+- 新增严格类型的 ContentSync Store 与 Service，由其持有来源 Snapshot、Keyed Source Cache、Negative Source Cache、Source Metadata、Snapshot Revision、Source/Key Generation 和文件连接状态。
+- 启动加载、当前日期加载、Conversation 历史 Key 加载、搜索所需来源加载、文件事件失效范围、重连 `resync`、重试与过期结果丢弃均收口到 ContentSync。
+- Conversation Archive、Timeline、Diary、Daily Summary、Letters、Static Memory、Xiaoye、Reminder History、Date Index、Conversation Profiles 与 Moments 的读取调用不再散落在 `App.tsx` 或 Workspace。
+- `App.tsx` 只在 AppRoot 生命周期创建并持有 ContentSync，通过 `useSyncExternalStore` 消费只读 Snapshot，并表达当前日期、搜索激活和页面可见性等外部输入。
+- `remoteSearchCacheState` 已按语义拆分：额外加载的原始来源数据进入 ContentSync Keyed Source Cache，已确认缺失的数据进入独立 Negative Source Cache。
+- Profile 消费改为响应 ContentSync Snapshot，不再自行发起重复读取或使用全局浏览器事件刷新。
+- 文件 SSE 仍保持 220ms 批处理、事件身份去重、页面隐藏关闭、恢复 `resync` 和无 Cursor 协议；连接状态进入 Snapshot。
+- 同一 Source/Key 的旧请求不会覆盖新结果；不同 Source 与 Key 仍可独立并行；加载失败保留最后一份有效 Snapshot。
+- 新增 4 个 Snapshot、Revision、Keyed/Negative Cache 与连接状态 Characterization Tests；ContentSync 相关测试 7/7 通过。
+- 完整 `npm test`：104/104 通过。
+- `npm run typecheck:strict`：通过。
+- `npx tsc -p tsconfig.app.json --noEmit --incremental false`：通过。
+- `npm run build`：通过；既有的 500 kB Chunk Size Warning 未处理。
+- 来源读取依赖方向审计通过：除具体 Adapter 外，只有 `content-sync/` 调用来源读取 Port。
+- 本补救项未修改 JSX、CSS、DOM、React Key、滚动、窗口化、手势或动画。
+- ADR-0001、ADR-0002、ADR-0017 与 ADR-0019 的 ContentSync 部分完成；其中 Workspace、Mutation Overlay 与领域 Command 部分仍按后续补救项实施，整体状态不提前标为 `Complete`。
+- ADR-0013 仍为 `Pending`，将在 Timeline、Archive 与 Conversation 写入流程形成领域 Overlay 后完成。
 - 浏览器和真机完整交互验收仍按计划在全部架构迁移完成后统一执行。
 
 - ADR-0001 至 ADR-0019 已确认。

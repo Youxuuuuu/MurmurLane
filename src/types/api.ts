@@ -128,6 +128,8 @@ export interface RemoteSearchCache {
 
 export interface RemoteData {
   conversationEntries: ConversationDateEntries;
+  conversationMoments: ConversationMoment[];
+  conversationProfiles: ConversationProfilesResponse | null;
   timelineState: TimelineState;
   diaryEntries: DatedMemoryEntries;
   dailySummaryEntries: DatedMemoryEntries;

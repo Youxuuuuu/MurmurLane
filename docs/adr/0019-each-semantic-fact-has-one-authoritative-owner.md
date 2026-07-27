@@ -2,6 +2,8 @@
 Status: Accepted
 Implementation: Partial
 Date: 2026-07-27
+ContentSync implementation: Complete
+Workspace and View implementation: Partial
 ---
 
 # ADR-0019：每种语义事实只有一个权威所有者
