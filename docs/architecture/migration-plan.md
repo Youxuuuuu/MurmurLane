@@ -646,6 +646,8 @@ test/workspaceViewModels.test.ts
 - 新增 2 个搜索所有权测试；`npm test` 98/98、严格类型检查、应用类型检查与生产构建通过。
 - 唯一有意行为变化是 Timeline 与 Archive 不再返回 Conversation 或彼此领域的结果。
 - ADR-0004 标记为 `Implementation: Complete`。
+- 补救复核确认 Reminder History 由 Timeline 的 `ReminderList` 展示，搜索点击语义也打开 Timeline 的既有 `reminders` 视图；Archive 没有该数据的页面或文档语义。
+- 新增 Reminder 搜索所有权 Characterization Test，并修正 Timeline Controller 对既有复数视图名 `"reminders"` 的解释，防止点击结果无意回退到 Line View。
 - 完整浏览器和真机验收仍在全部阶段结束后统一执行。
 
 ### 阶段 7 实际修改文件
@@ -656,5 +658,7 @@ docs/architecture/migration-plan.md
 src/App.tsx
 src/components/search/DiarySearchBox.tsx
 src/lib/searchPageData.ts
+src/workspaces/timeline/useTimelineWorkspace.ts
+src/workspaces/timeline/index.ts
 test/searchOwnership.test.ts
 ```

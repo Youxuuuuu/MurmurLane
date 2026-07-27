@@ -21,7 +21,18 @@ import {
   upsertTimelineEventInOverlay,
 } from "./timelineMutationOverlay";
 
-export type TimelineViewMode = "line" | "stats" | "reminder";
+export type TimelineViewMode =
+  | "line"
+  | "stats"
+  | "reminders";
+
+export function resolveTimelineNavigationView(
+  value: unknown,
+): TimelineViewMode {
+  return value === "stats" || value === "reminders"
+    ? value
+    : "line";
+}
 
 export interface TimelineWorkspacePort {
   fetchEvent(
@@ -157,10 +168,9 @@ export function useTimelineWorkspace<Theme, Page>({
       navigation.acknowledge(navigation.revision);
       return;
     }
-    const targetView =
-      target.view === "stats" || target.view === "reminder"
-        ? target.view
-        : "line";
+    const targetView = resolveTimelineNavigationView(
+      target.view,
+    );
     setDate(targetDate);
     setView(targetView);
     setNavigationTarget(

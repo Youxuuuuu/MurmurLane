@@ -8,6 +8,7 @@ export {
 } from "./timelineMutationOverlay";
 export {
   useTimelineWorkspace,
+  resolveTimelineNavigationView,
   type TimelineViewMode,
   type TimelineWorkspacePort,
 } from "./useTimelineWorkspace";
