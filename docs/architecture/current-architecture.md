@@ -10,6 +10,7 @@
 - `AGENTS.md`：开发与修改约束。
 - `docs/adr/`：架构决策及其理由。
 - `docs/architecture/migration-plan.md`：迁移顺序、测试和历史账本。
+- `docs/architecture/cross-repo-diagnosis.md`：MurmurLane 与 Cyberboss 问题的归属诊断流程。
 - `HANDOFF.md`：当前会话的短期交接。
 
 本文档不重复全部 ADR。需要理解某项选择为什么成立时，再阅读对应 ADR。
@@ -458,4 +459,3 @@ npm run typecheck:server
 npm run build
 → 通过，保留既有 500 kB Chunk Size Warning
 ```
-

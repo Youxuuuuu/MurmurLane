@@ -19,6 +19,7 @@
 - `CONTEXT.md`
 - 本文件
 - `docs/architecture/current-architecture.md`
+- `docs/architecture/cross-repo-diagnosis.md`
 - `docs/architecture/migration-plan.md`
 - `docs/adr/0011-migrations-are-characterized-one-seam-at-a-time.md`
 - `docs/adr/0012-controllers-outlive-views-within-the-app-session.md`
@@ -56,6 +57,7 @@ docs/architecture/migration-plan.md
 
 - ADR-0001～ADR-0019 的代码实施、统一浏览器验收与手机真机验收均已完成。
 - 当前架构总览已经写入 `docs/architecture/current-architecture.md`。
+- 跨仓库问题按照 `docs/architecture/cross-repo-diagnosis.md` 使用稳定身份和第一个错误 seam 判定归属。
 - ADR-0011 已更新为 `Implementation: Complete` 和 `Browser and device validation: Complete`。
 - Conversation Transcript、Composition Root、Browser/Server Config、ContentSync、Conversation/Timeline/Archive Workspace、App Navigation、搜索所有权、Server 分层、严格类型、错误边界、状态所有权和静态依赖边界均已落地。
 - `App.tsx` 和 `ConversationPage.tsx` 已移除 `@ts-nocheck`。
