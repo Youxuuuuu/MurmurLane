@@ -63,16 +63,16 @@
 
 | 阶段 | Seam | 状态 | 主要 ADR |
 | --- | --- | --- | --- |
-| 1 | Conversation Transcript | Implemented / Final Device Pending | ADR-0006、0009、0011、0019 |
-| 2 | Browser Config、Composition Root 与最小 Adapter | Implemented / Final Device Pending | ADR-0009、0010、0015、0018 |
-| 3 | ContentSync | Implemented / Final Device Pending | ADR-0001、0002、0013、0017、0019 |
-| 4 | Conversation Workspace Controller | Implemented / Final Device Pending | ADR-0005、0006、0012、0014、0017 |
-| 5 | App Navigation | Implemented / Final Device Pending | ADR-0003、0010、0015 |
-| 6 | Timeline 与 Archive Workspace | Implemented / Final Device Pending | ADR-0005、0013、0014、0019 |
-| 7 | 搜索所有权 | Implemented / Final Device Pending | ADR-0004、0011、0016 |
-| 7A | 状态确认、错误安全边界与依赖准入补救 | Implemented / Final Device Pending | ADR-0013、0014、0016、0017、0019 |
-| 8 | Server 分层与 Server Typecheck | Implemented | ADR-0007、0009、0014、0018 |
-| 9 | 严格类型收尾 | Pending | ADR-0009、0011 |
+| 1 | Conversation Transcript | Complete | ADR-0006、0009、0011、0019 |
+| 2 | Browser Config、Composition Root 与最小 Adapter | Complete | ADR-0009、0010、0015、0018 |
+| 3 | ContentSync | Complete | ADR-0001、0002、0013、0017、0019 |
+| 4 | Conversation Workspace Controller | Complete | ADR-0005、0006、0012、0014、0017 |
+| 5 | App Navigation | Complete | ADR-0003、0010、0015 |
+| 6 | Timeline 与 Archive Workspace | Complete | ADR-0005、0013、0014、0019 |
+| 7 | 搜索所有权 | Complete | ADR-0004、0011、0016 |
+| 7A | 状态确认、错误安全边界与依赖准入补救 | Complete | ADR-0013、0014、0016、0017、0019 |
+| 8 | Server 分层与 Server Typecheck | Complete | ADR-0007、0009、0014、0018 |
+| 9 | 严格类型收尾 | Complete | ADR-0009、0011 |
 
 ## 阶段 1：Conversation Transcript
 
@@ -888,13 +888,13 @@ test/workspaceErrors.test.ts
 
 ## 最终迁移状态
 
-截至阶段 12，ADR-0001～0010、ADR-0012～0019 的代码实施均为 `Complete`。ADR-0011 保持 `Partial`，唯一未完成项是统一浏览器与真机交互验收。
+截至 2026-07-29，ADR-0001～ADR-0019 的代码实施、统一浏览器验收与手机真机验收均为 `Complete`。当前架构总览见 `docs/architecture/current-architecture.md`。
 
 最终自动基线：
 
 ```text
 npm test
-→ 138/138 通过
+→ 142/142 通过
 
 npx tsc -p tsconfig.app.json --noEmit --incremental false
 → 通过
@@ -918,7 +918,9 @@ npm run build
 - View 不读取 `bodyText`、HTTP 状态或具体 Adapter Error Class。
 - 工作区没有未提交改动。
 
-## 统一浏览器与真机验收清单
+## 统一浏览器与真机验收记录
+
+验收已在 realme Android 15 Chrome 150 与 iPhone XS Max iOS 18.6.2 Chrome 上完成。以下清单均已执行；发现的迁移回归和 MurmurLane 局部 UI 问题已经按照独立 seam 修复并由用户确认。
 
 ### 应用与导航
 
@@ -952,4 +954,12 @@ npm run build
 - 在目标手机上检查竖屏、软键盘、输入框 16px 行为、页面缩放策略、触摸滚动和安全区域。
 - 切换前后台和网络连接，确认文件 SSE 重同步、WebChat 重连以及旧 Snapshot 保留行为。
 
-验收完成后，应在 ADR-0011 中记录设备、浏览器、结果与发现的问题，再将 `Browser and device validation` 和 `Implementation` 更新为 `Complete` 并单独提交。
+验收修复提交：
+
+```text
+86091fd fix: 消费 Workspace 搜索高亮目标
+a990818 fix: 让新消息按钮避让输入框
+78b6048 fix: 固定长分享预览操作区
+```
+
+用户已在 2026-07-29 确认上述问题和关联的 Cyberboss 问题解决。后台页面重建恢复属于新增持久化能力，realme Android Chrome 键盘重叠属于迁移前既有兼容问题；两者作为后续独立任务，不阻塞迁移完成。

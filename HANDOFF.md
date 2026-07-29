@@ -18,6 +18,7 @@
 - `AGENTS.md`
 - `CONTEXT.md`
 - 本文件
+- `docs/architecture/current-architecture.md`
 - `docs/architecture/migration-plan.md`
 - `docs/adr/0011-migrations-are-characterized-one-seam-at-a-time.md`
 - `docs/adr/0012-controllers-outlive-views-within-the-app-session.md`
@@ -33,7 +34,13 @@ git log -10 --oneline
 
 本轮最初目标是基于真实源码整理 MurmurLane 架构，使后续功能进入正确的所有者，同时严格保持既有 UI、CSS、DOM、滚动、窗口化、手势和动画。
 
-架构决策已经记录在 `docs/adr/0001-*.md` 至 `docs/adr/0019-*.md`。实施顺序、每阶段测试、提交与结果记录在：
+当前已经落地的架构以以下文档为总览入口：
+
+```text
+docs/architecture/current-architecture.md
+```
+
+架构决策记录在 `docs/adr/0001-*.md` 至 `docs/adr/0019-*.md`。实施顺序、每阶段测试、提交与结果记录在：
 
 ```text
 docs/architecture/migration-plan.md
@@ -41,27 +48,15 @@ docs/architecture/migration-plan.md
 
 不要在交接后重新设计一套架构，也不要把 ADR 中的目标结构误说成迁移前事实。
 
-稳定所有权仍然是：
-
-```text
-Cyberboss
-→ Runtime、Channel、线程权威状态、Canonical Conversation Record 生产
-
-MurmurLane ContentSync
-→ 来源数据何时有效、Snapshot、缓存、文件变化与重同步
-
-MurmurLane Workspace
-→ 领域状态、业务规则、View Model、Commands
-
-MurmurLane View
-→ DOM、滚动、窗口化、焦点、手势和动画
-```
+稳定所有权、运行时数据流、静态依赖方向和新功能投放规则不要在本文件重复维护，以 `docs/architecture/current-architecture.md` 为准。
 
 ## 已经完成
 
-### 架构迁移
+### 架构迁移与文档收尾
 
-- ADR-0001～0010、ADR-0012～0019 的代码实施已经完成。
+- ADR-0001～ADR-0019 的代码实施、统一浏览器验收与手机真机验收均已完成。
+- 当前架构总览已经写入 `docs/architecture/current-architecture.md`。
+- ADR-0011 已更新为 `Implementation: Complete` 和 `Browser and device validation: Complete`。
 - Conversation Transcript、Composition Root、Browser/Server Config、ContentSync、Conversation/Timeline/Archive Workspace、App Navigation、搜索所有权、Server 分层、严格类型、错误边界、状态所有权和静态依赖边界均已落地。
 - `App.tsx` 和 `ConversationPage.tsx` 已移除 `@ts-nocheck`。
 - Server 已进入独立 TypeScript 检查。
@@ -225,23 +220,7 @@ Composer.getBoundingClientRect()
 
 两个问题必须分别执行，不能放进同一个提交。
 
-### 计划 A：先关闭架构迁移文档状态
-
-用户已经完成真机验收并确认迁移相关问题解决，但以下文档仍显示验收 Pending：
-
-```text
-docs/adr/0011-migrations-are-characterized-one-seam-at-a-time.md
-docs/architecture/migration-plan.md
-```
-
-新会话应先用一个纯文档提交：
-
-- 将 ADR-0011 的 `Browser and device validation` 与 `Implementation` 更新为 `Complete`。
-- 记录真机设备、通过范围、三个修复提交。
-- 明确两个剩余问题分别是“新增持久化能力”和“迁移前 Android Chrome 兼容问题”，不阻塞架构迁移完成。
-- 不在该提交中修改代码。
-
-### 计划 B：跨刷新状态恢复
+### 计划 A：跨刷新状态恢复
 
 推荐顺序：
 
@@ -258,7 +237,7 @@ docs/architecture/migration-plan.md
 
 优先评估 `sessionStorage` 是否满足“同一标签页重载恢复”，不要未经产品确认直接升级为永久 `localStorage` 或 IndexedDB。
 
-### 计划 C：Android Chrome 键盘
+### 计划 B：Android Chrome 键盘
 
 推荐顺序：
 
@@ -328,7 +307,6 @@ Playwright 或桌面浏览器模拟可以辅助检查普通 DOM，但不能替�
 新会话只要做到以下几点，就算正确接手：
 
 - 不再重复架构迁移。
-- 先完成 ADR-0011 的验收状态收尾。
 - 把两个遗留问题拆成两个独立任务。
 - 在没有真机 Viewport 证据前，不猜 Android Chrome 修复。
 - 在没有产品恢复语义前，不批量持久化 Controller State。

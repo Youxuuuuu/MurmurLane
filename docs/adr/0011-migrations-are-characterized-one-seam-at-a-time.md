@@ -1,19 +1,50 @@
 ---
 Status: Accepted
-Implementation: Partial
+Implementation: Complete
 Automated migration: Complete
-Browser and device validation: Pending
+Browser and device validation: Complete
 ---
 
 # 架构迁移先刻画行为并一次迁移一个 seam
 
 ## 当前实施状态
 
-Conversation Transcript、Composition Root、ContentSync、三个 Workspace Controller、App Navigation、搜索所有权、Server 分层、严格类型渐进移除、领域所有权补救、静态依赖边界和安全错误链均已按照独立 seam 实施、验证并提交。自动验证包括 138 项 Node Characterization Tests、应用类型检查、新 seam 严格检查、Server 严格检查和生产构建。
+Conversation Transcript、Composition Root、ContentSync、三个 Workspace Controller、App Navigation、搜索所有权、Server 分层、严格类型渐进移除、领域所有权补救、静态依赖边界和安全错误链均已按照独立 seam 实施、验证并提交。统一浏览器与手机真机验收也已完成。
 
-本 ADR 保持 `Implementation: Partial` 的唯一原因是浏览器与真机交互验收尚未执行。用户已经明确允许在全部代码迁移完成后统一验收，因此此前各阶段没有伪称 DOM、Effect 时序、真实 EventSource、触摸、滚动和 Framer Motion 已经经过真机证明。
+当前自动基线为 142 项 Node Characterization Tests 全部通过，应用构建、新 seam 严格检查和 Server 严格检查通过。用户已经确认真机验收中发现的迁移回归与 MurmurLane 局部 UI 问题完成修复，因此本 ADR 更新为 `Implementation: Complete`。
 
-完成固定人工验收清单并记录结果后，本 ADR 才可以改为 `Implementation: Complete`。若验收发现回归，修复应继续按单一 seam 独立提交，不得借机混入新功能或视觉改版。
+## 统一浏览器与真机验收结果
+
+验收环境包括：
+
+- realme，Android 15，Chrome 150。
+- iPhone XS Max，iOS 18.6.2，Chrome。
+- 局域网 Wi-Fi 下访问 Vite 开发服务器。
+
+已确认通过：
+
+- Conversation、Timeline 与 Archive 导航及应用会话内状态保持。
+- Conversation 线程、日期、搜索、Transcript、历史加载、滚动锚点、窗口化与稳定动画身份。
+- 文字、图片、文件和 Sticker 的发送、重试、实时连接、Cursor、未读与通知。
+- Timeline 与 Archive 的搜索所有权、查看、保存、删除和失败回退。
+- 移动端触摸、左滑、图片预览、安全区域和整体视觉样式。
+
+验收发现的问题按照单一 seam 独立修复：
+
+```text
+86091fd fix: 消费 Workspace 搜索高亮目标
+a990818 fix: 让新消息按钮避让输入框
+78b6048 fix: 固定长分享预览操作区
+```
+
+用户已在 2026-07-29 确认上述问题以及关联的 Cyberboss 发送与实时附件问题均已解决。
+
+仍存在的两个后续问题不属于架构迁移未完成：
+
+- 浏览器进入后台后发生页面重建并回到初始页面，属于 ADR-0012 明确未包含的新增跨刷新持久化能力。
+- realme Android Chrome 的软键盘与输入框重叠，是迁移前已经存在的 Viewport 兼容问题。
+
+二者应分别建立后续任务、测试、验收与独立提交，不影响本 ADR 的迁移完成状态。
 
 架构迁移采用 Characterization Tests 先行、一次迁移一个 seam 的增量策略。每一步独立构建、验证、提交和回退，并保持当前可观察行为。任何有意行为变化必须单独实施、单独说明，不得伪装成架构重构。UI、CSS、DOM、滚动、窗口化和动画不得在行为保持型迁移中发生无意变化。
 

@@ -1,5 +1,7 @@
 # MurmurLane 仓库协作说明
 
+当前已落地架构的总览入口见 `docs/architecture/current-architecture.md`。具体决策理由见 `docs/adr/`，迁移过程与验证账本见 `docs/architecture/migration-plan.md`。
+
 ## 项目角色
 
 - MurmurLane 是 Cyberboss 持久内容的展示前端，同时提供实时 WebChat 交互。
