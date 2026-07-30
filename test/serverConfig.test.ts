@@ -12,6 +12,9 @@ test("Server Config 保留现有默认值和环境优先级", () => {
       API_FILE_MAX_BYTES: "1024",
       CYBERBOSS_DATA_ROOT: ".data",
       MURMURLANE_EDIT_TOKEN: " token ",
+      CYBERBOSS_WEB_CHAT_URL: " http://127.0.0.1:9999/ ",
+      CYBERBOSS_WEB_CHAT_TOKEN: " chat-token ",
+      CYBERBOSS_CLI_PATH: ".tools/cyberboss.js",
     },
     "D:\\app",
   );
@@ -21,6 +24,15 @@ test("Server Config 保留现有默认值和环境优先级", () => {
   assert.equal(config.apiFileMaxBytes, 1024);
   assert.equal(config.dataRoot, path.resolve(".data"));
   assert.equal(config.editToken, "token");
+  assert.equal(
+    config.cyberbossWebChatUrl,
+    "http://127.0.0.1:9999",
+  );
+  assert.equal(config.cyberbossWebChatToken, "chat-token");
+  assert.equal(
+    config.cyberbossCliPath,
+    path.resolve(".tools/cyberboss.js"),
+  );
   assert.equal(
     config.staticDistDirectory,
     path.resolve("D:\\app", "dist"),
@@ -35,6 +47,23 @@ test("Server Config 对文件限制保留 25MB 回退", () => {
   });
   assert.equal(config.port, 8788);
   assert.equal(config.apiFileMaxBytes, 25 * 1024 * 1024);
+});
+
+test("Server Config 兼容当前 MurmurLane WebChat 环境键", () => {
+  const config = parseServerConfig({
+    VITE_MURMURLANE_CHAT_API_BASE_URL:
+      "http://127.0.0.1:9900/",
+    VITE_MURMURLANE_CHAT_TOKEN: "existing-chat-token",
+  });
+
+  assert.equal(
+    config.cyberbossWebChatUrl,
+    "http://127.0.0.1:9900",
+  );
+  assert.equal(
+    config.cyberbossWebChatToken,
+    "existing-chat-token",
+  );
 });
 
 test("Server Config 在端口无效时明确拒绝启动", () => {

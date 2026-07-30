@@ -108,6 +108,8 @@ export interface ConversationProfileApiData {
   group?: string;
   pinned?: boolean;
   thinkingFace?: string;
+  listHidden?: boolean;
+  listHiddenThrough?: string;
   threadId?: string;
   updatedAt?: string;
 }
@@ -116,6 +118,14 @@ export interface ConversationProfilesResponse {
   root: string;
   user: ConversationProfileApiData | null;
   threads: Record<string, ConversationProfileApiData>;
+}
+
+export interface ConversationDeleteResponse {
+  ok: true;
+  threadId: string;
+  deletedRecordCount: number;
+  touchedDates: string[];
+  deletedSourceKeys: string[];
 }
 
 export interface RemoteSearchCache {

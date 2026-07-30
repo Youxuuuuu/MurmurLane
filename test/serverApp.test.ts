@@ -8,19 +8,37 @@ import { createApp } from "../server/app";
 import { parseServerConfig } from "../server/config";
 import { createServerAccess } from "../server/fileLoaders";
 import { createLiveUpdateService } from "../server/liveUpdates";
+import type {
+  ConversationDeleteResult,
+} from "../server/conversation/archiveCommands";
 
 async function withServer(
   run: (baseUrl: string, dataRoot: string) => Promise<void>,
+  options: {
+    environment?: Readonly<Record<string, string | undefined>>;
+    conversationArchiveCommands?: {
+      deleteThread(
+        threadId: string,
+      ): Promise<ConversationDeleteResult>;
+    };
+  } = {},
 ) {
   const dataRoot = await mkdtemp(
     path.join(tmpdir(), "murmurlane-server-"),
   );
   const config = parseServerConfig({
     CYBERBOSS_DATA_ROOT: dataRoot,
+    ...options.environment,
   });
   const access = createServerAccess(config.dataRoot);
   const liveUpdates = createLiveUpdateService(config.dataRoot);
-  const app = createApp({ config, access, liveUpdates });
+  const app = createApp({
+    config,
+    access,
+    liveUpdates,
+    conversationArchiveCommands:
+      options.conversationArchiveCommands,
+  });
   const server = app.listen(0, "127.0.0.1");
   await new Promise<void>((resolve) =>
     server.once("listening", resolve),
@@ -117,6 +135,95 @@ test("Server 编辑令牌缺失时保持写入禁用", async () => {
         "Editing is disabled. Set MURMURLANE_EDIT_TOKEN to enable writes.",
     });
   });
+});
+
+test("Server 对话删除端点复用编辑令牌并委托归档命令", async () => {
+  const calls: string[] = [];
+  const result: ConversationDeleteResult = {
+    threadId: "thread/delete",
+    deletedRecordCount: 3,
+    touchedDates: ["2026-07-31"],
+    deletedSourceKeys: ["source-a", "source-b", "source-c"],
+  };
+  await withServer(
+    async (baseUrl) => {
+      const path = `${baseUrl}/api/conversations/thread/${encodeURIComponent(result.threadId)}`;
+      const forbidden = await fetch(path, { method: "DELETE" });
+      assert.equal(forbidden.status, 403);
+      assert.deepEqual(calls, []);
+
+      const response = await fetch(path, {
+        method: "DELETE",
+        headers: { "X-MurmurLane-Edit-Token": "edit-token" },
+      });
+
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), {
+        ok: true,
+        ...result,
+      });
+      assert.deepEqual(calls, ["thread/delete"]);
+    },
+    {
+      environment: {
+        MURMURLANE_EDIT_TOKEN: "edit-token",
+      },
+      conversationArchiveCommands: {
+        async deleteThread(threadId) {
+          calls.push(threadId);
+          return result;
+        },
+      },
+    },
+  );
+});
+
+test("Server 在线程 Profile 中持久保存不显示边界", async () => {
+  await withServer(
+    async (baseUrl) => {
+      const response = await fetch(
+        `${baseUrl}/api/conversation-profiles/thread/thread-hidden`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "X-MurmurLane-Edit-Token": "edit-token",
+          },
+          body: JSON.stringify({
+            listHidden: true,
+            listHiddenThrough:
+              "legacy:assistant:thread-hidden:source|stable",
+          }),
+        },
+      );
+      assert.equal(response.status, 200);
+      const saved = await response.json();
+      assert.equal(saved.listHidden, true);
+      assert.equal(
+        saved.listHiddenThrough,
+        "legacy:assistant:thread-hidden:source|stable",
+      );
+
+      const snapshot = await fetch(
+        `${baseUrl}/api/conversation-profiles`,
+      );
+      assert.equal(snapshot.status, 200);
+      const profiles = await snapshot.json();
+      assert.equal(
+        profiles.threads["thread-hidden"].listHidden,
+        true,
+      );
+      assert.equal(
+        profiles.threads["thread-hidden"].listHiddenThrough,
+        "legacy:assistant:thread-hidden:source|stable",
+      );
+    },
+    {
+      environment: {
+        MURMURLANE_EDIT_TOKEN: "edit-token",
+      },
+    },
+  );
 });
 
 test("Server 领域读取在来源缺失时保持既有响应结构", async () => {

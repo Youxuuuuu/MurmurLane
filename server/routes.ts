@@ -32,6 +32,7 @@ import type { EditableStaticMemoryMode } from "./memory/service.js";
 import { createMediaService } from "./media/service.js";
 import { createReminderService } from "./reminder/service.js";
 import { ServerDomainError } from "./domainErrors.js";
+import type { createConversationArchiveCommands } from "./conversation/archiveCommands.js";
 
 export interface ServerRouteDependencies {
   readonly config: ServerConfig;
@@ -54,6 +55,10 @@ export interface ServerRouteDependencies {
   readonly reminderService: ReturnType<
     typeof createReminderService
   >;
+  readonly conversationArchiveCommands: Pick<
+    ReturnType<typeof createConversationArchiveCommands>,
+    "deleteThread"
+  >;
 }
 
 export function registerRoutes(
@@ -70,6 +75,7 @@ const {
   memoryService,
   mediaService,
   reminderService,
+  conversationArchiveCommands,
 } = dependencies;
 
 function elapsedMs(startedAt: bigint) {
@@ -404,6 +410,21 @@ app.get("/api/conversations/search", async (request, response, next) => {
     next(error);
   }
 });
+
+app.delete(
+  "/api/conversations/thread/:threadId",
+  async (request, response, next) => {
+    try {
+      if (!ensureEditToken(request, response)) return;
+      const result = await conversationArchiveCommands.deleteThread(
+        request.params.threadId,
+      );
+      response.json({ ok: true, ...result });
+    } catch (error) {
+      handleWritableRouteError(error, response, next);
+    }
+  },
+);
 
 app.get("/api/moments", async (request, response, next) => {
   try {

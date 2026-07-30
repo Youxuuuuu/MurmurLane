@@ -8,6 +8,9 @@ export interface ServerConfig {
   readonly port: number;
   readonly dataRoot: string;
   readonly editToken: string;
+  readonly cyberbossWebChatUrl: string;
+  readonly cyberbossWebChatToken: string;
+  readonly cyberbossCliPath: string;
   readonly apiFileMaxBytes: number;
   readonly staticDistDirectory: string;
   readonly publicDirectory: string;
@@ -46,6 +49,19 @@ export function parseServerConfig(
         DEFAULT_CYBERBOSS_DATA_ROOT,
     ),
     editToken: trimmed(environment.MURMURLANE_EDIT_TOKEN),
+    cyberbossWebChatUrl: (
+      trimmed(environment.CYBERBOSS_WEB_CHAT_URL) ||
+      trimmed(environment.VITE_MURMURLANE_CHAT_API_BASE_URL) ||
+      "http://127.0.0.1:8791"
+    ).replace(/\/+$/, ""),
+    cyberbossWebChatToken: trimmed(
+      environment.CYBERBOSS_WEB_CHAT_TOKEN ||
+        environment.VITE_MURMURLANE_CHAT_TOKEN,
+    ),
+    cyberbossCliPath: path.resolve(
+      trimmed(environment.CYBERBOSS_CLI_PATH) ||
+        path.join(cwd, "..", "cyberboss", "bin", "cyberboss.js"),
+    ),
     apiFileMaxBytes: parseFileLimit(
       environment.API_FILE_MAX_BYTES,
     ),

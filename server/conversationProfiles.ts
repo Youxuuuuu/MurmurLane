@@ -17,6 +17,8 @@ export interface StoredConversationProfile {
   group?: string;
   pinned?: boolean;
   thinkingFace?: string;
+  listHidden?: boolean;
+  listHiddenThrough?: string;
   threadId?: string;
   updatedAt?: string;
 }
@@ -34,6 +36,8 @@ export interface ConversationProfilePayload {
   group?: unknown;
   pinned?: unknown;
   thinkingFace?: unknown;
+  listHidden?: unknown;
+  listHiddenThrough?: unknown;
 }
 
 const profileRoot = (access: ServerAccess) =>
@@ -108,6 +112,8 @@ function toClientProfile(profile: StoredConversationProfile, directoryPath: stri
     group: profile.group || "",
     pinned: profile.pinned === true,
     thinkingFace: profile.thinkingFace || ">ᴗo ಣ >",
+    listHidden: profile.listHidden === true,
+    listHiddenThrough: profile.listHiddenThrough || "",
     threadId: profile.threadId,
     updatedAt: profile.updatedAt,
   };
@@ -261,6 +267,18 @@ export async function writeConversationProfile({
             current?.thinkingFace || ">ᴗo ಣ >",
             40,
           ),
+          listHidden:
+            typeof payload.listHidden === "boolean"
+              ? payload.listHidden
+              : current?.listHidden === true,
+          listHiddenThrough:
+            payload.listHidden === false
+              ? ""
+              : optionalTextValue(
+                  payload.listHiddenThrough,
+                  current?.listHiddenThrough || "",
+                  512,
+                ),
           threadId,
         }
       : {}),

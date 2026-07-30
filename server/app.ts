@@ -11,6 +11,14 @@ import { createConversationReadModel } from "./conversation/readModel.js";
 import { createMemoryService } from "./memory/service.js";
 import { createMediaService } from "./media/service.js";
 import { createReminderService } from "./reminder/service.js";
+import {
+  createConversationArchiveCommands,
+  type ConversationArchiveCommandDependencies,
+} from "./conversation/archiveCommands.js";
+
+type ConversationArchiveCommands = ReturnType<
+  typeof createConversationArchiveCommands
+>;
 
 export interface ServerAppDependencies {
   readonly config: ServerConfig;
@@ -18,6 +26,10 @@ export interface ServerAppDependencies {
     typeof createLiveUpdateService
   >;
   readonly access: ServerAccess;
+  readonly conversationArchiveCommands?: Pick<
+    ConversationArchiveCommands,
+    "deleteThread"
+  >;
 }
 
 export function createApp(dependencies: ServerAppDependencies) {
@@ -39,6 +51,11 @@ export function createApp(dependencies: ServerAppDependencies) {
     reminderService: createReminderService(
       dependencies.access,
     ),
+    conversationArchiveCommands:
+      dependencies.conversationArchiveCommands ??
+      createConversationArchiveCommands({
+        config: dependencies.config,
+      } satisfies ConversationArchiveCommandDependencies),
   };
   registerRoutes(app, routeDependencies);
   return app;

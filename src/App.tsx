@@ -378,6 +378,13 @@ export default function InsDiaryPrototype({
     }),
     [dependencies.murmurLaneData],
   );
+  const conversationArchiveCommands = useMemo(
+    () => ({
+      deleteThread:
+        dependencies.murmurLaneData.deleteConversationThread,
+    }),
+    [dependencies.murmurLaneData],
+  );
   const loadConversationRecords = useCallback(
     (date, options) =>
       contentSync.loadConversations(date, options),
@@ -389,6 +396,7 @@ export default function InsDiaryPrototype({
     initialThreadId: defaultConversationThreadId,
     initialDate: getTodayDateText(),
     profileCommands: conversationProfileCommands,
+    archiveCommands: conversationArchiveCommands,
     loadConversationRecords,
     loadStickerAssets:
       dependencies.murmurLaneData.fetchStickerAssets,
@@ -423,6 +431,12 @@ export default function InsDiaryPrototype({
   const profileThreadIds = conversationViewModel.threadIds;
   const conversationThreadSummaries =
     conversationViewModel.threadSummaries;
+  const visibleConversationThreadSummaries =
+    conversationViewModel.visibleThreadSummaries;
+  const deletingConversationThreadId =
+    conversationViewModel.deletingThreadId;
+  const conversationThreadActionError =
+    conversationViewModel.threadActionError;
   const selectedThreadDates =
     conversationViewModel.selectedThreadDates;
   const allConversationDates =
@@ -1040,7 +1054,8 @@ export default function InsDiaryPrototype({
               <ConversationListPage
                 userProfile={userProfile}
                 threadProfiles={effectiveThreadProfiles}
-                threadSummaries={conversationThreadSummaries}
+                threadSummaries={visibleConversationThreadSummaries}
+                allThreadSummaries={conversationThreadSummaries}
                 unreadCounts={conversationUnreadCounts}
                 moments={conversationMoments}
                 onBack={() => activateSection("Timeline")}
@@ -1070,6 +1085,10 @@ export default function InsDiaryPrototype({
                 }
                 onSelectThread={openConversationThread}
                 onUpdateThreadProfile={updateThreadProfile}
+                onHideThread={conversationCommands.hideThread}
+                onDeleteThread={conversationCommands.deleteThread}
+                deletingThreadId={deletingConversationThreadId}
+                threadActionError={conversationThreadActionError}
                 onUpdateUserProfile={setUserProfile}
               />
             ) : conversationView === "global-search" ? (

@@ -2,6 +2,7 @@ import type {
   ApiRequestOptions,
   ConversationsResponse,
   ConversationMomentsResponse,
+  ConversationDeleteResponse,
   ConversationProfileApiData,
   ConversationProfilesResponse,
   DateIndexResponse,
@@ -273,6 +274,15 @@ function saveConversationThreadProfile(
   );
 }
 
+function deleteConversationThread(
+  threadId: string,
+): Promise<ConversationDeleteResponse> {
+  return requestJson<ConversationDeleteResponse>(
+    `/api/conversations/thread/${encodeURIComponent(threadId)}`,
+    { method: "DELETE" },
+  );
+}
+
 function fetchTimeline(
   options: FetchTimelineOptions = {},
 ): Promise<TimelineApiResponse> {
@@ -472,6 +482,7 @@ return Object.freeze({
   fetchBinaryAsset,
   saveConversationUserProfile,
   saveConversationThreadProfile,
+  deleteConversationThread,
   fetchTimeline,
   fetchDateIndex,
   fetchReminderHistory,

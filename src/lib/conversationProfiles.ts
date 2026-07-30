@@ -9,6 +9,8 @@ import type {
   ConversationProfileApiData,
   ConversationProfilesResponse,
 } from "../types/api";
+import type { ConversationRecord } from "../types/conversation";
+import { getConversationRenderId } from "./conversationIdentity";
 
 export type ConversationIdentity = {
   name: string;
@@ -26,6 +28,8 @@ export type ConversationThreadProfile = ConversationIdentity & {
   group: string;
   pinned: boolean;
   thinkingFace: string;
+  listHidden: boolean;
+  listHiddenThrough: string;
 };
 
 const USER_PROFILE_KEY = "murmurlane.conversation.user-profile.v1";
@@ -65,7 +69,37 @@ export function createDefaultThreadProfile(
     group: "",
     pinned: false,
     thinkingFace: ">ᴗo ಣ >",
+    listHidden: false,
+    listHiddenThrough: "",
   };
+}
+
+export interface ConversationThreadSummaryActivity {
+  readonly threadId: string;
+  readonly latestRecord: ConversationRecord | null;
+}
+
+export function getConversationSummaryActivityKey(
+  summary: ConversationThreadSummaryActivity,
+) {
+  return summary.latestRecord
+    ? getConversationRenderId(
+        summary.latestRecord,
+        summary.threadId,
+      )
+    : "";
+}
+
+export function isConversationThreadVisibleInList(
+  profile: ConversationThreadProfile | undefined,
+  summary: ConversationThreadSummaryActivity,
+) {
+  if (!profile?.listHidden) return true;
+  const boundary = String(
+    profile.listHiddenThrough || "",
+  ).trim();
+  const latest = getConversationSummaryActivityKey(summary);
+  return Boolean(boundary && latest && boundary !== latest);
 }
 
 function readStoredValue<T>(key: string, fallback: T): T {

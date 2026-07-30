@@ -98,3 +98,11 @@ _Avoid_: 把未经验证的 Viewport 差值直接当作真实键盘边界、按�
 **Thread**:
 由 Cyberboss 标识、在 MurmurLane 中选择和展示的一条持续对话。
 _Avoid_: 页面路由、单个 Turn
+
+**Conversation Archive Deletion**:
+从 Conversation Archive 中移除某个 Thread 在删除切点之前已有的全部 Conversation Record，但保留其 Raw Session 来源、Thread Profile 和记录引用的媒体实体；切点之后的新记录保留并使 Thread 重新出现。普通重启、刷新和后台同步不会恢复旧记录，只有明确重新导入才会恢复。
+_Avoid_: Raw Session Deletion、Runtime Thread Termination、Thread Profile Deletion、Media Deletion、自动重新投影、不可恢复销毁
+
+**Thread List Hiding**:
+从 Conversation 列表中隐藏某个 Thread，但保留其全部 Conversation Record、Thread Profile、搜索可达性和直接访问能力，并在共享 MurmurLane Data Root 中跨刷新、Server 重启和访问设备保持；隐藏边界由操作时已见的稳定消息身份确定。只有边界之后新产生且用户可见的 User 或 Assistant 内容会使其重新出现，历史重读、重新导入、对账和运行状态事件不会。
+_Avoid_: Conversation Archive Deletion、Thread Profile Deletion、浏览器本地偏好、搜索过滤、访问禁用、读取即解除隐藏

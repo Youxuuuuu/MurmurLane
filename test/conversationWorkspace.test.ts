@@ -6,6 +6,7 @@ import {
   reduceConversationWorkspaceState,
   resolveConversationNavigationTarget,
 } from "../src/workspaces/conversation";
+import { shouldReleaseDeletedThreadOverlay } from "../src/workspaces/conversation/conversationListActions";
 
 test("Conversation Workspace 只通过 View Model 与 Commands 暴露页面契约", () => {
   const viewModel = {
@@ -74,6 +75,8 @@ test("Conversation Workspace 将 Draft Thread 原子迁移为真实 Thread", () 
     group: "",
     pinned: false,
     thinkingFace: "",
+    listHidden: false,
+    listHiddenThrough: "",
   };
   const draft = reduceConversationWorkspaceState(
     createConversationWorkspaceState({
@@ -191,4 +194,33 @@ test("Conversation Workspace 只消费更新的 Navigation Revision", () => {
   assert.equal(navigated.view, "chat");
   assert.equal(navigated.navigationTarget?.messageId, "message-2");
   assert.equal(stale, navigated);
+});
+
+test("Conversation Workspace 仅在归档删除已被观察或有新消息时释放列表遮罩", () => {
+  const deletedSourceKeys = new Set(["source|old"]);
+
+  assert.equal(
+    shouldReleaseDeletedThreadOverlay({
+      archiveContainsThread: true,
+      latestSourceKey: "source|old",
+      deletedSourceKeys,
+    }),
+    false,
+  );
+  assert.equal(
+    shouldReleaseDeletedThreadOverlay({
+      archiveContainsThread: false,
+      latestSourceKey: "",
+      deletedSourceKeys,
+    }),
+    true,
+  );
+  assert.equal(
+    shouldReleaseDeletedThreadOverlay({
+      archiveContainsThread: true,
+      latestSourceKey: "source|new",
+      deletedSourceKeys,
+    }),
+    true,
+  );
 });

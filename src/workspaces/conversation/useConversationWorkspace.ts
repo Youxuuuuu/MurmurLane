@@ -10,6 +10,7 @@ import { flushSync } from "react-dom";
 import { mergeConversationRecords } from "../../lib/conversationMerge";
 import { buildWebChatSendEnvelope } from "../../lib/webChatSendContract";
 import {
+  getLegacyStableId,
   upsertConversationRecordByIdentity,
 } from "../../lib/conversationIdentity";
 import {
@@ -30,6 +31,7 @@ import {
 } from "../../lib/webChatSendTransaction";
 import type { ConversationRecord } from "../../types/conversation";
 import type {
+  ConversationDeleteResponse,
   ConversationsResponse,
   FetchConversationsOptions,
   RemoteData,
@@ -50,6 +52,8 @@ import type { ConversationNavigationTarget } from "../../app/navigation/appNavig
 import { createConversationWorkspaceOutput } from "./conversationWorkspaceContract";
 import {
   createDefaultThreadProfile,
+  getConversationSummaryActivityKey,
+  isConversationThreadVisibleInList,
   useConversationProfiles,
   type ConversationProfileCommands,
 } from "../../lib/conversationProfiles";
@@ -81,6 +85,7 @@ import {
   getConversationCommandErrorMessage,
   toConversationCommandError,
 } from "./conversationCommandError";
+import { shouldReleaseDeletedThreadOverlay } from "./conversationListActions";
 
 interface StagedWebChatSend {
   requestId: string;
@@ -159,6 +164,7 @@ export function useConversationWorkspace({
   initialThreadId,
   initialDate,
   profileCommands,
+  archiveCommands,
   loadConversationRecords,
   loadStickerAssets,
   loadStickerAsset,
@@ -173,6 +179,11 @@ export function useConversationWorkspace({
   initialThreadId: string;
   initialDate: string;
   profileCommands: ConversationProfileCommands;
+  archiveCommands: {
+    deleteThread(
+      threadId: string,
+    ): Promise<ConversationDeleteResponse>;
+  };
   navigation: {
     readonly revision: number;
     readonly target?: ConversationNavigationTarget;
@@ -291,6 +302,15 @@ export function useConversationWorkspace({
   const [models, setModels] = useState<WebChatModelResponse | null>(null);
   const [connection, setConnection] = useState<"idle" | "connecting" | "open" | "offline">("idle");
   const [error, setError] = useState("");
+  const [deletedThreadIds, setDeletedThreadIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [deletingThreadId, setDeletingThreadId] = useState("");
+  const [threadActionError, setThreadActionError] = useState("");
+  const autoUnhidePendingRef = useRef(new Set<string>());
+  const deletedSourceKeysByThreadRef = useRef(
+    new Map<string, Set<string>>(),
+  );
   const [dateLoading, setDateLoading] = useState(false);
   const dateLoadingKeysRef = useRef(new Set<string>());
   const lastNavigationRevisionRef = useRef(-1);
@@ -1146,9 +1166,164 @@ export function useConversationWorkspace({
       workspaceState.selectedThreadId,
     ],
   );
-  const threadSummaries = useMemo(
-    () => getConversationThreadSummaries(profileThreadIds, remoteData),
+  const archiveThreadSummaries = useMemo(
+    () =>
+      getConversationThreadSummaries(
+        profileThreadIds,
+        remoteData,
+      ),
     [profileThreadIds, remoteData],
+  );
+  const threadSummaries = useMemo(
+    () =>
+      archiveThreadSummaries.filter(
+        (summary) => !deletedThreadIds.has(summary.threadId),
+      ),
+    [archiveThreadSummaries, deletedThreadIds],
+  );
+  useEffect(() => {
+    if (!deletedThreadIds.size) return;
+    const available = new Set(availableThreadIds);
+    const summaries = new Map(
+      archiveThreadSummaries.map((summary) => [
+        summary.threadId,
+        summary,
+      ]),
+    );
+    setDeletedThreadIds((current) => {
+      let changed = false;
+      const next = new Set(current);
+      current.forEach((deletedThreadId) => {
+        const summary = summaries.get(deletedThreadId);
+        const latestSourceKey = summary?.latestRecord
+          ? getLegacyStableId(summary.latestRecord)
+          : "";
+        const deletedSourceKeys =
+          deletedSourceKeysByThreadRef.current.get(
+            deletedThreadId,
+          );
+        if (
+          !shouldReleaseDeletedThreadOverlay({
+            archiveContainsThread:
+              available.has(deletedThreadId),
+            latestSourceKey,
+            deletedSourceKeys,
+          })
+        ) {
+          return;
+        }
+        next.delete(deletedThreadId);
+        deletedSourceKeysByThreadRef.current.delete(
+          deletedThreadId,
+        );
+        changed = true;
+      });
+      return changed ? next : current;
+    });
+  }, [
+    archiveThreadSummaries,
+    availableThreadIds,
+    deletedThreadIds,
+  ]);
+  const visibleThreadSummaries = useMemo(
+    () =>
+      threadSummaries.filter((summary) =>
+        isConversationThreadVisibleInList(
+          effectiveThreadProfiles[summary.threadId],
+          summary,
+        ),
+      ),
+    [effectiveThreadProfiles, threadSummaries],
+  );
+  useEffect(() => {
+    threadSummaries.forEach((summary) => {
+      const profile =
+        effectiveThreadProfiles[summary.threadId];
+      if (
+        !profile?.listHidden ||
+        !isConversationThreadVisibleInList(profile, summary) ||
+        autoUnhidePendingRef.current.has(summary.threadId)
+      ) {
+        return;
+      }
+      autoUnhidePendingRef.current.add(summary.threadId);
+      void updateThreadProfile(summary.threadId, {
+        listHidden: false,
+        listHiddenThrough: "",
+      })
+        .catch(() => undefined)
+        .finally(() => {
+          autoUnhidePendingRef.current.delete(summary.threadId);
+        });
+    });
+  }, [
+    effectiveThreadProfiles,
+    threadSummaries,
+    updateThreadProfile,
+  ]);
+
+  const hideThread = useCallback(
+    async (requestedThreadId: string) => {
+      const summary = threadSummaries.find(
+        (item) => item.threadId === requestedThreadId,
+      );
+      const boundary = summary
+        ? getConversationSummaryActivityKey(summary)
+        : "";
+      if (!summary || !boundary) {
+        const actionError = new Error(
+          "尚未载入这则对话的最新消息，请稍后再试。",
+        );
+        setThreadActionError(actionError.message);
+        throw actionError;
+      }
+      setThreadActionError("");
+      return updateThreadProfile(requestedThreadId, {
+        listHidden: true,
+        listHiddenThrough: boundary,
+      });
+    },
+    [threadSummaries, updateThreadProfile],
+  );
+
+  const deleteThread = useCallback(
+    async (requestedThreadId: string) => {
+      if (deletingThreadId) return null;
+      setDeletingThreadId(requestedThreadId);
+      setThreadActionError("");
+      try {
+        const result = await archiveCommands.deleteThread(
+          requestedThreadId,
+        );
+        deletedSourceKeysByThreadRef.current.set(
+          requestedThreadId,
+          new Set(result.deletedSourceKeys),
+        );
+        setDeletedThreadIds((current) => {
+          const next = new Set(current);
+          next.add(requestedThreadId);
+          return next;
+        });
+        setMessagesByThread((current) => {
+          if (!(requestedThreadId in current)) return current;
+          const next = { ...current };
+          delete next[requestedThreadId];
+          return next;
+        });
+        return result;
+      } catch (cause) {
+        const message =
+          cause instanceof Error &&
+          /active work|409|conflict/i.test(cause.message)
+            ? "这则对话仍在回复或等待操作，暂时不能删除。"
+            : "删除对话失败，请稍后重试。";
+        setThreadActionError(message);
+        throw cause;
+      } finally {
+        setDeletingThreadId("");
+      }
+    },
+    [archiveCommands, deletingThreadId],
   );
   const selectedThreadDates = useMemo(
     () =>
@@ -1249,6 +1424,9 @@ export function useConversationWorkspace({
       page,
       transcript,
       threadSummaries,
+      visibleThreadSummaries,
+      deletingThreadId,
+      threadActionError,
       selectedThreadDates,
       allConversationDates,
       earlierDateToLoad,
@@ -1258,6 +1436,7 @@ export function useConversationWorkspace({
     [
       connection,
       dateLoading,
+      deletingThreadId,
       error,
       messagesByThread,
       models,
@@ -1276,7 +1455,9 @@ export function useConversationWorkspace({
       selectedThreadDates,
       allConversationDates,
       threadSummaries,
+      threadActionError,
       userProfile,
+      visibleThreadSummaries,
       workspaceState,
     ],
   );
@@ -1305,10 +1486,14 @@ export function useConversationWorkspace({
       openSearchResult,
       saveUserProfile: setUserProfile,
       updateThreadProfile,
+      hideThread,
+      deleteThread,
     }),
     [
       chooseModel,
       dismissNotification,
+      deleteThread,
+      hideThread,
       loadThreadDate,
       openDate,
       openNewThread,

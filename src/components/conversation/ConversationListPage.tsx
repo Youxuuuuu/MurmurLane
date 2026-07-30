@@ -5,6 +5,7 @@ import type {
 import { formatConversationTime } from "../../lib/conversationPageData";
 import { ConversationAvatar } from "./ConversationAvatar";
 import { ConversationNavBar } from "./ConversationNavBar";
+import { ConversationSwipeRow } from "./ConversationSwipeRow";
 import { useModalDialog } from "../common/useModalDialog";
 
 function MenuIcon() {
@@ -73,6 +74,66 @@ function GroupNameDialog({ value, onChange, onSave, onClose }) {
   );
 }
 
+function DeleteConversationDialog({
+  name,
+  busy,
+  error,
+  onConfirm,
+  onClose,
+}) {
+  const dialogProps = useModalDialog<HTMLDivElement>(
+    busy ? () => undefined : onClose,
+  );
+
+  return (
+    <div className="fixed inset-0 z-[220] flex items-center justify-center overscroll-contain bg-black/30 px-4 py-[calc(16px+env(safe-area-inset-top))]">
+      <button
+        type="button"
+        className="absolute inset-0"
+        aria-label="取消删除对话"
+        disabled={busy}
+        onClick={onClose}
+      />
+      <div
+        {...dialogProps}
+        aria-labelledby="delete-conversation-title"
+        aria-describedby="delete-conversation-description"
+        className="relative z-10 w-full max-w-[370px] rounded-[18px] bg-white p-5 shadow-[0_16px_48px_rgba(0,0,0,.18)]"
+      >
+        <h2 id="delete-conversation-title" className="text-[16px] font-bold text-black/[0.78]">
+          删除“{name}”的对话？
+        </h2>
+        <p id="delete-conversation-description" className="mt-2 text-[12px] leading-5 text-black/[0.48]">
+          Conversation Archive 中这个线程的全部对话记录都会删除，媒体文件会保留。普通刷新和同步不会恢复；以后显式重新导入原始 session 才能恢复旧记录。
+        </p>
+        {error ? (
+          <p className="mt-3 rounded-[10px] bg-[#fff0f0] px-3 py-2 text-[11px] font-semibold text-[#a94f52]">
+            {error}
+          </p>
+        ) : null}
+        <div className="mt-5 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onClose}
+            className="min-h-11 rounded-[10px] bg-[#f1f2f4] text-[12px] font-semibold text-black/[0.58] disabled:opacity-50"
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void onConfirm()}
+            className="min-h-11 rounded-[10px] bg-[#cf666a] text-[12px] font-semibold text-white disabled:opacity-60"
+          >
+            {busy ? "正在删除…" : "确认删除"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function formatThreadDate(summary) {
   const canonicalDateText = String(summary.latestDate || "").replace(/-/g, ".");
   const [year, month, day] = canonicalDateText.split(".").map(Number);
@@ -110,6 +171,7 @@ export function ConversationListPage({
   userProfile,
   threadProfiles,
   threadSummaries,
+  allThreadSummaries,
   moments,
   onBack,
   onEditProfile,
@@ -120,10 +182,14 @@ export function ConversationListPage({
   onCreateThread,
   onSelectThread,
   onUpdateThreadProfile,
+  onHideThread,
+  onDeleteThread,
   onUpdateUserProfile,
   unreadCounts = {},
+  deletingThreadId = "",
+  threadActionError = "",
 }) {
-  const totalMessages = threadSummaries.reduce(
+  const totalMessages = allThreadSummaries.reduce(
     (total, summary) => total + summary.messageCount,
     0,
   );
@@ -134,6 +200,12 @@ export function ConversationListPage({
   const [groupDragTarget, setGroupDragTarget] = useState("");
   const [editingGroup, setEditingGroup] = useState("");
   const [groupDraft, setGroupDraft] = useState("");
+  const [openSwipeThreadId, setOpenSwipeThreadId] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<{
+    threadId: string;
+    name: string;
+  } | null>(null);
+  const [deleteAttempted, setDeleteAttempted] = useState(false);
   const longPressTimerRef = useRef<number | null>(null);
   const pressStartRef = useRef({ x: 0, y: 0 });
   const suppressClickRef = useRef(false);
@@ -190,6 +262,17 @@ export function ConversationListPage({
     draggingGroupRef.current = draggingGroup;
     groupDragTargetRef.current = groupDragTarget;
   }, [dragTargetGroup, draggingGroup, draggingThreadId, groupDragTarget]);
+
+  useEffect(() => {
+    if (
+      openSwipeThreadId &&
+      !threadSummaries.some(
+        (summary) => summary.threadId === openSwipeThreadId,
+      )
+    ) {
+      setOpenSwipeThreadId("");
+    }
+  }, [openSwipeThreadId, threadSummaries]);
 
   useEffect(() => {
     const registered = userProfile.groups || [];
@@ -353,9 +436,9 @@ export function ConversationListPage({
             <ConversationAvatar src={userProfile.avatar} name={userProfile.name} size="xl" />
           </button>
           <div className="grid grid-cols-3 gap-2 text-center">
-            <div><b className="block text-[18px] font-bold tabular-nums">{threadSummaries.length}</b><span className="text-[11px] font-semibold">则对话</span></div>
+            <div><b className="block text-[18px] font-bold tabular-nums">{allThreadSummaries.length}</b><span className="text-[11px] font-semibold">则对话</span></div>
             <div><b className="block text-[18px] font-bold tabular-nums">{totalMessages}</b><span className="text-[11px] font-semibold">条讯息</span></div>
-            <div><b className="block text-[18px] font-bold tabular-nums">{Math.max(1, threadSummaries.length)}</b><span className="text-[11px] font-semibold">粉丝</span></div>
+            <div><b className="block text-[18px] font-bold tabular-nums">{Math.max(1, allThreadSummaries.length)}</b><span className="text-[11px] font-semibold">粉丝</span></div>
           </div>
         </div>
 
@@ -394,6 +477,9 @@ export function ConversationListPage({
         ref={scrollAreaRef}
         className="diary-scroll min-h-0 flex-1 select-none overflow-y-auto bg-[#f4f5f7] px-3 pb-6 pt-3"
         onContextMenu={(event) => event.preventDefault()}
+        onScroll={() => {
+          if (openSwipeThreadId) setOpenSwipeThreadId("");
+        }}
       >
         {groupedThreads.map(([group, summaries]) => {
           const collapsed = collapsedGroups.has(group);
@@ -487,8 +573,66 @@ export function ConversationListPage({
                     const dragging = draggingThreadId === summary.threadId;
                     const unreadCount = Number(unreadCounts[summary.threadId] || 0);
                     return (
-                      <button
+                      <ConversationSwipeRow
                         key={summary.threadId}
+                        open={openSwipeThreadId === summary.threadId}
+                        onOpenChange={(open) =>
+                          setOpenSwipeThreadId(
+                            open ? summary.threadId : "",
+                          )
+                        }
+                        onSwipeIntent={clearLongPress}
+                        actions={
+                          <>
+                            <button
+                              type="button"
+                              tabIndex={openSwipeThreadId === summary.threadId ? 0 : -1}
+                              className="flex w-[70px] items-center justify-center bg-[#6f8295] text-[11px] font-semibold text-white"
+                              aria-label={`${profile.pinned ? "取消置顶" : "置顶"}${profile.name}`}
+                              onClick={() => {
+                                setOpenSwipeThreadId("");
+                                void onUpdateThreadProfile?.(
+                                  summary.threadId,
+                                  { pinned: !profile.pinned },
+                                ).catch(() => undefined);
+                              }}
+                            >
+                              {profile.pinned ? "取消置顶" : "置顶"}
+                            </button>
+                            <button
+                              type="button"
+                              tabIndex={openSwipeThreadId === summary.threadId ? 0 : -1}
+                              className="flex w-[70px] items-center justify-center bg-[#c49b62] text-[11px] font-semibold text-white"
+                              aria-label={`不显示${profile.name}`}
+                              onClick={() => {
+                                setOpenSwipeThreadId("");
+                                void onHideThread?.(
+                                  summary.threadId,
+                                ).catch(() => undefined);
+                              }}
+                            >
+                              不显示
+                            </button>
+                            <button
+                              type="button"
+                              tabIndex={openSwipeThreadId === summary.threadId ? 0 : -1}
+                              className="flex w-[70px] items-center justify-center bg-[#cf666a] text-[11px] font-semibold text-white"
+                              aria-label={`删除${profile.name}的对话`}
+                              onClick={() => {
+                                setOpenSwipeThreadId("");
+                                setDeleteTarget({
+                                  threadId: summary.threadId,
+                                  name: profile.name,
+                                });
+                                setDeleteAttempted(false);
+                              }}
+                            >
+                              删除
+                            </button>
+                          </>
+                        }
+                      >
+                      <button
                         type="button"
                         onClick={() => {
                           if (suppressClickRef.current) {
@@ -577,6 +721,7 @@ export function ConversationListPage({
                           ) : null}
                         </span>
                       </button>
+                      </ConversationSwipeRow>
                     );
                   })}
                 </div>
@@ -589,6 +734,11 @@ export function ConversationListPage({
             拖到或轻点分组标题
           </div>
         ) : null}
+        {threadActionError && !deleteTarget ? (
+          <div className="sticky bottom-3 rounded-full bg-[#9f5559] px-4 py-2 text-center text-[11px] font-semibold text-white shadow-lg">
+            {threadActionError}
+          </div>
+        ) : null}
         {!threadSummaries.length && (
           <div className="px-6 py-16 text-center text-[12px] text-black/30">还没有对话记录</div>
         )}
@@ -599,6 +749,29 @@ export function ConversationListPage({
           onChange={setGroupDraft}
           onSave={saveGroupName}
           onClose={() => setEditingGroup("")}
+        />
+      ) : null}
+      {deleteTarget ? (
+        <DeleteConversationDialog
+          name={deleteTarget.name}
+          busy={deletingThreadId === deleteTarget.threadId}
+          error={deleteAttempted ? threadActionError : ""}
+          onClose={() => {
+            if (deletingThreadId !== deleteTarget.threadId) {
+              setDeleteTarget(null);
+              setDeleteAttempted(false);
+            }
+          }}
+          onConfirm={async () => {
+            setDeleteAttempted(true);
+            try {
+              await onDeleteThread?.(deleteTarget.threadId);
+              setDeleteTarget(null);
+              setDeleteAttempted(false);
+            } catch {
+              // Workspace owns the localized error shown in this dialog.
+            }
+          }}
         />
       ) : null}
     </section>
