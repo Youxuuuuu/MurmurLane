@@ -435,20 +435,21 @@ Server 规则：
 
 ## 当前实施与验证状态
 
-截至 2026-07-29：
+截至 2026-07-31：
 
 - ADR-0001 至 ADR-0019 均为 `Status: Accepted`、`Implementation: Complete`。
 - 架构迁移和统一浏览器/真机验收已完成。
 - 真机验收发现的迁移回归和 MurmurLane 局部 UI 问题已经独立修复并由用户确认。
+- realme Android Chrome 的键盘遮挡已经通过真实 Viewport/Composer 几何诊断、纯函数回归测试和三端分流修复，并由用户真机确认。
+- iOS 浏览器/PWA 的系统键盘辅助条不属于网页可控 UI；用户决定不引入当前 Windows 环境无法构建验证的 Capacitor iOS 原生壳。
 - 当前剩余的“后台页面重建恢复”是新增持久化能力。
-- 当前剩余的“realme Android Chrome 键盘重叠”是迁移前既有兼容问题。
-- 这两个后续问题不阻塞架构迁移完成状态。
+- 该后续问题不阻塞架构迁移完成状态。
 
 当前自动基线：
 
 ```text
 npm test
-→ 142/142 通过
+→ 148/148 通过
 
 npm run typecheck:strict
 → 通过

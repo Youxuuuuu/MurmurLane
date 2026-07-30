@@ -962,4 +962,12 @@ a990818 fix: 让新消息按钮避让输入框
 78b6048 fix: 固定长分享预览操作区
 ```
 
-用户已在 2026-07-29 确认上述问题和关联的 Cyberboss 问题解决。后台页面重建恢复属于新增持久化能力，realme Android Chrome 键盘重叠属于迁移前既有兼容问题；两者作为后续独立任务，不阻塞迁移完成。
+用户已在 2026-07-29 确认上述问题和关联的 Cyberboss 问题解决。后台页面重建恢复属于新增持久化能力，realme Android Chrome 键盘重叠属于迁移前既有兼容问题；两者均不阻塞迁移完成。
+
+2026-07-31 后续状态：
+
+- Android Chrome 键盘重叠已用真机 Viewport/Composer 几何完成诊断；正式实现优先使用 VirtualKeyboard 精确几何，并在 Android `resizes-visual` 且无精确几何时应用经真机证明的 `16px` 遮挡保护。
+- Conversation 输入面在键盘打开后与真实键盘顶边保持 `8px` 可见净空，Via 与 iOS 路径保持原行为；用户已在 realme Android 15 + Chrome 150 真机确认不再遮挡。
+- 临时 viewport 调试面板和探针已清除，自动基线更新为 `148/148`。
+- iOS 浏览器/PWA 的系统键盘辅助条不引入 Capacitor 原生壳；用户当前没有 macOS/Xcode，已决定保持系统行为。
+- 当前只剩后台页面重建恢复，仍作为独立持久化能力讨论和实施。

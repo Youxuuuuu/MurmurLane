@@ -90,6 +90,11 @@ _Avoid_: Conversation Archive、手工维护的最终消息列表、DOM 窗口�
 把不同 Channel 和不同到达方式的 Conversation Record 统一呈现为同一套对话体验。
 _Avoid_: WebChat 专用页面、微信专用页面
 
+**Consistent Keyboard Clearance**:
+软键盘稳定打开后，Conversation 输入面与真实键盘顶边之间在受支持移动端环境中保持一致的可见垂直间距；该间距与输入面及其内置功能面板之间的标准呼吸间距相同。
+_Implementation_: 优先使用系统通过 VirtualKeyboard API 暴露的真实键盘几何；Android 的 `resizes-visual` 浏览器无法提供该几何且已验证 VisualViewport 少报顶部遮挡时，使用统一的 16px 遮挡保护。
+_Avoid_: 把未经验证的 Viewport 差值直接当作真实键盘边界、按机型维护补偿表、改写键盘关闭时的底部安全区
+
 **Thread**:
 由 Cyberboss 标识、在 MurmurLane 中选择和展示的一条持续对话。
 _Avoid_: 页面路由、单个 Turn

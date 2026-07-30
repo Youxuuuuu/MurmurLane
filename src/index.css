@@ -72,6 +72,13 @@ textarea,
   -webkit-text-size-adjust: 100%;
 }
 
+.conversation-composer {
+  padding-bottom: var(
+    --app-composer-bottom-clearance,
+    calc(10px + env(safe-area-inset-bottom))
+  );
+}
+
 /* Android Chrome 的动态视口会随键盘缩短；iOS WebKit 的 PWA 外壳则需要
    固定 100vh 才能填满 Home Indicator 区域。
 
