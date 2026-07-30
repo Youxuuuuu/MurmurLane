@@ -24,8 +24,17 @@ Cyberboss 和 MurmurLane 共用同一个本地 Markdown 任务目录：
 
 根据用户提供的功能目录、任务编号或文件名，从共享目录读取任务。
 
+## 归属不明
+
+当一个症状尚不能判断属于 Cyberboss 还是 MurmurLane 时，先创建或更新任务为：
+
+- `Repo: both`
+- `Status: needs-triage`
+
+随后按照 `docs/architecture/cross-repo-diagnosis.md` 收集最小证据，找到第一个出错的边界后再更新 `Repo:`。不要因为问题最先在浏览器里出现，就直接判定为 MurmurLane；也不要因为数据来自 Cyberboss，就直接判定为 Cyberboss。
+
 ## 项目范围
 
-- `Repo: cyberboss`：后端、运行时、消息渠道、服务或智能体桥接相关工作
-- `Repo: murmurlane`：前端展示和 MurmurLane 独有工作
-- `Repo: both`：需要两个仓库协同完成的工作
+- `Repo: cyberboss`：Runtime、Channel、Conversation Archive 生产、WebChat 生产契约、消息投递或智能体桥接相关工作
+- `Repo: murmurlane`：ContentSync、Workspace、View Model、展示、浏览器 Adapter、MurmurLane Server 读取与白名单编辑相关工作
+- `Repo: both`：Conversation Record 字段、WebChat 事件、媒体结构、线程或消息命令、Runtime 状态等需要两个仓库协同完成的工作
