@@ -41,3 +41,13 @@ test("Conversation Workspace 将技术错误解释为安全领域错误", () => 
   assert.equal("cause" in error, false);
   assert.equal("bodyText" in error, false);
 });
+
+test("Conversation Runtime 区分模型与 Effort 切换错误语义", () => {
+  const modelError = toConversationCommandError("choose-model");
+  const effortError = toConversationCommandError("choose-effort");
+
+  assert.equal(modelError.operation, "choose-model");
+  assert.equal(modelError.message, "模型切换失败，请稍后重试。");
+  assert.equal(effortError.operation, "choose-effort");
+  assert.equal(effortError.message, "Effort 切换失败，请稍后重试。");
+});

@@ -233,6 +233,16 @@ Workspace 是领域规则、领域状态、View Model 和 Commands 的所有者�
 - Canonical 与 Live 对账。
 - Conversation View Model 与 Commands。
 
+Conversation Workspace 继续拥有唯一的 WebChat SSE 生命周期，并在收到事件后只进行一次领域分类。`src/workspaces/conversation/runtime/` 是 Workspace 内部 Runtime 消费模块，只通过已有 WebChat Port 消费 Runtime Snapshot 与 Commands；它不创建 EventSource 或第二条订阅。
+
+Runtime 状态所有权遵循以下规则：
+
+- Model、Provider、Effort、Context Usage 与 Thread Usage Totals 的权威所有者仍是 Cyberboss。
+- `usageTotals` 在消费侧按 Thread 隔离，只向当前 Thread 暴露对应累计快照。
+- `contextUsage` 只展示 `threadId` 与当前 Thread 匹配的最近 Runtime Snapshot，不与 `usageTotals` 合并或互相回退。
+- Runtime 内部模块不持久化设置或 Usage，不自行累计 Token，也不拥有 Runtime Activity、Turn、审批或连接状态。
+- `useConversationWorkspace` 继续拥有 Activity、Turn、审批、连接、消息和 SSE 生命周期，并将 Runtime 数据事件交给内部 Runtime 模块吸收。
+
 唯一 Transcript 公共 seam：
 
 ```ts
@@ -429,13 +439,13 @@ Server 规则：
 | HTTP、SSE、上传、认证和媒体 URL | 具体 Adapter |
 | DOM、滚动、窗口化、手势和动画 | 对应 View |
 | Server 安全读取与白名单编辑 | 对应 `server/` 领域模块 |
-| Cyberboss Runtime、Channel 或 Canonical 契约 | `D:\study\cyberboss`，并建立跨仓库任务 |
+| Cyberboss Runtime、Channel 或 Canonical 契约 | Cyberboss 仓库，并建立跨仓库任务 |
 
 如果一条规则无法明确放入上表，先确认其语义所有者，不要先创建新的通用目录或全局 Store。
 
 ## 当前实施与验证状态
 
-截至 2026-07-31：
+截至 2026-08-03：
 
 - ADR-0001 至 ADR-0019 均为 `Status: Accepted`、`Implementation: Complete`。
 - 架构迁移和统一浏览器/真机验收已完成。
@@ -449,7 +459,7 @@ Server 规则：
 
 ```text
 npm test
-→ 148/148 通过
+→ 175/175 通过
 
 npm run typecheck:strict
 → 通过

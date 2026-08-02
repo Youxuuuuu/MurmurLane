@@ -31,6 +31,44 @@ type ConversationRuntimePort = Pick<
   "fetchModels" | "setModel" | "setEffort"
 >;
 
+interface ConversationRuntimeModelRequestRevision {
+  current: number;
+}
+
+export function invalidateConversationRuntimeModelRequest(
+  revisionRef: ConversationRuntimeModelRequestRevision,
+) {
+  revisionRef.current += 1;
+}
+
+export async function runConversationRuntimeModelRequest({
+  revisionRef,
+  fetchModels,
+  applyModels,
+  applyError,
+}: {
+  revisionRef: ConversationRuntimeModelRequestRevision;
+  fetchModels: () => ReturnType<ConversationRuntimePort["fetchModels"]>;
+  applyModels: (
+    models: Awaited<ReturnType<ConversationRuntimePort["fetchModels"]>>,
+  ) => void;
+  applyError?: (error: unknown) => void;
+}) {
+  const requestRevision = ++revisionRef.current;
+  try {
+    const result = await fetchModels();
+    if (requestRevision === revisionRef.current) {
+      applyModels(result);
+    }
+    return result;
+  } catch (error) {
+    if (requestRevision === revisionRef.current) {
+      applyError?.(error);
+    }
+    throw error;
+  }
+}
+
 export function useConversationRuntime({
   webChat,
   enabled,
@@ -44,8 +82,15 @@ export function useConversationRuntime({
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const modelRequestRevisionRef = useRef(0);
 
+  const invalidateModelRequest = useCallback(() => {
+    invalidateConversationRuntimeModelRequest(
+      modelRequestRevisionRef,
+    );
+  }, []);
+
   const absorbStatus = useCallback(
     (status: WebChatStatus, fallbackThreadId = "") => {
+      invalidateModelRequest();
       setState((current) =>
         absorbConversationRuntimeStatus(
           current,
@@ -54,28 +99,29 @@ export function useConversationRuntime({
         ),
       );
     },
-    [],
+    [invalidateModelRequest],
   );
 
   const fetchModels = useCallback(async () => {
-    const requestRevision = ++modelRequestRevisionRef.current;
     try {
-      const result = await webChat.fetchModels();
-      if (requestRevision === modelRequestRevisionRef.current) {
-        setState((current) =>
-          absorbConversationRuntimeModels(current, result),
-        );
-      }
-      return result;
+      return await runConversationRuntimeModelRequest({
+        revisionRef: modelRequestRevisionRef,
+        fetchModels: webChat.fetchModels,
+        applyModels: (result) => {
+          setState((current) =>
+            absorbConversationRuntimeModels(current, result),
+          );
+        },
+        applyError: () => {
+          setState((current) =>
+            setConversationRuntimeCatalogError(
+              current,
+              MODEL_CATALOG_ERROR,
+            ),
+          );
+        },
+      });
     } catch (error) {
-      if (requestRevision === modelRequestRevisionRef.current) {
-        setState((current) =>
-          setConversationRuntimeCatalogError(
-            current,
-            MODEL_CATALOG_ERROR,
-          ),
-        );
-      }
       throw toConversationCommandError("load-models", error);
     }
   }, [webChat]);
@@ -86,9 +132,9 @@ export function useConversationRuntime({
     if (!enabled) return undefined;
     void fetchModels().catch(() => undefined);
     return () => {
-      modelRequestRevisionRef.current += 1;
+      invalidateModelRequest();
     };
-  }, [enabled, fetchModels]);
+  }, [enabled, fetchModels, invalidateModelRequest]);
 
   useEffect(
     () => () => {
@@ -117,6 +163,12 @@ export function useConversationRuntime({
   const handleEvent = useCallback(
     (event: WebChatEvent, activeThreadId: string) => {
       if (!isConversationRuntimeEvent(event)) return false;
+      if (
+        event.kind === "runtime.settings.updated"
+        || event.kind === "model.updated"
+      ) {
+        invalidateModelRequest();
+      }
       setState((current) =>
         reduceConversationRuntimeEvent(
           current,
@@ -127,11 +179,12 @@ export function useConversationRuntime({
       if (event.effortReset) showEffortResetNotice();
       return true;
     },
-    [showEffortResetNotice],
+    [invalidateModelRequest, showEffortResetNotice],
   );
 
   const chooseModel = useCallback(
     async (model: string, modelProvider = "") => {
+      invalidateModelRequest();
       try {
         const result = await webChat.setModel(model, modelProvider);
         absorbStatus(result);
@@ -140,20 +193,21 @@ export function useConversationRuntime({
         throw toConversationCommandError("choose-model", error);
       }
     },
-    [absorbStatus, webChat],
+    [absorbStatus, invalidateModelRequest, webChat],
   );
 
   const chooseEffort = useCallback(
     async (effort: string) => {
+      invalidateModelRequest();
       try {
         const result = await webChat.setEffort(effort);
         absorbStatus(result);
         return result;
       } catch (error) {
-        throw toConversationCommandError("choose-model", error);
+        throw toConversationCommandError("choose-effort", error);
       }
     },
-    [absorbStatus, webChat],
+    [absorbStatus, invalidateModelRequest, webChat],
   );
 
   const clearThread = useCallback((removedThreadId: string) => {

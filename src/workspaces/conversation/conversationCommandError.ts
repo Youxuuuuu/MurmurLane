@@ -4,6 +4,7 @@ export type ConversationCommandOperation =
   | "connect"
   | "load-models"
   | "choose-model"
+  | "choose-effort"
   | "send"
   | "upload"
   | "search"
@@ -17,6 +18,7 @@ const messages: Record<
   connect: "WebChat 连接失败，请稍后重试。",
   "load-models": "模型列表加载失败，请稍后重试。",
   "choose-model": "模型切换失败，请稍后重试。",
+  "choose-effort": "Effort 切换失败，请稍后重试。",
   send: "发送失败，请稍后重试。",
   upload: "附件上传失败，请稍后重试。",
   search: "对话搜索失败，请稍后重试。",
