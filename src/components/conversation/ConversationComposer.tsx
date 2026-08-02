@@ -17,9 +17,10 @@ import type { ConversationQuoteObject, ConversationRecord } from "../../types/co
 import type {
   WebChatComposerAttachment,
   WebChatComposerMessageInput,
-  WebChatModel,
   WebChatModelResponse,
   WebChatStatus,
+  WebChatUsage,
+  WebChatUsageTotals,
 } from "../../types/webChat";
 import { StickerPanel } from "./StickerPanel";
 import {
@@ -33,25 +34,15 @@ import {
   createWebChatPendingUpload,
   isWebChatPendingUpload,
 } from "../../lib/webChatPendingUploads";
-
-const FALLBACK_MODEL_IDS = [
-  "qwen3.6-flash",
-  "qwen3.5-flash-2026-02-23",
-  "qwen3.5-plus",
-];
+import {
+  buildCompactRuntimeStatus,
+  ConversationRuntimePanel,
+} from "./ConversationRuntimePanel";
 
 function makeSegmentId() {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : `segment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function formatTokens(value: unknown) {
-  const number = Number(value);
-  if (!Number.isFinite(number) || number <= 0) return "0";
-  if (number >= 1_000_000) return `${(number / 1_000_000).toFixed(1)}m`;
-  if (number >= 1_000) return `${Math.round(number / 100) / 10}k`;
-  return String(Math.round(number));
 }
 
 function Icon({ name }: { name: "plus" | "smile" | "mic" | "send" | "photo" | "camera" | "file" }) {
@@ -91,11 +82,17 @@ function mediaIdentity(media: WebChatComposerAttachment) {
 export function ConversationComposer({
   status,
   models,
+  usageTotals,
+  contextUsage,
+  modelCatalogError = "",
+  runtimeSettingsNotice = "",
   connection,
   quoteMessage,
   onClearQuote,
   onSendMessages,
   onChooseModel,
+  onChooseEffort,
+  onRefreshModels,
   isNewThread = false,
   error = "",
   loadStickers,
@@ -104,11 +101,17 @@ export function ConversationComposer({
 }: {
   status?: WebChatStatus | null;
   models?: WebChatModelResponse | null;
+  usageTotals?: WebChatUsageTotals | null;
+  contextUsage?: WebChatUsage | null;
+  modelCatalogError?: string;
+  runtimeSettingsNotice?: string;
   connection?: string;
   quoteMessage?: ConversationRecord | null;
   onClearQuote?: () => void;
   onSendMessages: (input: { messages: WebChatComposerMessageInput[]; newThread: boolean }) => unknown;
   onChooseModel?: (model: string, modelProvider?: string) => Promise<unknown>;
+  onChooseEffort?: (effort: string) => Promise<unknown>;
+  onRefreshModels?: () => Promise<unknown>;
   isNewThread?: boolean;
   error?: string;
   loadStickers: () => Promise<{ stickers: StickerAsset[] }>;
@@ -158,17 +161,11 @@ export function ConversationComposer({
     };
   }, [mediaUrls, quoteMessage]);
 
-  const usage = status?.usage;
   const currentModel = status?.model || models?.currentModel || "默认模型";
-  const cacheValue = usage?.cacheReadInputTokens ?? usage?.cachedInputTokens;
-  const inputValue = Number(usage?.inputTokens) || 0;
-  const cacheReadValue = Number(cacheValue) || 0;
-  const cacheCreationValue = Number(usage?.cacheCreationInputTokens) || 0;
-  const cacheEligibleInput = inputValue + cacheReadValue + cacheCreationValue;
-  const cacheHitRate = cacheEligibleInput > 0
-    ? `${Math.round((cacheReadValue / cacheEligibleInput) * 1_000) / 10}%`
-    : "0%";
-  const compactStatus = `${currentModel} · context ${formatTokens(usage?.currentTokens || usage?.inputTokens)} · cache ${formatTokens(cacheValue)}`;
+  const compactStatus = buildCompactRuntimeStatus({
+    model: currentModel,
+    contextUsage,
+  });
   const canSend = Boolean(queuedMessages.length || text.trim() || attachments.length);
 
   useLayoutEffect(() => {
@@ -324,26 +321,6 @@ export function ConversationComposer({
     }
   };
 
-  const modelOptions = useMemo(() => {
-    const byId = new Map<string, WebChatModel>();
-    (models?.models ?? []).forEach((item) => {
-      const id = String(item.model || item.id || "").trim();
-      if (id) byId.set(id, item);
-    });
-    [currentModel, ...FALLBACK_MODEL_IDS].forEach((id) => {
-      if (id && id !== "默认模型" && !byId.has(id)) {
-        byId.set(id, { id, model: id, displayName: id });
-      }
-    });
-    return Array.from(byId.values());
-  }, [currentModel, models?.models]);
-  const handleModelChange = (model: string) => {
-    const selected = modelOptions.find((item) => (item.model || item.id) === model);
-    void onChooseModel?.(
-      model,
-      String(selected?.modelProvider || selected?.provider || ""),
-    );
-  };
   const spring = reduceMotion
     ? { duration: 0.08 }
     : { type: "spring" as const, duration: 0.24, bounce: 0 };
@@ -353,6 +330,14 @@ export function ConversationComposer({
   const panelExit = reduceMotion
     ? { duration: 0.06 }
     : { duration: 0.1, ease: [0.4, 0, 1, 1] as const };
+  const toggleRuntimeDetails = () => {
+    const opening = !detailsOpen;
+    setDetailsOpen(opening);
+    setPanel(null);
+    if (opening) {
+      void onRefreshModels?.();
+    }
+  };
 
   return (
       <section
@@ -362,19 +347,22 @@ export function ConversationComposer({
       >
       <div className="relative z-20 mx-auto max-w-[760px]">
         <div ref={detailsRef} className="relative mb-2 ml-2 flex">
-          <button type="button" onClick={() => { setDetailsOpen((value) => !value); setPanel(null); }} className="max-w-full truncate rounded-full border border-black/[0.055] bg-white/75 px-3 py-1.5 text-left text-[10px] font-medium text-black/38 shadow-[0_2px_10px_rgba(60,55,70,.04)] backdrop-blur-xl" aria-expanded={detailsOpen}>
+          <button type="button" onClick={toggleRuntimeDetails} className="max-w-full truncate rounded-full border border-black/[0.055] bg-white/75 px-3 py-1.5 text-left text-[10px] font-medium text-black/38 shadow-[0_2px_10px_rgba(60,55,70,.04)] backdrop-blur-xl" aria-expanded={detailsOpen}>
             <span className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${connection === "open" ? "bg-[#8da891]" : "bg-[#c7a681]"}`} />{compactStatus}
           </button>
           <AnimatePresence>
             {detailsOpen ? (
               <motion.div initial={{ opacity: 0, transform: "translateY(5px)" }} animate={{ opacity: 1, transform: "translateY(0px)" }} exit={{ opacity: 0, transform: "translateY(5px)" }} transition={spring} className="absolute bottom-[calc(100%+7px)] left-0 z-20 w-[min(88vw,310px)] rounded-[20px] bg-white/95 p-3 shadow-[0_14px_42px_rgba(61,56,73,.14)] backdrop-blur-xl">
-                <div className="mb-2 text-[11px] font-medium text-black/45">模型与上下文</div>
-                <select value={currentModel === "默认模型" ? "" : currentModel} disabled={!onChooseModel} onChange={(event) => handleModelChange(event.target.value)} className="w-full rounded-[13px] bg-black/[0.04] px-3 py-2 text-[16px] font-normal text-black/70 outline-none">
-                  {!currentModel || currentModel === "默认模型" ? <option value="">默认模型</option> : null}
-                  {currentModel !== "默认模型" && !modelOptions.some((item) => (item.model || item.id) === currentModel) ? <option value={currentModel}>{currentModel}</option> : null}
-                  {modelOptions.map((item) => <option key={item.model || item.id} value={item.model || item.id}>{item.displayName || item.model || item.id}</option>)}
-                </select>
-                <div className="mt-2 grid grid-cols-2 gap-2 text-[10px] text-black/42"><span>输入 {formatTokens(usage?.inputTokens)}</span><span>输出 {formatTokens(usage?.outputTokens)}</span><span>缓存 {formatTokens(cacheValue)}</span><span>命中率 {cacheHitRate}</span></div>
+                <ConversationRuntimePanel
+                  status={status}
+                  models={models}
+                  usageTotals={usageTotals}
+                  modelCatalogError={modelCatalogError}
+                  runtimeSettingsNotice={runtimeSettingsNotice}
+                  onChooseModel={onChooseModel}
+                  onChooseEffort={onChooseEffort}
+                  onRefreshModels={onRefreshModels}
+                />
               </motion.div>
             ) : null}
           </AnimatePresence>

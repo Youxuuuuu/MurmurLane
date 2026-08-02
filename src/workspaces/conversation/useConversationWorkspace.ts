@@ -45,7 +45,7 @@ import type {
   WebChatModelResponse,
   WebChatSendResult,
   WebChatStatus,
-  WebChatUsage,
+  WebChatUsageTotals,
 } from "../../types/webChat";
 import type { WebChatPort } from "./webChatPort";
 import type { ConversationNavigationTarget } from "../../app/navigation/appNavigation";
@@ -108,37 +108,6 @@ function createMessageId() {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : `message-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-}
-
-function hasDetailedUsage(usage: WebChatUsage | null | undefined) {
-  return Boolean(
-    Number(usage?.outputTokens) ||
-      Number(usage?.cacheReadInputTokens) ||
-      Number(usage?.cachedInputTokens) ||
-      Number(usage?.cacheCreationInputTokens),
-  );
-}
-
-function mergeUsageSnapshot(
-  previous: WebChatUsage | null | undefined,
-  incoming: WebChatUsage | null | undefined,
-) {
-  if (!previous) return incoming || {};
-  if (!incoming) return previous;
-  if (hasDetailedUsage(incoming) || !hasDetailedUsage(previous)) {
-    return incoming;
-  }
-
-  // ClaudeCode 会先后上报“思考上下文”和“最终回复”两类 usage。
-  // 只有输入量的思考快照不能覆盖最终回复里的输出与缓存明细。
-  return {
-    ...incoming,
-    inputTokens: previous.inputTokens,
-    outputTokens: previous.outputTokens,
-    cacheReadInputTokens: previous.cacheReadInputTokens,
-    cachedInputTokens: previous.cachedInputTokens,
-    cacheCreationInputTokens: previous.cacheCreationInputTokens,
-  };
 }
 
 function appendRecord(
@@ -297,9 +266,11 @@ export function useConversationWorkspace({
   const preparingRequestIdsRef = useRef(new Set<string>());
   const requestIdByMessageIdRef = useRef(new Map<string, string>());
   const [messagesByThread, setMessagesByThread] = useState<Record<string, ConversationRecord[]>>({});
-  const [usageByThread, setUsageByThread] = useState<Record<string, WebChatUsage>>({});
+  const [usageTotalsByThread, setUsageTotalsByThread] = useState<Record<string, WebChatUsageTotals>>({});
   const [status, setStatus] = useState<WebChatStatus | null>(null);
   const [models, setModels] = useState<WebChatModelResponse | null>(null);
+  const [modelCatalogError, setModelCatalogError] = useState("");
+  const [runtimeSettingsNotice, setRuntimeSettingsNotice] = useState("");
   const [connection, setConnection] = useState<"idle" | "connecting" | "open" | "offline">("idle");
   const [error, setError] = useState("");
   const [deletedThreadIds, setDeletedThreadIds] = useState<Set<string>>(
@@ -437,14 +408,17 @@ export function useConversationWorkspace({
       }
 
       if (event.kind === "usage" && targetThreadId) {
-        setUsageByThread((current) => ({
-          ...current,
-          [targetThreadId]: mergeUsageSnapshot(current[targetThreadId], event.usage),
-        }));
+        if (event.usageTotals) {
+          setUsageTotalsByThread((current) => ({
+            ...current,
+            [targetThreadId]: event.usageTotals as WebChatUsageTotals,
+          }));
+        }
         setStatus((current) => ({
           ...(current || {}),
           threadId: targetThreadId,
-          usage: mergeUsageSnapshot(current?.usage, event.usage),
+          contextUsage: event.contextUsage || current?.contextUsage || null,
+          usageTotals: event.usageTotals || current?.usageTotals || null,
         }));
         return;
       }
@@ -469,12 +443,32 @@ export function useConversationWorkspace({
         return;
       }
 
-      if (event.kind === "model.updated") {
+      if (event.kind === "runtime.settings.updated" || event.kind === "model.updated") {
+        const nextModel = String(event.model || "");
+        const nextModelProvider = String(event.modelProvider || "");
+        const nextEffort = String(event.effort || "");
         setStatus((current) => ({
           ...(current || {}),
-          model: String(event.model || ""),
-          modelProvider: String(event.modelProvider || ""),
+          model: nextModel,
+          modelProvider: nextModelProvider,
+          effort: nextEffort,
         }));
+        setModels((current) =>
+          event.settings
+            ? event.settings
+            : current
+              ? {
+                  ...current,
+                  currentModel: nextModel || current.currentModel,
+                  currentModelProvider: nextModelProvider,
+                  currentEffort: nextEffort,
+                }
+              : current,
+        );
+        if (event.effortReset) {
+          setRuntimeSettingsNotice("已切换为该模型的默认 Effort");
+          window.setTimeout(() => setRuntimeSettingsNotice(""), 2_400);
+        }
       }
     },
     [handleThreadCreated],
@@ -497,6 +491,12 @@ export function useConversationWorkspace({
         );
         cursorByThreadRef.current.set(threadId, snapshotCursor);
         setStatus(nextStatus);
+        if (nextStatus.usageTotals) {
+          setUsageTotalsByThread((current) => ({
+            ...current,
+            [threadId]: nextStatus.usageTotals as WebChatUsageTotals,
+          }));
+        }
         setError("");
         stopSubscription = webChat.subscribe({
           threadId,
@@ -531,15 +531,11 @@ export function useConversationWorkspace({
       .then((nextModels) => {
         if (cancelled) return;
         setModels(nextModels);
+        setModelCatalogError("");
       })
-      .catch((nextError) => {
+      .catch(() => {
         if (!cancelled) {
-          setError(
-            getConversationCommandErrorMessage(
-              "load-models",
-              nextError,
-            ),
-          );
+          setModelCatalogError("模型目录暂时无法加载");
         }
       });
     return () => {
@@ -820,8 +816,10 @@ export function useConversationWorkspace({
     try {
       const result = await webChat.fetchModels();
       setModels(result);
+      setModelCatalogError("");
       return result;
     } catch (error) {
+      setModelCatalogError("模型目录暂时无法加载");
       throw toConversationCommandError(
         "load-models",
         error,
@@ -833,7 +831,43 @@ export function useConversationWorkspace({
     try {
       const result = await webChat.setModel(model, modelProvider);
       setStatus(result);
-      setModels((current) => current ? { ...current, currentModel: result.model, currentModelProvider: result.modelProvider } : current);
+      setModels((current) =>
+        result.runtimeSettings
+          ? result.runtimeSettings
+          : current
+            ? {
+                ...current,
+                currentModel: result.model,
+                currentModelProvider: result.modelProvider,
+                currentEffort: result.effort ?? current.currentEffort,
+              }
+            : current,
+      );
+      return result;
+    } catch (error) {
+      throw toConversationCommandError(
+        "choose-model",
+        error,
+      );
+    }
+  }, []);
+
+  const chooseEffort = useCallback(async (effort: string) => {
+    try {
+      const result = await webChat.setEffort(effort);
+      setStatus(result);
+      setModels((current) =>
+        result.runtimeSettings
+          ? result.runtimeSettings
+          : current
+            ? {
+                ...current,
+                currentModel: result.model ?? current.currentModel,
+                currentModelProvider: result.modelProvider ?? current.currentModelProvider,
+                currentEffort: result.effort ?? "",
+              }
+            : current,
+      );
       return result;
     } catch (error) {
       throw toConversationCommandError(
@@ -1310,6 +1344,21 @@ export function useConversationWorkspace({
           delete next[requestedThreadId];
           return next;
         });
+        setUsageTotalsByThread((current) => {
+          if (!(requestedThreadId in current)) return current;
+          const next = { ...current };
+          delete next[requestedThreadId];
+          return next;
+        });
+        setStatus((current) =>
+          current?.threadId === requestedThreadId
+            ? {
+                ...current,
+                contextUsage: null,
+                usageTotals: null,
+              }
+            : current,
+        );
         return result;
       } catch (cause) {
         const message =
@@ -1400,9 +1449,18 @@ export function useConversationWorkspace({
       clientId: clientIdRef.current,
       messages: messagesByThread[threadId] ?? [],
       messagesByThread,
-      usage: usageByThread[threadId] || status?.usage || null,
+      usageTotals:
+        usageTotalsByThread[threadId]
+        || (status?.threadId === threadId ? status.usageTotals : null)
+        || null,
+      contextUsage:
+        status?.threadId === threadId
+          ? status.contextUsage || null
+          : null,
       status,
       models,
+      modelCatalogError,
+      runtimeSettingsNotice,
       connection,
       error,
       selectedThreadId: workspaceState.selectedThreadId,
@@ -1446,7 +1504,9 @@ export function useConversationWorkspace({
       status,
       transcript,
       threadId,
-      usageByThread,
+      usageTotalsByThread,
+      modelCatalogError,
+      runtimeSettingsNotice,
       effectiveThreadProfiles,
       profileError,
       profileThreadIds,
@@ -1467,6 +1527,7 @@ export function useConversationWorkspace({
       retryMessage,
       refreshModels,
       chooseModel,
+      chooseEffort,
       selectThread,
       openDate,
       setPageMode,
@@ -1491,6 +1552,7 @@ export function useConversationWorkspace({
     }),
     [
       chooseModel,
+      chooseEffort,
       dismissNotification,
       deleteThread,
       hideThread,

@@ -307,6 +307,14 @@ async function uploadWebChatFile(
   }
 }
 
+function setWebChatEffort(effort: string) {
+  return requestChatJson<WebChatStatus>("/api/chat/effort", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ effort }),
+  }, isWebChatStatus);
+}
+
 function subscribeToWebChat({
   threadId = "",
   after = 0,
@@ -368,6 +376,7 @@ return Object.freeze({
   fetchStatus: fetchWebChatStatus,
   fetchModels: fetchWebChatModels,
   setModel: setWebChatModel,
+  setEffort: setWebChatEffort,
   selectThread: selectWebChatThread,
   sendMessages: sendWebChatMessages,
   isAmbiguousSendError: isAmbiguousWebChatSendError,

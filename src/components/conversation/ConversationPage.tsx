@@ -78,7 +78,14 @@ interface ConversationPageProps {
   webChatViewModel:
     | Pick<
         ConversationViewModel,
-        "status" | "models" | "connection" | "error"
+        | "status"
+        | "models"
+        | "connection"
+        | "error"
+        | "usageTotals"
+        | "contextUsage"
+        | "modelCatalogError"
+        | "runtimeSettingsNotice"
       >
     | null;
   webChatCommands:
@@ -87,6 +94,8 @@ interface ConversationPageProps {
         | "sendMessages"
         | "retryMessage"
         | "chooseModel"
+        | "chooseEffort"
+        | "refreshModels"
         | "loadSticker"
       >
     | null;
@@ -1308,11 +1317,17 @@ export const ConversationPage = memo(function ConversationPage({
         <ConversationComposer
           status={webChatViewModel.status}
           models={webChatViewModel.models}
+          usageTotals={webChatViewModel.usageTotals}
+          contextUsage={webChatViewModel.contextUsage}
+          modelCatalogError={webChatViewModel.modelCatalogError}
+          runtimeSettingsNotice={webChatViewModel.runtimeSettingsNotice}
           connection={webChatViewModel.connection}
           quoteMessage={quoteMessage}
           onClearQuote={() => setQuoteMessage(null)}
           onSendMessages={({ messages, newThread }) => webChatCommands.sendMessages({ messages, newThread })}
           onChooseModel={webChatCommands.chooseModel}
+          onChooseEffort={webChatCommands.chooseEffort}
+          onRefreshModels={webChatCommands.refreshModels}
           loadStickerAsset={webChatCommands.loadSticker}
           isNewThread={String(selectedThreadId).startsWith("draft-")}
           error={webChatViewModel.error}

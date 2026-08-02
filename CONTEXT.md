@@ -99,6 +99,14 @@ _Avoid_: 把未经验证的 Viewport 差值直接当作真实键盘边界、按�
 由 Cyberboss 标识、在 MurmurLane 中选择和展示的一条持续对话。
 _Avoid_: 页面路由、单个 Turn
 
+**Thread Usage Totals**:
+归属于单个 Thread、覆盖其全部 Turn 与模型切换的累计真实 Token 用量；页面刷新或 Runtime 重启不改变其累计边界。输入总量包含普通输入、缓存创建与缓存读取，缓存命中量只表示成功复用的缓存读取。
+_Avoid_: 页面会话计数、单条消息用量、全局账户用量、Context 占用量
+
+**Runtime Effort**:
+由当前 Runtime 接受、用于表达后续 Turn 推理投入程度的等级；可选值以 Runtime 和当前模型真实声明的能力为边界。
+_Avoid_: 模型质量等级、输出长度、Thinking 展示开关
+
 **Conversation Archive Deletion**:
 从 Conversation Archive 中移除某个 Thread 在删除切点之前已有的全部 Conversation Record，但保留其 Raw Session 来源、Thread Profile 和记录引用的媒体实体；切点之后的新记录保留并使 Thread 重新出现。普通重启、刷新和后台同步不会恢复旧记录，只有明确重新导入才会恢复。
 _Avoid_: Raw Session Deletion、Runtime Thread Termination、Thread Profile Deletion、Media Deletion、自动重新投影、不可恢复销毁

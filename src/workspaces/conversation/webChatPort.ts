@@ -23,6 +23,9 @@ export interface WebChatPort {
     model: string,
     modelProvider?: string,
   ) => Promise<WebChatStatus>;
+  readonly setEffort: (
+    effort: string,
+  ) => Promise<WebChatStatus>;
   readonly subscribe: (input: {
     threadId?: string;
     after?: number;

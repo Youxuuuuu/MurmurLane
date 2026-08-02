@@ -72,6 +72,14 @@ export interface WebChatUsage {
   [key: string]: unknown;
 }
 
+export interface WebChatUsageTotals {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadInputTokens: number;
+  totalTokens: number;
+  cacheHitRate: number;
+}
+
 export interface WebChatStatus {
   connected?: boolean;
   workspaceId?: string;
@@ -79,7 +87,10 @@ export interface WebChatStatus {
   status?: string;
   model?: string;
   modelProvider?: string;
-  usage?: WebChatUsage | null;
+  effort?: string;
+  contextUsage?: WebChatUsage | null;
+  usageTotals?: WebChatUsageTotals | null;
+  runtimeSettings?: WebChatModelResponse;
   pendingApproval?: unknown;
   webClients?: number;
   eventCursor?: number;
@@ -94,17 +105,34 @@ export interface WebChatModel {
   id?: string;
   model?: string;
   displayName?: string;
+  provider?: string;
+  supportedReasoningEfforts?: string[];
+  defaultReasoningEffort?: string;
+  catalogStatus?: "available" | "stale" | string;
   isDefault?: boolean;
   contextWindow?: number;
   [key: string]: unknown;
+}
+
+export interface WebChatEffortCapabilities {
+  supported: boolean;
+  options: string[];
+  defaultEffort: string;
 }
 
 export interface WebChatModelResponse {
   runtime: string;
   currentModel?: string;
   currentModelProvider?: string;
+  currentModelStatus?: "available" | "catalog-missing" | "catalog-unloaded" | "unknown" | string;
+  currentEffort?: string;
   models: WebChatModel[];
+  effort: WebChatEffortCapabilities;
   updatedAt?: string;
+  refreshing?: boolean;
+  stale?: boolean;
+  error?: string;
+  canRetry?: boolean;
 }
 
 export interface WebChatEvent {
@@ -125,10 +153,14 @@ export interface WebChatEvent {
   transportTurnId?: string;
   canonicalTurnId?: string;
   text?: string;
-  usage?: WebChatUsage;
+  contextUsage?: WebChatUsage;
+  usageTotals?: WebChatUsageTotals | null;
   record?: ConversationRecord;
   model?: string;
   modelProvider?: string;
+  effort?: string;
+  effortReset?: boolean;
+  settings?: WebChatModelResponse;
   [key: string]: unknown;
 }
 

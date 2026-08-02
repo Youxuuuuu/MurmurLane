@@ -43,3 +43,42 @@ test("WebChat Adapter 只使用 Composition Root 注入的 URL、凭据与 Timeo
     globalThis.fetch = originalFetch;
   }
 });
+
+test("WebChat Adapter 通过独立 Runtime Effort 命令更新等级", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestedUrl = "";
+  let requestedBody = "";
+  globalThis.fetch = (async (url, init) => {
+    requestedUrl = String(url);
+    requestedBody = String(init?.body || "");
+    return {
+      ok: true,
+      json: async () => ({
+        status: "idle",
+        model: "model-a",
+        effort: "high",
+      }),
+    } as Response;
+  }) as typeof fetch;
+
+  try {
+    const api = createWebChatApi({
+      baseUrl: "https://chat.example.com",
+      credential: "",
+      sendTimeoutMs: 15_000,
+      uploadTimeoutMs: 120_000,
+    });
+
+    await api.setEffort("high");
+
+    assert.equal(
+      requestedUrl,
+      "https://chat.example.com/api/chat/effort",
+    );
+    assert.deepEqual(JSON.parse(requestedBody), {
+      effort: "high",
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
