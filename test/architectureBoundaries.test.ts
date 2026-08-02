@@ -130,3 +130,27 @@ test("View 不读取技术错误诊断字段或 HTTP 状态", () => {
   }
   assert.deepEqual(violations, []);
 });
+
+test("Conversation Workspace 独占 WebChat SSE 订阅生命周期", () => {
+  const conversationRoot = join(
+    workspacesRoot,
+    "conversation",
+  );
+  const workspaceSource = readFileSync(
+    join(conversationRoot, "useConversationWorkspace.ts"),
+    "utf8",
+  );
+  const runtimeSources = collectSourceFiles(
+    join(conversationRoot, "runtime"),
+  )
+    .filter((path) => [".ts", ".tsx"].includes(extname(path)))
+    .map((path) => readFileSync(path, "utf8"))
+    .join("\n");
+
+  assert.equal(
+    [...workspaceSource.matchAll(/\bwebChat\.subscribe\s*\(/g)].length,
+    1,
+  );
+  assert.equal(/\bwebChat\.subscribe\s*\(/.test(runtimeSources), false);
+  assert.equal(/\bEventSource\b/.test(runtimeSources), false);
+});

@@ -42,10 +42,8 @@ import type {
   WebChatComposerMessageInput,
   WebChatEvent,
   WebChatMedia,
-  WebChatModelResponse,
   WebChatSendResult,
   WebChatStatus,
-  WebChatUsageTotals,
 } from "../../types/webChat";
 import type { WebChatPort } from "./webChatPort";
 import type { ConversationNavigationTarget } from "../../app/navigation/appNavigation";
@@ -86,6 +84,7 @@ import {
   toConversationCommandError,
 } from "./conversationCommandError";
 import { shouldReleaseDeletedThreadOverlay } from "./conversationListActions";
+import { useConversationRuntime } from "./runtime/useConversationRuntime";
 
 interface StagedWebChatSend {
   requestId: string;
@@ -183,6 +182,11 @@ export function useConversationWorkspace({
     active &&
     workspaceState.view === "chat" &&
     !workspaceState.placeholder;
+  const runtime = useConversationRuntime({
+    webChat,
+    enabled,
+    threadId,
+  });
   const availableThreadIds = useMemo(
     () => getAllConversationThreadIds(remoteData),
     [remoteData],
@@ -266,11 +270,7 @@ export function useConversationWorkspace({
   const preparingRequestIdsRef = useRef(new Set<string>());
   const requestIdByMessageIdRef = useRef(new Map<string, string>());
   const [messagesByThread, setMessagesByThread] = useState<Record<string, ConversationRecord[]>>({});
-  const [usageTotalsByThread, setUsageTotalsByThread] = useState<Record<string, WebChatUsageTotals>>({});
   const [status, setStatus] = useState<WebChatStatus | null>(null);
-  const [models, setModels] = useState<WebChatModelResponse | null>(null);
-  const [modelCatalogError, setModelCatalogError] = useState("");
-  const [runtimeSettingsNotice, setRuntimeSettingsNotice] = useState("");
   const [connection, setConnection] = useState<"idle" | "connecting" | "open" | "offline">("idle");
   const [error, setError] = useState("");
   const [deletedThreadIds, setDeletedThreadIds] = useState<Set<string>>(
@@ -363,6 +363,8 @@ export function useConversationWorkspace({
         );
       }
 
+      if (runtime.handleEvent(event, selectedThreadId)) return;
+
       if (event.kind === "thread.created" && eventThreadId) {
         const draftThreadId = String(event.previousThreadId || selectedThreadId || "");
         setMessagesByThread((current) => {
@@ -407,22 +409,6 @@ export function useConversationWorkspace({
         return;
       }
 
-      if (event.kind === "usage" && targetThreadId) {
-        if (event.usageTotals) {
-          setUsageTotalsByThread((current) => ({
-            ...current,
-            [targetThreadId]: event.usageTotals as WebChatUsageTotals,
-          }));
-        }
-        setStatus((current) => ({
-          ...(current || {}),
-          threadId: targetThreadId,
-          contextUsage: event.contextUsage || current?.contextUsage || null,
-          usageTotals: event.usageTotals || current?.usageTotals || null,
-        }));
-        return;
-      }
-
       if (
         event.kind === "turn.started"
         || event.kind === "turn.completed"
@@ -443,35 +429,8 @@ export function useConversationWorkspace({
         return;
       }
 
-      if (event.kind === "runtime.settings.updated" || event.kind === "model.updated") {
-        const nextModel = String(event.model || "");
-        const nextModelProvider = String(event.modelProvider || "");
-        const nextEffort = String(event.effort || "");
-        setStatus((current) => ({
-          ...(current || {}),
-          model: nextModel,
-          modelProvider: nextModelProvider,
-          effort: nextEffort,
-        }));
-        setModels((current) =>
-          event.settings
-            ? event.settings
-            : current
-              ? {
-                  ...current,
-                  currentModel: nextModel || current.currentModel,
-                  currentModelProvider: nextModelProvider,
-                  currentEffort: nextEffort,
-                }
-              : current,
-        );
-        if (event.effortReset) {
-          setRuntimeSettingsNotice("已切换为该模型的默认 Effort");
-          window.setTimeout(() => setRuntimeSettingsNotice(""), 2_400);
-        }
-      }
     },
-    [handleThreadCreated],
+    [handleThreadCreated, runtime.handleEvent],
   );
 
   useEffect(() => {
@@ -490,13 +449,8 @@ export function useConversationWorkspace({
           nextStatus.eventCursor,
         );
         cursorByThreadRef.current.set(threadId, snapshotCursor);
-        setStatus(nextStatus);
-        if (nextStatus.usageTotals) {
-          setUsageTotalsByThread((current) => ({
-            ...current,
-            [threadId]: nextStatus.usageTotals as WebChatUsageTotals,
-          }));
-        }
+        runtime.absorbStatus(nextStatus, threadId);
+        setStatus(selectConversationActivityStatus(nextStatus));
         setError("");
         stopSubscription = webChat.subscribe({
           threadId,
@@ -522,26 +476,7 @@ export function useConversationWorkspace({
       cancelled = true;
       stopSubscription?.();
     };
-  }, [enabled, threadId, handleEvent]);
-
-  useEffect(() => {
-    if (!enabled) return undefined;
-    let cancelled = false;
-    webChat.fetchModels()
-      .then((nextModels) => {
-        if (cancelled) return;
-        setModels(nextModels);
-        setModelCatalogError("");
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setModelCatalogError("模型目录暂时无法加载");
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [enabled]);
+  }, [enabled, threadId, handleEvent, runtime.absorbStatus]);
 
   const executeTransaction = useCallback(async (
     requestId: string,
@@ -811,71 +746,6 @@ export function useConversationWorkspace({
     }
     return executeTransaction(requestId, true);
   }, [executeTransaction, prepareStagedSend]);
-
-  const refreshModels = useCallback(async () => {
-    try {
-      const result = await webChat.fetchModels();
-      setModels(result);
-      setModelCatalogError("");
-      return result;
-    } catch (error) {
-      setModelCatalogError("模型目录暂时无法加载");
-      throw toConversationCommandError(
-        "load-models",
-        error,
-      );
-    }
-  }, []);
-
-  const chooseModel = useCallback(async (model: string, modelProvider = "") => {
-    try {
-      const result = await webChat.setModel(model, modelProvider);
-      setStatus(result);
-      setModels((current) =>
-        result.runtimeSettings
-          ? result.runtimeSettings
-          : current
-            ? {
-                ...current,
-                currentModel: result.model,
-                currentModelProvider: result.modelProvider,
-                currentEffort: result.effort ?? current.currentEffort,
-              }
-            : current,
-      );
-      return result;
-    } catch (error) {
-      throw toConversationCommandError(
-        "choose-model",
-        error,
-      );
-    }
-  }, []);
-
-  const chooseEffort = useCallback(async (effort: string) => {
-    try {
-      const result = await webChat.setEffort(effort);
-      setStatus(result);
-      setModels((current) =>
-        result.runtimeSettings
-          ? result.runtimeSettings
-          : current
-            ? {
-                ...current,
-                currentModel: result.model ?? current.currentModel,
-                currentModelProvider: result.modelProvider ?? current.currentModelProvider,
-                currentEffort: result.effort ?? "",
-              }
-            : current,
-      );
-      return result;
-    } catch (error) {
-      throw toConversationCommandError(
-        "choose-model",
-        error,
-      );
-    }
-  }, []);
 
   const searchRecords = useCallback(
     async (options: SearchConversationOptions) => {
@@ -1344,21 +1214,7 @@ export function useConversationWorkspace({
           delete next[requestedThreadId];
           return next;
         });
-        setUsageTotalsByThread((current) => {
-          if (!(requestedThreadId in current)) return current;
-          const next = { ...current };
-          delete next[requestedThreadId];
-          return next;
-        });
-        setStatus((current) =>
-          current?.threadId === requestedThreadId
-            ? {
-                ...current,
-                contextUsage: null,
-                usageTotals: null,
-              }
-            : current,
-        );
+        runtime.clearThread(requestedThreadId);
         return result;
       } catch (cause) {
         const message =
@@ -1372,7 +1228,7 @@ export function useConversationWorkspace({
         setDeletingThreadId("");
       }
     },
-    [archiveCommands, deletingThreadId],
+    [archiveCommands, deletingThreadId, runtime.clearThread],
   );
   const selectedThreadDates = useMemo(
     () =>
@@ -1443,24 +1299,28 @@ export function useConversationWorkspace({
     }),
     [resolveLocalMediaUrl, webChat.resolveAssetUrl],
   );
+  const viewStatus = useMemo<WebChatStatus | null>(
+    () =>
+      status
+        ? {
+            ...status,
+            ...runtime.statusSnapshot,
+          }
+        : null,
+    [runtime.statusSnapshot, status],
+  );
 
   const viewModel = useMemo(
     () => ({
       clientId: clientIdRef.current,
       messages: messagesByThread[threadId] ?? [],
       messagesByThread,
-      usageTotals:
-        usageTotalsByThread[threadId]
-        || (status?.threadId === threadId ? status.usageTotals : null)
-        || null,
-      contextUsage:
-        status?.threadId === threadId
-          ? status.contextUsage || null
-          : null,
-      status,
-      models,
-      modelCatalogError,
-      runtimeSettingsNotice,
+      usageTotals: runtime.usageTotals,
+      contextUsage: runtime.contextUsage,
+      status: viewStatus,
+      models: runtime.models,
+      modelCatalogError: runtime.modelCatalogError,
+      runtimeSettingsNotice: runtime.runtimeSettingsNotice,
       connection,
       error,
       selectedThreadId: workspaceState.selectedThreadId,
@@ -1497,16 +1357,16 @@ export function useConversationWorkspace({
       deletingThreadId,
       error,
       messagesByThread,
-      models,
       navigationHighlightTarget,
       page,
       earlierDateToLoad,
-      status,
       transcript,
       threadId,
-      usageTotalsByThread,
-      modelCatalogError,
-      runtimeSettingsNotice,
+      runtime.contextUsage,
+      runtime.modelCatalogError,
+      runtime.models,
+      runtime.runtimeSettingsNotice,
+      runtime.usageTotals,
       effectiveThreadProfiles,
       profileError,
       profileThreadIds,
@@ -1518,6 +1378,7 @@ export function useConversationWorkspace({
       threadActionError,
       userProfile,
       visibleThreadSummaries,
+      viewStatus,
       workspaceState,
     ],
   );
@@ -1525,9 +1386,9 @@ export function useConversationWorkspace({
     () => ({
       sendMessages,
       retryMessage,
-      refreshModels,
-      chooseModel,
-      chooseEffort,
+      refreshModels: runtime.refreshModels,
+      chooseModel: runtime.chooseModel,
+      chooseEffort: runtime.chooseEffort,
       selectThread,
       openDate,
       setPageMode,
@@ -1551,8 +1412,8 @@ export function useConversationWorkspace({
       deleteThread,
     }),
     [
-      chooseModel,
-      chooseEffort,
+      runtime.chooseModel,
+      runtime.chooseEffort,
       dismissNotification,
       deleteThread,
       hideThread,
@@ -1566,7 +1427,7 @@ export function useConversationWorkspace({
       searchRecords,
       loadStickers,
       loadSticker,
-      refreshModels,
+      runtime.refreshModels,
       retryMessage,
       selectThread,
       sendMessages,
@@ -1581,4 +1442,19 @@ export function useConversationWorkspace({
   );
 
   return createConversationWorkspaceOutput(viewModel, commands);
+}
+
+function selectConversationActivityStatus(
+  status: WebChatStatus,
+): WebChatStatus {
+  const {
+    model: _model,
+    modelProvider: _modelProvider,
+    effort: _effort,
+    contextUsage: _contextUsage,
+    usageTotals: _usageTotals,
+    runtimeSettings: _runtimeSettings,
+    ...activityStatus
+  } = status;
+  return activityStatus;
 }
