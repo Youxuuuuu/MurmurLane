@@ -54,3 +54,11 @@ MurmurLane 不得通过猜测字段形状或直接读取 Runtime 原始格式绕
 - `Complete`：当前源码和行为符合 ADR。
 
 前七条 ADR 是已经接受的目标架构，不代表当前源码已经完成迁移。后续实施计划必须以各 ADR 的 `Implementation` 为准，不得把目标结构描述成当前已经存在的结构。
+
+## Clarification — 2026-08-03
+
+本节补充而不改写上述历史表述。Conversation、Usage、语音、通话或媒体这些主题名称本身不决定 `Repo: both`；只有生产契约与消费者都需修改、Record/媒体/身份语义跨越边界、两仓库存在独立缺陷，或一侧无法在兼容条件下独立发布时，才使用 `Repo: both`。
+
+生产契约不变的 Browser Adapter、ContentSync、Workspace、Live/Canonical 对账、Transcript、View Model、视觉和交互属于 `Repo: murmurlane`。消费契约不变的 Runtime、Channel、Archive 写入或生产契约缺陷属于 `Repo: cyberboss`。发布顺序由兼容性决定，不从“Cyberboss 是生产端”推导出固定顺序。
+
+完整判定规则：本地 [`../murmurlane-stack/docs/repository-map.md`](../../../murmurlane-stack/docs/repository-map.md) 与 [`../murmurlane-stack/docs/workflow/cross-repo-diagnosis.md`](../../../murmurlane-stack/docs/workflow/cross-repo-diagnosis.md)；GitHub：[repository map · main](https://github.com/Youxuuuuu/murmurlane-stack/blob/main/docs/repository-map.md) 与 [diagnosis · main](https://github.com/Youxuuuuu/murmurlane-stack/blob/main/docs/workflow/cross-repo-diagnosis.md)。

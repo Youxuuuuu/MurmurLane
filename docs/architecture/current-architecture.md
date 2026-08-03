@@ -10,14 +10,14 @@
 - `AGENTS.md`：开发与修改约束。
 - `docs/adr/`：架构决策及其理由。
 - `docs/architecture/migration-plan.md`：迁移顺序、测试和历史账本。
-- [`docs/architecture/cross-repo-diagnosis.md`](cross-repo-diagnosis.md)：仓库内稳定入口；唯一权威诊断流程位于 [`murmurlane-stack/docs/workflow/cross-repo-diagnosis.md`](../../../murmurlane-stack/docs/workflow/cross-repo-diagnosis.md)。
+- [`docs/architecture/cross-repo-diagnosis.md`](cross-repo-diagnosis.md)：仓库内稳定入口；唯一权威诊断流程位于本地 [`../murmurlane-stack/docs/workflow/cross-repo-diagnosis.md`](../../../murmurlane-stack/docs/workflow/cross-repo-diagnosis.md)；GitHub：[main](https://github.com/Youxuuuuu/murmurlane-stack/blob/main/docs/workflow/cross-repo-diagnosis.md)。
 - `HANDOFF.md`：当前会话的短期交接。
 
 本文档不重复全部 ADR。需要理解某项选择为什么成立时，再阅读对应 ADR。
 
 ## 一句话架构
 
-> Cyberboss 生产权威 Conversation；ContentSync 管理来源数据何时有效；Workspace 管理数据意味着什么以及页面如何响应；View 只负责展示和瞬时交互；Adapter 与 MurmurLane Server 只提供技术能力。
+> Cyberboss 仓库提供权威 Conversation 生产契约（派生 Conversation Record 的具体生成与持久化在 `src/custom/xiaoye/conversation/`）；ContentSync 管理来源数据何时有效；Workspace 管理数据意味着什么以及页面如何响应；View 只负责展示和瞬时交互；Adapter 与 MurmurLane Server 只提供技术能力。
 
 新增代码首先判断“这条规则由哪个领域或应用模块拥有”，而不是先根据 React、HTTP、文件类型或 Hook 决定目录。
 

@@ -4,7 +4,7 @@
 
 ## 给新会话的最短说明
 
-当前仓库是 `D:\study\MurmurLane`，当前分支为 `dev/ins-chat`。
+当前仓库为本仓库根目录，当前分支为 `dev/ins-chat`。
 
 MurmurLane 架构迁移、统一浏览器/真机验收，以及 Android Chrome Conversation 输入框遮挡修复均已完成。用户已经在 realme Android 15 的 Chrome 150 上确认键盘打开后不再遮挡输入面；相关临时诊断面板、轮廓和探针已经删除。
 
