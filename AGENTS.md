@@ -38,7 +38,7 @@
 - 同时影响 Cyberboss 与 MurmurLane 的任务使用共享 tracker，并标记 `Repo: both`。
 - 跨仓库任务开始前依次读取 `docs/architecture/current-architecture.md`、`../cyberboss/docs/architecture.md`、`../murmurlane-stack/docs/repository-map.md` 和对应 feature 的 `spec.md`。
 - MurmurLane 仍以自身 `CONTEXT.md` 和 `docs/adr/` 为领域权威。
-- 尚未确定归属的跨仓库症状先使用 `Repo: both`、`Status: needs-triage`，按照 `docs/architecture/cross-repo-diagnosis.md` 找到第一个错误 seam 后再更新归属。
+- 尚未确定归属的跨仓库症状先使用 `Repo: both`、`Status: needs-triage`，按照 `../murmurlane-stack/docs/workflow/cross-repo-diagnosis.md` 找到第一个错误 seam 后再更新归属。
 - 先确定数据或行为的所有者：Cyberboss 负责 Runtime、Channel 和标准记录；MurmurLane 负责消费、合并与展示。
 - 不在 MurmurLane 复制 Cyberboss 的归档规范化实现；需要共享的契约应先在跨仓库任务中明确。
 - Chat Gateway、共享契约包和统一 Conversation Store 仍是候选设计；在 ADR 确认前不得当作既定架构。

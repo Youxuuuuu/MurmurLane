@@ -10,7 +10,7 @@
 - `AGENTS.md`：开发与修改约束。
 - `docs/adr/`：架构决策及其理由。
 - `docs/architecture/migration-plan.md`：迁移顺序、测试和历史账本。
-- `docs/architecture/cross-repo-diagnosis.md`：MurmurLane 与 Cyberboss 问题的归属诊断流程。
+- [`docs/architecture/cross-repo-diagnosis.md`](cross-repo-diagnosis.md)：仓库内稳定入口；唯一权威诊断流程位于 [`murmurlane-stack/docs/workflow/cross-repo-diagnosis.md`](../../../murmurlane-stack/docs/workflow/cross-repo-diagnosis.md)。
 - `HANDOFF.md`：当前会话的短期交接。
 
 本文档不重复全部 ADR。需要理解某项选择为什么成立时，再阅读对应 ADR。
