@@ -98,9 +98,7 @@ Status: needs-triage
 
 共享 Tracker 位置：
 
-```text
-D:\study\.cyberboss\engineering-tracker
-```
+[`murmurlane-stack/tracker`](../../../murmurlane-stack/tracker)
 
 ## 诊断第一步：建立反馈循环
 
@@ -429,4 +427,3 @@ Cyberboss
 - 临时 Instrumentation 已清理。
 - 浏览器或真机问题已由对应环境验收。
 - Tracker 的 `Repo:` 和 `Status:` 已更新。
-
