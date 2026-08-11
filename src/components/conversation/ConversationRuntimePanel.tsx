@@ -6,23 +6,20 @@ import type {
   WebChatUsageTotals,
 } from "../../types/webChat";
 import {
+  buildCompactRuntimeStatusText,
   buildRuntimeModelRows,
   filterRuntimeModelRows,
+  formatCumulativeTokens,
+  formatFullTokens,
+  resolveLatestUsage,
   shouldShowRuntimeModelSearch,
 } from "./conversationRuntimePanelModel";
-
-function formatTokens(value: unknown) {
-  const number = Number(value);
-  if (!Number.isFinite(number) || number <= 0) return "0";
-  if (number >= 1_000_000) return `${(number / 1_000_000).toFixed(1)}m`;
-  if (number >= 1_000) return `${Math.round(number / 100) / 10}k`;
-  return String(Math.round(number));
-}
 
 export function ConversationRuntimePanel({
   status,
   models,
   usageTotals,
+  contextUsage,
   modelCatalogError,
   runtimeSettingsNotice,
   onChooseModel,
@@ -32,6 +29,7 @@ export function ConversationRuntimePanel({
   status?: WebChatStatus | null;
   models?: WebChatModelResponse | null;
   usageTotals?: WebChatUsageTotals | null;
+  contextUsage?: WebChatUsage | null;
   modelCatalogError?: string;
   runtimeSettingsNotice?: string;
   onChooseModel?: (model: string, modelProvider?: string) => Promise<unknown>;
@@ -132,6 +130,10 @@ export function ConversationRuntimePanel({
           Number(usageTotals?.cacheHitRate || 0) * 1_000,
         ) / 10}%`
       : "0%";
+  const latestUsage = resolveLatestUsage({
+    runtime: models?.runtime,
+    contextUsage,
+  });
 
   return (
     <>
@@ -300,7 +302,17 @@ export function ConversationRuntimePanel({
         </div>
       ) : null}
 
-      <div className="mt-2 grid grid-cols-2 gap-2 text-[10px] text-black/42"><span>输入 {formatTokens(usageTotals?.inputTokens)}</span><span>输出 {formatTokens(usageTotals?.outputTokens)}</span><span>缓存 {formatTokens(cacheValue)}</span><span>命中率 {cacheHitRate}</span></div>
+      <div className="mt-2 grid grid-cols-2 gap-2 text-[10px] text-black/42">
+        <span>输入 {formatCumulativeTokens(usageTotals?.inputTokens)}</span>
+        <span>输出 {formatCumulativeTokens(usageTotals?.outputTokens)}</span>
+        <span>缓存 {formatCumulativeTokens(cacheValue)}</span>
+        <span>命中率 {cacheHitRate}</span>
+      </div>
+      <div className="mt-2 border-t border-black/[0.055] pt-2 text-[10px] text-black/42">
+        最近 in {formatFullTokens(latestUsage.inputTokens)} · out{" "}
+        {formatFullTokens(latestUsage.outputTokens)} · cache{" "}
+        {formatFullTokens(latestUsage.cacheReadInputTokens)}
+      </div>
     </>
   );
 }
@@ -308,15 +320,15 @@ export function ConversationRuntimePanel({
 export function buildCompactRuntimeStatus({
   model,
   contextUsage,
+  models,
 }: {
   model: string;
   contextUsage?: WebChatUsage | null;
+  models?: WebChatModelResponse | null;
 }) {
-  const cacheValue =
-    contextUsage?.cacheReadInputTokens ??
-    contextUsage?.cachedInputTokens;
-  return `${model} · context ${formatTokens(
-    contextUsage?.currentTokens ||
-      contextUsage?.inputTokens,
-  )} · cache ${formatTokens(cacheValue)}`;
+  return buildCompactRuntimeStatusText({
+    model,
+    contextUsage,
+    models,
+  });
 }

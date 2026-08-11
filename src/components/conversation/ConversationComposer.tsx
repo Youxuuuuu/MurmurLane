@@ -5,6 +5,8 @@ import {
   useMemo,
   useRef,
   useState,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
 } from "react";
 import {
   getConversationDisplayText,
@@ -38,6 +40,8 @@ import {
   buildCompactRuntimeStatus,
   ConversationRuntimePanel,
 } from "./ConversationRuntimePanel";
+import { VoiceComposerBar } from "./VoiceComposerBar";
+import { useVoiceDraftRecorder, type VoiceDraft } from "./useVoiceDraftRecorder";
 
 function makeSegmentId() {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -45,11 +49,10 @@ function makeSegmentId() {
     : `segment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function Icon({ name }: { name: "plus" | "smile" | "mic" | "send" | "photo" | "camera" | "file" }) {
+function Icon({ name }: { name: "plus" | "smile" | "send" | "photo" | "camera" | "file" }) {
   const paths = {
     plus: <path d="M12 5v14M5 12h14" />,
     smile: <><circle cx="12" cy="12" r="8.5" /><path d="M8.5 10h.01M15.5 10h.01M8.5 14c1 1.35 2.15 2 3.5 2s2.5-.65 3.5-2" /></>,
-    mic: <><rect x="9" y="4" width="6" height="11" rx="3" /><path d="M6.5 12.5a5.5 5.5 0 0 0 11 0M12 18v3" /></>,
     send: <path d="m4 5 16 7-16 7 3-7-3-7Zm3 7h13" />,
     photo: <><rect x="3.5" y="5" width="17" height="14" rx="2" /><circle cx="9" cy="10" r="1.5" /><path d="m5 17 4.5-4 3 2.5 2.5-2 3.5 3.5" /></>,
     camera: <><path d="M5 7.5h3l1.2-2h5.6l1.2 2h3a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2Z" /><circle cx="12" cy="13" r="3.5" /></>,
@@ -98,6 +101,9 @@ export function ConversationComposer({
   loadStickers,
   loadStickerAsset,
   mediaUrls,
+  onVoiceDraftPresenceChange,
+  onVoiceDraftSendRequest,
+  voiceTriggerIcon,
 }: {
   status?: WebChatStatus | null;
   models?: WebChatModelResponse | null;
@@ -117,12 +123,15 @@ export function ConversationComposer({
   loadStickers: () => Promise<{ stickers: StickerAsset[] }>;
   loadStickerAsset: (sticker: StickerAsset) => Promise<Blob>;
   mediaUrls: import("../../lib/conversation").ConversationMediaUrlPort;
+  onVoiceDraftPresenceChange?: (hasDraft: boolean) => void;
+  onVoiceDraftSendRequest?: (draft: VoiceDraft) => Promise<unknown> | unknown;
+  voiceTriggerIcon?: ReactNode;
 }) {
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<WebChatComposerAttachment[]>([]);
   const [queuedMessages, setQueuedMessages] = useState<WebChatComposerMessageInput[]>([]);
-  const [recording, setRecording] = useState(false);
   const [localError, setLocalError] = useState("");
+  const [voiceDraftSending, setVoiceDraftSending] = useState(false);
   const [panel, setPanel] = useState<"more" | "stickers" | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const composerRef = useRef<HTMLElement | null>(null);
@@ -130,12 +139,11 @@ export function ConversationComposer({
   const galleryInputRef = useRef<HTMLInputElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const recorderRef = useRef<MediaRecorder | null>(null);
-  const voiceChunksRef = useRef<Blob[]>([]);
   const sendingRef = useRef(false);
   const stickerSendingRef = useRef(false);
   const reduceMotion = useReducedMotion();
-  const displayError = localError || (error && !/failed to fetch/i.test(error) ? error : "");
+  const voiceRecorder = useVoiceDraftRecorder({ onDraftPresenceChange: onVoiceDraftPresenceChange });
+  const displayError = localError || voiceRecorder.errorText || (error && !/failed to fetch/i.test(error) ? error : "");
 
   const quote = useMemo<ConversationQuoteObject | null>(() => {
     if (!quoteMessage) return null;
@@ -165,8 +173,22 @@ export function ConversationComposer({
   const compactStatus = buildCompactRuntimeStatus({
     model: currentModel,
     contextUsage,
+    models,
   });
   const canSend = Boolean(queuedMessages.length || text.trim() || attachments.length);
+  // Voice upload is a production capability, so missing or partial status
+  // must fail closed instead of exposing a microphone that can only error.
+  const voiceInputEnabled = Boolean(
+    status?.voiceInput?.enabled
+      && status.voiceInput.configured
+      && status.voiceInput.available,
+  );
+
+  useEffect(() => {
+    if (!voiceRecorder.draft) return;
+    setPanel(null);
+    setDetailsOpen(false);
+  }, [voiceRecorder.draft]);
 
   useLayoutEffect(() => {
     const composer = composerRef.current;
@@ -289,35 +311,34 @@ export function ConversationComposer({
     }
   };
 
-  const toggleRecording = async () => {
-    if (recording && recorderRef.current) {
-      recorderRef.current.stop();
+  const handleVoicePointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!voiceInputEnabled) {
+      setLocalError("语音输入当前未启用。");
       return;
     }
-    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
-      setLocalError("当前浏览器不支持录音");
+    if (text.trim() || attachments.length || queuedMessages.length || quote) {
+      setLocalError("录制语音前请先发送或清空当前文字与附件。");
+      return;
+    }
+    setLocalError("");
+    voiceRecorder.handlePointerDown(event);
+  };
+
+  const requestVoiceDraftSend = async () => {
+    if (!voiceRecorder.draft || voiceDraftSending) return;
+    if (!onVoiceDraftSendRequest) {
+      setLocalError("语音草稿已保留；生产上传契约尚未接入。");
       return;
     }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
-      voiceChunksRef.current = [];
-      recorder.ondataavailable = (event) => event.data.size && voiceChunksRef.current.push(event.data);
-      recorder.onstop = async () => {
-        stream.getTracks().forEach((track) => track.stop());
-        setRecording(false);
-        const blob = new Blob(voiceChunksRef.current, { type: recorder.mimeType || "audio/webm" });
-        if (!blob.size) return;
-        setAttachments((current) => [...current, createWebChatPendingUpload(blob, {
-          fileName: `voice-${Date.now()}.webm`,
-          kind: "voice",
-        })]);
-      };
-      recorderRef.current = recorder;
-      recorder.start();
-      setRecording(true);
+      setLocalError("");
+      setVoiceDraftSending(true);
+      await onVoiceDraftSendRequest(voiceRecorder.draft);
+      voiceRecorder.discardDraft();
     } catch {
-      setLocalError("无法开始录音，请检查麦克风权限。");
+      setLocalError("语音草稿未发送，仍保留在当前页面。");
+    } finally {
+      setVoiceDraftSending(false);
     }
   };
 
@@ -346,7 +367,12 @@ export function ConversationComposer({
         style={{ transform: panel ? undefined : "translateY(calc(var(--app-keyboard-inset, 0px) * -1))" }}
       >
       <div className="relative z-20 mx-auto max-w-[760px]">
-        <div ref={detailsRef} className="relative mb-2 ml-2 flex">
+        <div
+          ref={detailsRef}
+          className="conversation-runtime-selection-lock relative mb-2 ml-2 flex"
+          onCopy={(event) => event.preventDefault()}
+          onContextMenu={(event) => event.preventDefault()}
+        >
           <button type="button" onClick={toggleRuntimeDetails} className="max-w-full truncate rounded-full border border-black/[0.055] bg-white/75 px-3 py-1.5 text-left text-[10px] font-medium text-black/38 shadow-[0_2px_10px_rgba(60,55,70,.04)] backdrop-blur-xl" aria-expanded={detailsOpen}>
             <span className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${connection === "open" ? "bg-[#8da891]" : "bg-[#c7a681]"}`} />{compactStatus}
           </button>
@@ -357,6 +383,7 @@ export function ConversationComposer({
                   status={status}
                   models={models}
                   usageTotals={usageTotals}
+                  contextUsage={contextUsage}
                   modelCatalogError={modelCatalogError}
                   runtimeSettingsNotice={runtimeSettingsNotice}
                   onChooseModel={onChooseModel}
@@ -382,22 +409,31 @@ export function ConversationComposer({
           </div>
         ) : null}
 
-        <div className="flex items-end gap-1.5 rounded-[32px] bg-white p-1.5 shadow-[0_10px_34px_rgba(72,65,83,.13),0_1px_3px_rgba(72,65,83,.05)]">
-          <button type="button" onClick={() => { setPanel((value) => value === "more" ? null : "more"); setDetailsOpen(false); }} className={`composer-icon-button ${panel === "more" ? "bg-[#eee9f3] text-[#725f87]" : "text-black/48"}`} aria-label="更多功能"><Icon name="plus" /></button>
-          <div className="conversation-composer-input-shell min-w-0 flex-1 px-1">
-            <textarea
-              value={text}
-              onChange={(event) => setText(event.target.value)}
-              onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); queueCurrent(); } }}
-              rows={1}
-              placeholder={recording ? "正在录音…" : queuedMessages.length ? "Enter Merge" : "Send Message…"}
-              className="conversation-composer-textarea block max-h-28 min-h-[42px] w-full resize-none bg-transparent py-[11px] text-[12px] font-bold leading-5 text-black/72 outline-none placeholder:text-black/35"
-            />
-          </div>
-          <button type="button" onClick={() => { setPanel((value) => value === "stickers" ? null : "stickers"); setDetailsOpen(false); }} className={`composer-icon-button ${panel === "stickers" ? "bg-[#eee9f3] text-[#725f87]" : "text-black/48"}`} aria-label="表情包"><Icon name="smile" /></button>
-          <button type="button" onClick={() => void toggleRecording()} className={`composer-icon-button ${recording ? "bg-[#d8868c] text-white" : "text-black/48"}`} aria-label={recording ? "停止录音" : "录制语音"}><Icon name="mic" /></button>
-          <motion.button type="button" whileTap={reduceMotion ? undefined : { scale: 0.94 }} onClick={sendAll} disabled={!canSend} className="composer-icon-button bg-[#d8c9e6] text-white transition-colors disabled:bg-[#e9e1f0] disabled:text-white" aria-label={queuedMessages.length ? "合并发送" : "发送"}><Icon name="send" /></motion.button>
-        </div>
+        <VoiceComposerBar
+            mode={voiceDraftSending ? "uploading" : voiceRecorder.phase}
+            text={text}
+            onTextChange={setText}
+            placeholder={queuedMessages.length ? "Enter Merge" : "Send Message…"}
+            durationMs={voiceRecorder.durationMs}
+            warning={voiceRecorder.warning}
+            draft={voiceRecorder.draft}
+            onOpenMore={() => { setPanel((value) => value === "more" ? null : "more"); setDetailsOpen(false); }}
+            onOpenEmoji={() => { setPanel((value) => value === "stickers" ? null : "stickers"); setDetailsOpen(false); }}
+            onSendText={sendAll}
+            onStageText={queueCurrent}
+            onDeleteDraft={voiceRecorder.discardDraft}
+            onSendDraft={() => void requestVoiceDraftSend()}
+            onStopRecording={() => voiceRecorder.finishRecording(false)}
+            onVoicePointerDown={handleVoicePointerDown}
+            onVoicePointerMove={voiceRecorder.handlePointerMove}
+            onVoicePointerUp={voiceRecorder.handlePointerUp}
+            onVoicePointerCancel={voiceRecorder.handlePointerCancel}
+            voiceTriggerIcon={voiceTriggerIcon}
+            voiceInputEnabled={voiceInputEnabled}
+            sendTextEnabled={canSend}
+            moreOpen={panel === "more"}
+            emojiOpen={panel === "stickers"}
+        />
         {displayError ? <div className="mt-1.5 px-3 text-[10px] text-[#b45f68]" role="alert">{displayError}</div> : null}
       </div>
       <AnimatePresence>

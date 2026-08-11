@@ -90,6 +90,54 @@ _Avoid_: Conversation Archive、手工维护的最终消息列表、DOM 窗口�
 把不同 Channel 和不同到达方式的 Conversation Record 统一呈现为同一套对话体验。
 _Avoid_: WebChat 专用页面、微信专用页面
 
+**Voice Message**:
+以异步 Conversation 媒体条目呈现、可以播放音频并可选择展示文字内容的消息。
+_Avoid_: 实时语音通话、普通文字气泡的朗读状态
+
+**Expandable Voice Bubble**:
+Voice Message 的一体化折叠/展开容器；折叠态显示播放、波形、时长和操作，展开态在同一容器内追加 transcript，且不重挂载音频或改变消息身份。
+_Avoid_: 独立 transcript 气泡、弹窗、展开时中断播放
+
+**Decorative Voice Waveform**:
+由固定高度数组绘制、统一用于新旧用户语音、Assistant 语音与 Speech Rendition 的可点击视觉进度轨道；形状不表达真实声学数据，但裁切进度与点击 seek 必须由真实音频时钟驱动。
+_Avoid_: PCM peaks、随机波形、拖动 scrub、与真实播放时间脱节的进度
+
+**Audio Playback Coordinator**:
+协调当前页面 Voice Message、Speech Rendition 与 Voice Draft 的唯一活动音频；新播放暂停旧播放并保留旧进度，且不因展开、状态更新或 Live/Canonical 对账重置播放器。
+_Avoid_: 多音频并发、自动恢复上一条、每个气泡各自争抢播放
+
+**Voice Draft**:
+用户完成录音后、显式发送前保留在 Composer 待选区和当前页面内存中的语音草稿；可以试听、删除或重录，离开时需要确认丢弃，尚不是 Voice Message，也不得上传或持久化。
+_Avoid_: Voice Message、已上传附件、IndexedDB 草稿、松手即发送
+
+**Voice Composer Flow**:
+从切换语音输入、按住录制、上滑取消，到 Voice Draft 试听、删除、重录和显式发送的 Composer 交互流程；最终 UI 参考归档在共享 Tracker，正式页与开发 Preview 复用同一生产组件。
+_Avoid_: 已发送 Voice Message 语音条、Speech Rendition、实时通话界面
+
+**Voice Processing State**:
+已发送用户语音在上传、转写、情绪分析、送达或失败阶段的领域状态；MurmurLane 用稳定图标槽、文字和无障碍名称呈现，但不自行推断后端进度。
+_Avoid_: 播放进度、Assistant 正在输入、仅存在于 CSS 的状态
+
+**Transcript Review**:
+低置信度用户语音在提交 Runtime 前的人工复核状态；用户编辑 STT 文字、重试转写或删除消息，确认后产生 Normalized Voice Transcript。
+_Avoid_: 音频编辑、已提交 transcript 的静默回写、Assistant transcript 展开
+
+**Speech Rendition**:
+既有 Assistant 文字消息的持久派生音频；文字气泡保持原语义，并在底部提供常驻轻量波形入口，供用户在气泡内展开或收起已保存音频的简易播放器。
+_Avoid_: Voice Message、独立语音气泡、临时重复合成
+
+**Voice Reply Policy**:
+用户为当前 Thread 选择的 Assistant 回复媒介偏好，取值为文字优先、自适应或语音优先。
+_Avoid_: 浏览器播放设置、TTS Provider、全局声音身份
+
+**Assistant Voice Profile**:
+由 Cyberboss 拥有、在所有 Thread 中保持一致的小机声音身份；MurmurLane 只展示或编辑其公开设置，不拥有 Provider 绑定与合成语义。
+_Avoid_: Voice Reply Policy、按 Thread 音色、浏览器播放设置
+
+**Speech Delivery Plan**:
+Cyberboss 为单次 Assistant 语音生成的结构化表演信息；MurmurLane 只消费最终音频和必要展示状态，不解释或重写 Provider 参数。
+_Avoid_: Voice Profile 编辑值、CSS 动画、朗读正文
+
 **Consistent Keyboard Clearance**:
 软键盘稳定打开后，Conversation 输入面与真实键盘顶边之间在受支持移动端环境中保持一致的可见垂直间距；该间距与输入面及其内置功能面板之间的标准呼吸间距相同。
 _Implementation_: 优先使用系统通过 VirtualKeyboard API 暴露的真实键盘几何；Android 的 `resizes-visual` 浏览器无法提供该几何且已验证 VisualViewport 少报顶部遮挡时，使用统一的 16px 遮挡保护。
@@ -99,8 +147,14 @@ _Avoid_: 把未经验证的 Viewport 差值直接当作真实键盘边界、按�
 由 Cyberboss 标识、在 MurmurLane 中选择和展示的一条持续对话。
 _Avoid_: 页面路由、单个 Turn
 
+**Runtime Context Snapshot**:
+Cyberboss 为当前 Thread 提供的最近一次模型 API 调用活动上下文；可以因压缩、摘要或不同 Prompt 下降，并且当前不跨 Cyberboss 重启持久化。MurmurLane 只展示 Thread 匹配的 `contextUsage`，不从 Thread Usage Totals、Conversation Record 或浏览器状态回退估算。
+_Display_: 收起态显示 `模型 · context 当前占用 / Runtime 实际窗口`；Context 小于 10k 显示完整整数，否则显示 k。ClaudeCode 的窗口是其实际采用的 200k 或显式 `[1m]` 的 1M；Codex 使用 Runtime 报告值。
+_Avoid_: Thread 生命周期累计、账户配额、Provider 原生模型宣传上限、持久化的离线上次快照
+
 **Thread Usage Totals**:
 归属于单个 Thread、覆盖其全部 Turn 与模型切换的累计真实 Token 用量；页面刷新或 Runtime 重启不改变其累计边界。输入总量包含普通输入、缓存创建与缓存读取，缓存命中量只表示成功复用的缓存读取。
+_Display_: 展开态显示累计输入、输出、缓存与 Token 加权命中率；累计值 `≤ 10m` 显示完整整数，`10m < x ≤ 10000m` 显示 k，`> 10000m` 显示 m。最下方 `最近 in / out / cache` 始终显示完整整数。
 _Avoid_: 页面会话计数、单条消息用量、全局账户用量、Context 占用量
 
 **Runtime Effort**:

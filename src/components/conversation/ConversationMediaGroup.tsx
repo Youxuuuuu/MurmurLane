@@ -9,6 +9,7 @@ import type { ConversationMediaUrlPort } from "../../lib/conversation";
 import { TinyIcon } from "../common/TinyIcon";
 import { ConversationFileCard } from "./ConversationFileCard";
 import { ConversationPhotoGallery } from "./PhotoStack";
+import { VoiceMessageBubble } from "../voice/VoiceMessageBubble";
 
 type MediaGroupPage = {
   color?: string;
@@ -120,6 +121,20 @@ export function ConversationMediaGroup({
           />
         </div>
       ) : null}
+
+      {groups.voices.map((item, index) => {
+        const mediaKey = getMediaKey(item, index);
+        const audioSrc = getConversationMediaSrc(item, mediaUrls);
+        return (
+          <VoiceMessageBubble
+            key={mediaKey}
+            id={`conversation-voice:${mediaKey}`}
+            audioSrc={audioSrc}
+            side={align === "right" ? "user" : "assistant"}
+            playbackDisabled={!audioSrc}
+          />
+        );
+      })}
 
       {groups.files.map((item, index) => (
         <ConversationFileCard

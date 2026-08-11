@@ -287,6 +287,30 @@ export function getConversationMediaItems(
     ? record.meta.stickers
     : [];
   const files = Array.isArray(record?.meta?.files) ? record.meta.files : [];
+  const voiceAsset = record?.meta?.voiceMessage && typeof record.meta.voiceMessage === "object"
+    ? (record.meta.voiceMessage as { asset?: { relativePath?: unknown; mimeType?: unknown; durationMs?: unknown } }).asset
+    : null;
+  const voiceAssetPath = typeof voiceAsset?.relativePath === "string"
+    ? voiceAsset.relativePath.trim().replace(/\\/g, "/")
+    : "";
+  const hasVoiceAttachment = [...attachments, ...files].some((item) => isAudioLikeMedia(item));
+  const safeVoiceAssetPath = isSafeVoiceAssetPath(voiceAssetPath) ? voiceAssetPath : "";
+  // A processing/failed Voice Message can legitimately have no asset yet.
+  // Keep it classified as voice so the same bubble can expose the backend
+  // state and transcript without inventing a playable URL.
+  const voiceMessage = record?.meta?.voiceMessage && typeof record.meta.voiceMessage === "object"
+    ? record.meta.voiceMessage
+    : null;
+  const syntheticVoice = voiceMessage && !hasVoiceAttachment
+    ? [{
+        kind: "voice",
+        contentType: String(voiceAsset?.mimeType || "audio/mpeg"),
+        durationMs: Number(voiceAsset?.durationMs) || 0,
+        path: safeVoiceAssetPath
+          ? `/api/chat/media?path=${encodeURIComponent(`MLane/voice/${safeVoiceAssetPath}`)}`
+          : "",
+      }]
+    : [];
 
   return [
     ...attachments.map((item, index) => ({
@@ -304,7 +328,19 @@ export function getConversationMediaItems(
       sourceType: "file",
       mediaKey: `file-${index}-${item?.fileName || item?.relativePath || item?.path || item?.url || ""}`,
     })),
+    ...syntheticVoice.map((item, index) => ({
+      ...item,
+      sourceType: "attachment",
+      mediaKey: `voice-asset-${index}-${voiceAssetPath}`,
+    })),
   ];
+}
+
+function isSafeVoiceAssetPath(value: string) {
+  if (!/^(?:self|threads)\//u.test(value)) return false;
+  const segments = value.split("/");
+  return segments.length >= 3
+    && segments.every((segment) => Boolean(segment) && segment !== "." && segment !== ".." && /^[A-Za-z0-9._-]+$/u.test(segment));
 }
 
 export function getConversationMediaPath(item: ConversationMediaItem) {

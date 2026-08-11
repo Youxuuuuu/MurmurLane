@@ -12,6 +12,12 @@ export function getConversationItemId(record: ConversationRecord) {
   return normalizeIdentityPart(record.itemId || record.meta?.itemId);
 }
 
+// Assistant runtime records predate WebChat messageId. Their itemId is still
+// stable and is the only safe identity that can address a Speech Rendition.
+export function getSpeechRenditionRecordId(record: ConversationRecord) {
+  return getConversationMessageId(record) || getConversationItemId(record);
+}
+
 export function getConversationThreadId(
   record: ConversationRecord,
   selectedThreadId = "",

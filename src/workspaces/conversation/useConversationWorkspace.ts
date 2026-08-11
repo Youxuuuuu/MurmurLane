@@ -97,6 +97,14 @@ interface StagedWebChatSend {
   resolvedUploads: Map<string, WebChatMedia>;
 }
 
+interface StagedVoiceSend {
+  requestId: string;
+  messageId: string;
+  receivedAt: string;
+  draftThreadId: string;
+  newThread: boolean;
+}
+
 function createClientId() {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
@@ -267,6 +275,7 @@ export function useConversationWorkspace({
   const currentThreadIdRef = useRef(threadId);
   const transactionsByRequestIdRef = useRef(new Map<string, WebChatSendTransaction>());
   const stagedSendsByRequestIdRef = useRef(new Map<string, StagedWebChatSend>());
+  const stagedVoiceSendsByDraftIdRef = useRef(new Map<string, StagedVoiceSend>());
   const preparingRequestIdsRef = useRef(new Set<string>());
   const requestIdByMessageIdRef = useRef(new Map<string, string>());
   const [messagesByThread, setMessagesByThread] = useState<Record<string, ConversationRecord[]>>({});
@@ -746,6 +755,93 @@ export function useConversationWorkspace({
     }
     return executeTransaction(requestId, true);
   }, [executeTransaction, prepareStagedSend]);
+
+  const sendVoiceDraft = useCallback(async (draft: {
+    id: string;
+    blob: Blob;
+    durationMs: number;
+    mimeType: string;
+  }) => {
+    const draftId = String(draft.id || "").trim();
+    if (!draftId || !(draft.blob instanceof Blob)) throw new Error("语音草稿无效");
+    const draftThreadId = currentThreadIdRef.current;
+    const staged = stagedVoiceSendsByDraftIdRef.current.get(draftId) || {
+      requestId: createMessageId(),
+      messageId: createMessageId(),
+      receivedAt: new Date().toISOString(),
+      draftThreadId,
+      newThread: String(draftThreadId).startsWith("draft-"),
+    };
+    stagedVoiceSendsByDraftIdRef.current.set(draftId, staged);
+    setError("");
+    try {
+      const result = await webChat.sendVoiceMessage({
+        blob: draft.blob,
+        requestId: staged.requestId,
+        messageId: staged.messageId,
+        threadId: staged.draftThreadId,
+        clientId: clientIdRef.current,
+        newThread: staged.newThread,
+        receivedAt: staged.receivedAt,
+      });
+      if (!result.accepted) throw new Error("语音发送未被接受");
+      stagedVoiceSendsByDraftIdRef.current.delete(draftId);
+      const targetThreadId = String(result.threadId || "");
+      if (staged.newThread && targetThreadId && targetThreadId !== staged.draftThreadId) {
+        handleThreadCreated({
+          draftThreadId: staged.draftThreadId,
+          threadId: targetThreadId,
+          clientId: clientIdRef.current,
+        });
+      }
+      return result;
+    } catch (nextError) {
+      setError("语音发送失败，草稿已保留，可再次点击发送重试。");
+      throw nextError;
+    }
+  }, [handleThreadCreated, webChat]);
+
+  const retryVoiceMessage = useCallback(async (messageId: string) => {
+    setError("");
+    try {
+      return await webChat.retryVoiceMessage({
+        messageId,
+        requestId: createMessageId(),
+        clientId: clientIdRef.current,
+      });
+    } catch (nextError) {
+      setError("重新转写失败，请稍后再试。");
+      throw nextError;
+    }
+  }, [webChat]);
+
+  const confirmVoiceTranscript = useCallback(async (messageId: string, normalizedText: string) => {
+    setError("");
+    try {
+      return await webChat.confirmVoiceTranscript({
+        messageId,
+        normalizedText,
+        requestId: createMessageId(),
+        clientId: clientIdRef.current,
+      });
+    } catch (nextError) {
+      setError("文字确认失败，修改内容已保留。");
+      throw nextError;
+    }
+  }, [webChat]);
+
+  const generateSpeechRendition = useCallback(async (messageId: string) => {
+    setError("");
+    try {
+      return await webChat.generateSpeechRendition({
+        messageId,
+        requestId: createMessageId(),
+      });
+    } catch (nextError) {
+      setError("语音生成失败，请稍后再试。");
+      throw nextError;
+    }
+  }, [webChat]);
 
   const searchRecords = useCallback(
     async (options: SearchConversationOptions) => {
@@ -1385,6 +1481,10 @@ export function useConversationWorkspace({
   const commands = useMemo(
     () => ({
       sendMessages,
+      sendVoiceDraft,
+      retryVoiceMessage,
+      confirmVoiceTranscript,
+      generateSpeechRendition,
       retryMessage,
       refreshModels: runtime.refreshModels,
       chooseModel: runtime.chooseModel,
@@ -1429,8 +1529,12 @@ export function useConversationWorkspace({
       loadSticker,
       runtime.refreshModels,
       retryMessage,
+      retryVoiceMessage,
       selectThread,
       sendMessages,
+      sendVoiceDraft,
+      confirmVoiceTranscript,
+      generateSpeechRendition,
       setJumpDate,
       setPageMode,
       setPlaceholder,

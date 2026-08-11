@@ -1,4 +1,7 @@
-import { memo, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type SyntheticEvent } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { VoiceMessageBubble } from "../voice/VoiceMessageBubble";
+import { SpeechRenditionControl } from "../voice/SpeechRenditionControl";
 import { motion, useReducedMotion } from "framer-motion";
 import {
   getConversationDisplayText,
@@ -14,11 +17,12 @@ import { formatConversationTime } from "../../lib/conversationPageData";
 import { MusicShareCard } from "./MusicShareCard";
 import { ConversationAvatar } from "./ConversationAvatar";
 import { ConversationMediaGroup } from "./ConversationMediaGroup";
-import { createBubbleId, getConversationMessageId, getConversationRenderId } from "../../lib/conversationIdentity";
+import { createBubbleId, getConversationMessageId, getConversationRenderId, getSpeechRenditionRecordId } from "../../lib/conversationIdentity";
 import { ThinkingPanel } from "./ThinkingPanel";
 import { bubbleRevealLedger, type BubbleRevealSlot } from "../../lib/BubbleRevealLedger";
 import { useBubbleRevealLedger } from "../../lib/useBubbleRevealLedger";
 import { getStableUserBubbleSegments } from "../../lib/conversationBubbleSegments";
+import { readSpeechRenditionView, readVoiceMessageView } from "../../lib/voiceMessage";
 import {
   bubbleRevealInitial,
   bubbleRevealTarget,
@@ -115,6 +119,70 @@ function quoteValueText(value: unknown) {
   return String(quote.text || quote.title || "").trim();
 }
 
+function ConversationQuoteBubble({
+  text,
+  page,
+  align,
+  bubbleId,
+}: {
+  text: string;
+  page: any;
+  align: "left" | "right";
+  bubbleId?: string;
+}) {
+  return (
+    <div
+      className={`${align === "right" ? "ml-auto" : "mr-auto"} inline-block w-fit max-w-[260px] rounded-none border-0 border-l-4 bg-white/[0.37] px-2.5 py-2 text-left font-mono text-[9px] font-semibold leading-[1.35] text-[#454545]`}
+      style={{ borderLeftColor: page.line }}
+      {...(bubbleId
+        ? {
+            "data-message-action-target": "true",
+            "data-bubble-id": bubbleId,
+            "data-bubble-text": text,
+          }
+        : {})}
+    >
+      {text}
+    </div>
+  );
+}
+
+async function copyConversationText(value: string) {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return;
+    } catch {
+      // Fall through for local HTTP and older embedded WebViews.
+    }
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  textarea.remove();
+}
+
+function preserveLiftedBubbleTypography(source: HTMLElement, clone: HTMLElement) {
+  const computed = window.getComputedStyle(source);
+  for (const property of [
+    "font-family",
+    "font-size",
+    "font-style",
+    "font-weight",
+    "letter-spacing",
+    "line-height",
+    "text-align",
+    "text-transform",
+    "color",
+  ]) {
+    clone.style.setProperty(property, computed.getPropertyValue(property));
+  }
+}
+
 function RevealedBubblePart({
   renderId,
   slot,
@@ -122,6 +190,7 @@ function RevealedBubblePart({
   style,
   children,
   bubbleText = "",
+  actionable = true,
 }: {
   renderId: string;
   slot: BubbleRevealSlot;
@@ -129,6 +198,7 @@ function RevealedBubblePart({
   style?: CSSProperties;
   children: ReactNode;
   bubbleText?: string;
+  actionable?: boolean;
 }) {
   const shouldAnimateRef = useRef<boolean | null>(null);
   const completedRef = useRef(false);
@@ -163,6 +233,7 @@ function RevealedBubblePart({
     <motion.div
       data-bubble-id={slot.bubbleId}
       data-bubble-state={isActivelyAnimating ? "entering" : slot.status}
+      {...(actionable ? { "data-message-action-target": "true" } : {})}
       {...(bubbleText ? { "data-bubble-text": bubbleText } : {})}
       className={className}
       style={{
@@ -200,6 +271,10 @@ function ChatBubbleContent({
   onEditThread,
   onQuote = undefined,
   onRetry = undefined,
+  onVoiceRetry = undefined,
+  onVoiceTranscriptConfirm = undefined,
+  onSpeechRendition = undefined,
+  onSpeechRenditionRetry = undefined,
   animateBubbleSequence = false,
   mediaUrls,
 }) {
@@ -212,6 +287,15 @@ function ChatBubbleContent({
   const parsedMetaQuote = parseInlineQuote(metaQuote);
   const quoteText = inlineQuote.quote || parsedMetaQuote.quote || metaQuote;
   const primaryMediaItem = getConversationPrimaryMediaItem(message);
+  const voiceMessageView = readVoiceMessageView(message.meta?.voiceMessage);
+  const speechRenditionView = !fromUser ? readSpeechRenditionView(message.meta?.speechRendition) : null;
+  const speechRenditionSrc = speechRenditionView?.assetPath
+    ? getConversationMediaSrc({
+        kind: "voice",
+        contentType: "audio/mpeg",
+        relativePath: `MLane/voice/${speechRenditionView.assetPath}`,
+      }, mediaUrls)
+    : "";
   const mediaItems = getConversationMediaItems(message);
   const operationPaths = getOperationDisplayPaths(message);
   const [actionOpen, setActionOpen] = useState(false);
@@ -229,7 +313,7 @@ function ChatBubbleContent({
   const messageTextParts = hasStableUserSegments
     ? stableUserSegments.map((segment) => segment.text)
     : (displayText ? splitBubbleText(displayText) : []);
-  const rendersTextBubbles = hasStableUserSegments || ![
+  const rendersTextBubbles = hasStableUserSegments || !(visualKind === "voice" && voiceMessageView) && ![
     "hidden",
     "system",
     "music",
@@ -297,27 +381,41 @@ function ChatBubbleContent({
                 renderId={bubbleKeyRoot}
                 slot={slot}
                 bubbleText={segment.text}
+                actionable={false}
                 className="w-fit max-w-full text-left font-sans text-[14px] font-normal leading-[1.55] text-black/[0.78]"
                 style={{ transformOrigin: "right bottom" }}
               >
-                <div className="flex flex-col items-end gap-1.5" data-segment-id={segment.segmentId}>
+                <div className="flex flex-col items-end gap-1" data-segment-id={segment.segmentId}>
                   {segment.text ? (
-                    <div className="max-w-full rounded-[7px] border border-black/[0.06] bg-[#f3f3f2] px-3 py-1.5 shadow-[0_1px_0_rgba(0,0,0,.02)]">
+                    <div
+                      className="max-w-full rounded-[7px] border border-black/[0.06] bg-[#f3f3f2] px-3 py-1.5 text-left font-sans text-[14px] font-normal leading-[1.55] text-black/[0.78] shadow-[0_1px_0_rgba(0,0,0,.02)]"
+                      data-message-action-target="true"
+                      data-bubble-id={createBubbleId(slot.bubbleId, "text")}
+                      data-bubble-text={segment.text}
+                    >
                       {segment.text}
                     </div>
                   ) : null}
                   {segmentQuote ? (
-                    <div className="max-w-full border-l-4 bg-white/45 px-2 py-1.5 font-mono text-[9px] font-semibold leading-[1.35] text-black/55" style={{ borderLeftColor: page.line }}>
-                      {segmentQuote}
-                    </div>
-                  ) : null}
-                  {segmentAttachments.length ? (
-                    <ConversationMediaGroup
-                      items={segmentAttachments}
+                    <ConversationQuoteBubble
+                      text={segmentQuote}
                       page={page}
                       align="right"
-                      mediaUrls={mediaUrls}
+                      bubbleId={createBubbleId(slot.bubbleId, "quote")}
                     />
+                  ) : null}
+                  {segmentAttachments.length ? (
+                    <div
+                      data-message-action-target="true"
+                      data-bubble-id={createBubbleId(slot.bubbleId, "media")}
+                    >
+                      <ConversationMediaGroup
+                        items={segmentAttachments}
+                        page={page}
+                        align="right"
+                        mediaUrls={mediaUrls}
+                      />
+                    </div>
                   ) : null}
                 </div>
               </RevealedBubblePart>
@@ -357,6 +455,9 @@ function ChatBubbleContent({
         <div
           className="border bg-white/35 px-2.5 py-1 font-mono text-[9px] tracking-[0.08em] text-black/[0.38]"
           style={{ borderColor: page.line }}
+          data-message-action-target="true"
+          data-bubble-id={createBubbleId(bubbleKeyRoot, "system")}
+          data-bubble-text={displayText}
         >
           {displayText}
         </div>
@@ -374,9 +475,14 @@ function ChatBubbleContent({
           side="left"
           avatar={threadProfile?.avatar}
           name={threadProfile?.name}
-          onAvatarClick={onEditThread}
-        >
-          <MusicShareCard data={musicData} page={page} />
+        onAvatarClick={onEditThread}
+      >
+          <div
+            data-message-action-target="true"
+            data-bubble-id={createBubbleId(bubbleKeyRoot, "music")}
+          >
+            <MusicShareCard data={musicData} page={page} />
+          </div>
         </BubbleRow>
       );
     }
@@ -389,6 +495,9 @@ function ChatBubbleContent({
           type="button"
           className="max-w-[342px] px-2 text-center font-mono text-[9px] font-semibold tracking-[0.04em] text-black/[0.42]"
           onClick={() => setActionOpen((value) => !value)}
+          data-message-action-target="true"
+          data-bubble-id={createBubbleId(bubbleKeyRoot, "operation")}
+          data-bubble-text={displayText}
         >
           <div className="flex items-center justify-center gap-2">
             <span
@@ -410,12 +519,17 @@ function ChatBubbleContent({
   if (visualKind === "thinking") {
     return (
       <div className="flex justify-start">
-        <ThinkingPanel
-          records={[message]}
-          panelId={createBubbleId(getConversationRenderId(message), "thinking-panel")}
-          face={threadProfile?.thinkingFace}
-          standalone
-        />
+        <div
+          data-message-action-target="true"
+          data-bubble-id={createBubbleId(bubbleKeyRoot, "thinking")}
+        >
+          <ThinkingPanel
+            records={[message]}
+            panelId={createBubbleId(getConversationRenderId(message), "thinking-panel")}
+            face={threadProfile?.thinkingFace}
+            standalone
+          />
+        </div>
       </div>
     );
   }
@@ -429,7 +543,7 @@ function ChatBubbleContent({
         name={fromUser ? userProfile?.name : threadProfile?.name}
         onAvatarClick={fromUser ? undefined : onEditThread}
       >
-        <div className={`max-w-[280px] ${fromUser ? "text-right" : "text-left"}`}>
+        <div className={`flex max-w-[280px] flex-col gap-1 ${fromUser ? "items-end text-right" : "items-start text-left"}`}>
           <div className={`flex flex-col gap-2 ${fromUser ? "items-end" : "items-start"}`}>
             {renderMessageTextBubbles(true)}
           </div>
@@ -440,12 +554,11 @@ function ChatBubbleContent({
               slot={auxiliarySlot}
               style={{ transformOrigin: fromUser ? "right bottom" : "left bottom" }}
             >
-              <div
-                className={`${fromUser ? "ml-auto" : "mr-auto"} mt-1 inline-block w-fit max-w-[260px] rounded-none border-0 border-l-4 bg-white/[0.37] px-2.5 py-2 text-left font-mono text-[9px] font-semibold leading-[1.35] text-[#454545]`}
-                style={{ borderLeftColor: page.line }}
-              >
-                {quoteText}
-              </div>
+              <ConversationQuoteBubble
+                text={quoteText}
+                page={page}
+                align={fromUser ? "right" : "left"}
+              />
             </RevealedBubblePart>
           ) : null}
           {onQuote ? (
@@ -477,10 +590,22 @@ function ChatBubbleContent({
               slot={auxiliarySlot}
               style={{ transformOrigin: fromUser ? "right bottom" : "left bottom" }}
             >
-              <div className="flex max-w-[min(78vw,320px)] items-center gap-2 rounded-[7px] border bg-white/[0.74] px-2.5 py-2" style={{ borderColor: fromUser ? "rgba(0,0,0,.06)" : page.line }}>
-                <span className="font-mono text-[10px] text-black/40">◖◗</span>
-                {mediaSrc ? <audio controls preload="metadata" src={mediaSrc} className="h-8 max-w-[230px]" /> : <span className="text-[11px] text-black/40">语音暂不可用</span>}
-              </div>
+              <VoiceMessageBubble
+                id={`conversation-voice:${auxiliarySlot.bubbleId}`}
+                audioSrc={mediaSrc}
+                durationHint={voiceMessageView?.durationSeconds || 0}
+                transcript={voiceMessageView?.transcript || displayText}
+                side={fromUser ? "user" : "assistant"}
+                playbackDisabled={!mediaSrc || voiceMessageView?.state === "uploading"}
+                statusLabel={voiceMessageView?.statusLabel || ""}
+                busy={voiceMessageView?.busy || false}
+                needsTranscriptReview={voiceMessageView?.state === "needs-transcript-review"}
+                retryable={voiceMessageView?.state === "transcription-failed"}
+                onRetryTranscription={onVoiceRetry ? () => onVoiceRetry(getConversationMessageId(message)) : undefined}
+                onConfirmTranscript={onVoiceTranscriptConfirm
+                  ? (text) => onVoiceTranscriptConfirm(getConversationMessageId(message), text)
+                  : undefined}
+              />
             </RevealedBubblePart>
           ) : null}
         </div>
@@ -561,6 +686,14 @@ function ChatBubbleContent({
     >
       <div className={`flex max-w-[min(78vw,360px)] flex-col gap-2 ${fromUser ? "items-end" : "items-start"}`}>
         {renderMessageTextBubbles()}
+        {speechRenditionView ? (
+          <SpeechRenditionControl
+            id={getSpeechRenditionRecordId(message)}
+            view={speechRenditionView}
+            audioSrc={speechRenditionSrc}
+            onRetry={onSpeechRenditionRetry ? () => onSpeechRenditionRetry(getSpeechRenditionRecordId(message)) : undefined}
+          />
+        ) : null}
         {onQuote ? (
           <button type="button" onClick={() => onQuote(message)} className="text-[9px] font-semibold text-black/30 underline-offset-2 hover:underline">
             引用这句
@@ -574,6 +707,7 @@ function ChatBubbleContent({
 function LongPressBubble({
   message,
   onQuote,
+  onSpeechRendition,
   activeActionId,
   onActionOpen,
   onActionClose,
@@ -581,23 +715,37 @@ function LongPressBubble({
 }: {
   message: any;
   onQuote?: (message: any) => void;
+  onSpeechRendition?: (message: any) => Promise<unknown> | unknown;
   activeActionId?: string | null;
   onActionOpen?: (target: { id: string; message: any }) => void;
   onActionClose?: () => void;
   children: ReactNode;
 }) {
   const timerRef = useRef<number | null>(null);
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
+  const liftedSourceRef = useRef<HTMLElement | null>(null);
   const targetRef = useRef<any>(message);
+  const [anchorRect, setAnchorRect] = useState<{
+    top: number;
+    right: number;
+    bottom: number;
+    left: number;
+  } | null>(null);
+  const [anchorMarkup, setAnchorMarkup] = useState("");
+  const [menuPage, setMenuPage] = useState<"primary" | "more">("primary");
   const messageRenderId = getConversationRenderId(message);
   const actionIdRef = useRef(createBubbleId(messageRenderId, "message"));
   const open = activeActionId === actionIdRef.current;
+  const reduceMotion = useReducedMotion();
   const clearTimer = () => {
     if (timerRef.current !== null) window.clearTimeout(timerRef.current);
     timerRef.current = null;
+    pointerStartRef.current = null;
   };
-  const openMenu = (event: SyntheticEvent) => {
-    const target = event.target as HTMLElement;
-    const bubbleElement = target.closest<HTMLElement>("[data-bubble-text]");
+  const openMenu = (target: HTMLElement) => {
+    const bubbleElement = target.closest<HTMLElement>("[data-message-action-target]");
+    if (!bubbleElement) return;
     const bubbleText = bubbleElement?.dataset.bubbleText;
     const bubbleId = bubbleElement?.dataset.bubbleId
       || createBubbleId(getConversationRenderId(message), "message");
@@ -612,29 +760,283 @@ function LongPressBubble({
         }
       : message;
     actionIdRef.current = bubbleId;
+    const nextRect = (bubbleElement || wrapperRef.current)?.getBoundingClientRect();
+    if (nextRect) {
+      setAnchorRect({
+        top: nextRect.top,
+        right: nextRect.right,
+        bottom: nextRect.bottom,
+        left: nextRect.left,
+      });
+      const clone = bubbleElement.cloneNode(true) as HTMLElement;
+      clone.removeAttribute("id");
+      if (clone.matches("button, a, input, select, textarea, audio")) {
+        clone.setAttribute("tabindex", "-1");
+      }
+      clone.querySelectorAll("[id]").forEach((node) => node.removeAttribute("id"));
+      clone.querySelectorAll("button, a, input, select, textarea, audio").forEach((node) => {
+        node.setAttribute("tabindex", "-1");
+      });
+      preserveLiftedBubbleTypography(bubbleElement, clone);
+      clone.setAttribute("aria-hidden", "true");
+      setAnchorMarkup(clone.outerHTML);
+      liftedSourceRef.current = bubbleElement;
+      bubbleElement.style.visibility = "hidden";
+    }
     onActionOpen?.({ id: actionIdRef.current, message: targetRef.current });
   };
-  const actions = [
+  const copyText = getConversationDisplayText(targetRef.current).trim();
+  const primaryActions = [
     {
       id: "quote",
-      label: "引用",
+      label: "引用回复",
+      icon: (
+        <svg viewBox="0 0 24 24" aria-hidden="true" className="h-[21px] w-[21px]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9.5 8.5 5 12l4.5 3.5" />
+          <path d="M5.5 12H14a5 5 0 0 1 5 5v1" />
+        </svg>
+      ),
+      disabled: false,
       run: () => {
         onQuote?.(targetRef.current);
         onActionClose?.();
       },
     },
+    {
+      id: "copy",
+      label: "复制",
+      icon: (
+        <svg viewBox="0 0 24 24" aria-hidden="true" className="h-[21px] w-[21px]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="8" y="8" width="11" height="12" rx="2" />
+          <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h2" />
+        </svg>
+      ),
+      disabled: !copyText,
+      run: async () => {
+        if (!copyText) return;
+        await copyConversationText(copyText);
+        onActionClose?.();
+      },
+    },
+    {
+      id: "voice",
+      label: message.type === "assistant" && !message.meta?.voiceMessage
+        ? (message.meta?.speechRendition ? "重新生成语音" : "生成语音")
+        : "语音",
+      icon: (
+        <svg viewBox="0 0 24 24" aria-hidden="true" className="h-[21px] w-[21px]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z" />
+          <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M9 21h6" />
+        </svg>
+      ),
+      disabled: message.type !== "assistant" || Boolean(message.meta?.voiceMessage) || !getSpeechRenditionRecordId(message) || !onSpeechRendition,
+      run: async () => {
+        if (!onSpeechRendition) return;
+        if (message.meta?.speechRendition && !window.confirm("将使用当前 Voice Profile 重新生成语音，并再次消耗 TTS 额度。旧语音会保留到新语音生成成功。是否继续？")) {
+          return;
+        }
+        await onSpeechRendition(targetRef.current);
+        onActionClose?.();
+      },
+    },
+    {
+      id: "more",
+      label: "更多…",
+      icon: (
+        <svg viewBox="0 0 24 24" aria-hidden="true" className="h-[21px] w-[21px]" fill="currentColor">
+          <circle cx="5" cy="12" r="1.8" />
+          <circle cx="12" cy="12" r="1.8" />
+          <circle cx="19" cy="12" r="1.8" />
+        </svg>
+      ),
+      disabled: false,
+      run: () => setMenuPage("more"),
+    },
   ];
+  const moreActions = [
+    {
+      id: "back",
+      label: "返回",
+      icon: (
+        <svg viewBox="0 0 24 24" aria-hidden="true" className="h-[21px] w-[21px]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="m10 7-5 5 5 5" />
+          <path d="M5 12h14" />
+        </svg>
+      ),
+      disabled: false,
+      run: () => setMenuPage("primary"),
+    },
+    {
+      id: "edit",
+      label: "编辑",
+      icon: (
+        <svg viewBox="0 0 24 24" aria-hidden="true" className="h-[21px] w-[21px]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M13.5 6.5 17.5 10.5M4 20l4.2-1 10-10a2.8 2.8 0 0 0-4-4l-10 10L4 20Z" />
+        </svg>
+      ),
+      disabled: true,
+      run: () => undefined,
+    },
+    {
+      id: "delete",
+      label: "删除",
+      icon: (
+        <svg viewBox="0 0 24 24" aria-hidden="true" className="h-[21px] w-[21px]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5" />
+        </svg>
+      ),
+      disabled: true,
+      run: () => undefined,
+    },
+    {
+      id: "forward",
+      label: "转发",
+      icon: (
+        <svg viewBox="0 0 24 24" aria-hidden="true" className="h-[21px] w-[21px]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="m14 6 5 5-5 5" />
+          <path d="M19 11h-8a6 6 0 0 0-6 6v1" />
+        </svg>
+      ),
+      disabled: true,
+      run: () => undefined,
+    },
+    {
+      id: "select",
+      label: "多选",
+      icon: (
+        <svg viewBox="0 0 24 24" aria-hidden="true" className="h-[21px] w-[21px]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="8" />
+          <path d="m8.5 12 2.2 2.2 4.8-5" />
+        </svg>
+      ),
+      disabled: true,
+      run: () => undefined,
+    },
+  ];
+  const actions = menuPage === "more" ? moreActions : primaryActions;
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onActionClose?.();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onActionClose, open]);
+
+  useEffect(() => {
+    if (!open) {
+      setMenuPage("primary");
+      if (liftedSourceRef.current) {
+        liftedSourceRef.current.style.visibility = "";
+        liftedSourceRef.current = null;
+      }
+    }
+  }, [open]);
+
+  useEffect(() => () => {
+    clearTimer();
+    if (liftedSourceRef.current) liftedSourceRef.current.style.visibility = "";
+  }, []);
+
+  const overlay = open && anchorRect && anchorMarkup && typeof document !== "undefined"
+    ? createPortal((() => {
+        const menuWidth = 216;
+        const menuHeight = actions.length * 52;
+        const menuGap = 10;
+        const screenPadding = 12;
+        const preferredLeft = message.type === "user"
+          ? anchorRect.right - menuWidth
+          : anchorRect.left;
+        const menuLeft = Math.min(
+          window.innerWidth - menuWidth - screenPadding,
+          Math.max(screenPadding, preferredLeft),
+        );
+        const fitsBelow = anchorRect.bottom + menuGap + menuHeight
+          <= window.innerHeight - screenPadding;
+        const menuTop = Math.max(
+          screenPadding,
+          fitsBelow
+            ? anchorRect.bottom + menuGap
+            : anchorRect.top - menuGap - menuHeight,
+        );
+
+        return (
+          <div className="fixed inset-0 z-[200]" data-message-action-overlay>
+            <motion.div
+              className="pointer-events-none absolute inset-0 bg-[rgba(20,20,22,0.42)] backdrop-blur-[5px] backdrop-saturate-[0.78]"
+              initial={reduceMotion ? false : { opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: reduceMotion ? 0 : 0.16, ease: [0.23, 1, 0.32, 1] }}
+            />
+            <button
+              type="button"
+              className="absolute inset-0 h-full w-full cursor-default"
+              aria-label="关闭消息操作"
+              onClick={onActionClose}
+            />
+            <motion.div
+              className="pointer-events-none absolute drop-shadow-[0_8px_12px_rgba(17,17,20,.16)]"
+              style={{
+                top: anchorRect.top,
+                left: anchorRect.left,
+                width: anchorRect.right - anchorRect.left,
+                height: anchorRect.bottom - anchorRect.top,
+                transformOrigin: message.type === "user" ? "right bottom" : "left bottom",
+              }}
+              initial={reduceMotion ? false : { scale: 0.985, y: 2 }}
+              animate={{ scale: 1.018, y: -2 }}
+              transition={{ duration: reduceMotion ? 0 : 0.2, ease: [0.23, 1, 0.32, 1] }}
+              dangerouslySetInnerHTML={{ __html: anchorMarkup }}
+            />
+            <motion.div
+              key={menuPage}
+              role="menu"
+              aria-label="消息操作"
+              className="absolute overflow-hidden rounded-[14px] bg-white shadow-[0_8px_24px_rgba(17,17,20,.18)]"
+              style={{ top: menuTop, left: menuLeft, width: menuWidth }}
+              initial={reduceMotion ? false : { opacity: 0, scale: 0.97, y: fitsBelow ? -4 : 4 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              transition={{ duration: reduceMotion ? 0 : 0.18, ease: [0.23, 1, 0.32, 1] }}
+            >
+              {actions.map((action, index) => (
+                <button
+                  key={action.id}
+                  type="button"
+                  role="menuitem"
+                  aria-disabled={action.disabled}
+                  className={`flex h-[52px] w-full items-center justify-between px-4 font-sans text-[15px] font-semibold transition-colors ${action.id === "delete" ? "cursor-default text-[#ed4b4b]" : action.disabled ? "cursor-default text-black/45" : "text-black/[0.82] hover:bg-black/[0.035] active:bg-black/[0.07]"} ${index > 0 ? "border-t border-black/[0.07]" : ""}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    if (action.disabled) return;
+                    void action.run();
+                  }}
+                >
+                  <span>{action.label}</span>
+                  <span className={action.id === "delete" ? "text-[#ed4b4b]" : "text-black/35"}>{action.icon}</span>
+                </button>
+              ))}
+            </motion.div>
+          </div>
+        );
+      })(), document.body)
+    : null;
+
   return (
     <div
+      ref={wrapperRef}
       className="relative"
       onPointerDown={(event) => {
-        if ((event.target as HTMLElement).closest("button, input, audio, select, textarea, a")) return;
+        const target = event.target as HTMLElement;
+        if (!target.closest("[data-message-action-target]")) return;
         clearTimer();
-        event.persist();
-        timerRef.current = window.setTimeout(() => openMenu(event), 480);
+        pointerStartRef.current = { x: event.clientX, y: event.clientY };
+        timerRef.current = window.setTimeout(() => openMenu(target), 480);
       }}
       onPointerMove={(event) => {
-        if (Math.abs(event.movementX) > 3 || Math.abs(event.movementY) > 3) clearTimer();
+        const start = pointerStartRef.current;
+        if (!start) return;
+        if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8) clearTimer();
       }}
       onPointerUp={clearTimer}
       onPointerCancel={clearTimer}
@@ -642,28 +1044,11 @@ function LongPressBubble({
       onContextMenu={(event) => {
         event.preventDefault();
         clearTimer();
-        openMenu(event);
+        openMenu(event.target as HTMLElement);
       }}
     >
       {children}
-      {open ? (
-        <div className="absolute left-1/2 top-1/2 z-[120] -translate-x-1/2 -translate-y-1/2 rounded-[13px] border border-black/[0.08] bg-white p-1 shadow-[0_10px_28px_rgba(40,35,48,.16)]">
-          {actions.map((action) => (
-            <button
-              key={action.id}
-              type="button"
-              className="rounded-[10px] px-3.5 py-2 font-mono text-[9px] font-semibold tracking-[0.08em] text-black/75"
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={(event) => {
-                event.stopPropagation();
-                action.run();
-              }}
-            >
-              {action.label}
-            </button>
-          ))}
-        </div>
-      ) : null}
+      {overlay}
     </div>
   );
 }
@@ -673,6 +1058,7 @@ export const ChatBubble = memo(function ChatBubble(props: any) {
     <LongPressBubble
       message={props.message}
       onQuote={props.onQuote}
+      onSpeechRendition={props.onSpeechRendition}
       activeActionId={props.activeActionId}
       onActionOpen={props.onActionOpen}
       onActionClose={props.onActionClose}

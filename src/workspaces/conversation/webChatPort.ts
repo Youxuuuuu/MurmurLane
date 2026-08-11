@@ -5,6 +5,9 @@ import type {
   WebChatSendEnvelope,
   WebChatSendResult,
   WebChatStatus,
+  WebChatVoiceMessageCommand,
+  WebChatVoiceActionCommand,
+  WebChatSpeechRenditionCommand,
 } from "../../types/webChat";
 
 export interface WebChatPort {
@@ -39,4 +42,11 @@ export interface WebChatPort {
     kind?: string,
     options?: { timeoutMs?: number },
   ) => Promise<WebChatMedia>;
+  readonly sendVoiceMessage: (
+    command: WebChatVoiceMessageCommand,
+    options?: { timeoutMs?: number },
+  ) => Promise<WebChatSendResult>;
+  readonly retryVoiceMessage: (command: WebChatVoiceActionCommand) => Promise<WebChatSendResult>;
+  readonly confirmVoiceTranscript: (command: WebChatVoiceActionCommand) => Promise<WebChatSendResult>;
+  readonly generateSpeechRendition: (command: WebChatSpeechRenditionCommand) => Promise<WebChatSendResult>;
 }

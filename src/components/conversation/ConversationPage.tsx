@@ -10,7 +10,7 @@ import {
 } from "react";
 import { useReducedMotion } from "framer-motion";
 import { getConversationMergeKey } from "../../lib/conversationMerge";
-import { getConversationRenderId } from "../../lib/conversationIdentity";
+import { getConversationRenderId, getSpeechRenditionRecordId } from "../../lib/conversationIdentity";
 import { bubbleRevealLedger } from "../../lib/BubbleRevealLedger";
 import {
   ConversationEntryMetrics,
@@ -44,6 +44,7 @@ import {
 import type { useConversationWorkspace } from "../../workspaces/conversation";
 import type { ConversationMediaUrlPort } from "../../lib/conversation";
 import type { ConversationRecord } from "../../types/conversation";
+import { useAudioPlaybackCoordinator } from "../voice/AudioPlaybackCoordinator";
 
 type ConversationWorkspace = ReturnType<
   typeof useConversationWorkspace
@@ -92,6 +93,10 @@ interface ConversationPageProps {
     | Pick<
         ConversationCommands,
         | "sendMessages"
+        | "sendVoiceDraft"
+        | "retryVoiceMessage"
+        | "confirmVoiceTranscript"
+        | "generateSpeechRendition"
         | "retryMessage"
         | "chooseModel"
         | "chooseEffort"
@@ -102,6 +107,7 @@ interface ConversationPageProps {
   loadStickers: ComposerProps["loadStickers"];
   mediaUrls: ConversationMediaUrlPort;
   diagnosticsEnabled?: boolean;
+  onVoiceDraftPresenceChange?: (hasDraft: boolean) => void;
 }
 
 declare global {
@@ -172,7 +178,9 @@ export const ConversationPage = memo(function ConversationPage({
   loadStickers,
   mediaUrls,
   diagnosticsEnabled = false,
+  onVoiceDraftPresenceChange,
 }: ConversationPageProps) {
+  const audioPlaybackCoordinator = useAudioPlaybackCoordinator();
   const [quoteMessage, setQuoteMessage] = useState(null);
   const [activeAction, setActiveAction] = useState(null);
   const [highlightResult, setHighlightResult] = useState(
@@ -200,6 +208,7 @@ export const ConversationPage = memo(function ConversationPage({
   useEffect(() => {
     setActiveAction(null);
   }, [selectedThreadId]);
+  useEffect(() => () => audioPlaybackCoordinator.stopAll(), [audioPlaybackCoordinator, selectedThreadId]);
   const visibleMessages = transcript.records;
   const bubbleAnimationEntries = useMemo(
     () => getBubbleAnimationEntries(visibleMessages, selectedThreadId),
@@ -1216,6 +1225,18 @@ export const ConversationPage = memo(function ConversationPage({
             onEditThread={onEditThread}
             onQuote={handleQuote}
             onRetry={webChatCommands?.retryMessage}
+            onVoiceRetry={webChatCommands?.retryVoiceMessage}
+            onVoiceTranscriptConfirm={webChatCommands?.confirmVoiceTranscript}
+            onSpeechRendition={webChatViewModel.status?.speechRendition?.enabled
+              && webChatViewModel.status.speechRendition.configured
+              && webChatViewModel.status.speechRendition.available
+              ? (message) => webChatCommands?.generateSpeechRendition?.(getSpeechRenditionRecordId(message))
+              : undefined}
+            onSpeechRenditionRetry={webChatViewModel.status?.speechRendition?.enabled
+              && webChatViewModel.status.speechRendition.configured
+              && webChatViewModel.status.speechRendition.available
+              ? (messageId) => webChatCommands?.generateSpeechRendition?.(messageId)
+              : undefined}
             activeActionId={activeAction?.id || null}
             onActionOpen={setActiveAction}
             onActionClose={handleActionClose}
@@ -1249,6 +1270,8 @@ export const ConversationPage = memo(function ConversationPage({
           <CardScrollArea
             id="conversation-message-scroll"
             className="z-10 px-3 pb-[122px] pt-[184px]"
+            onCopy={(event) => event.preventDefault()}
+            onContextMenu={(event) => event.preventDefault()}
             onScroll={handleConversationScroll}
             onWheel={handleScrollWheel}
             onTouchStart={handleScrollTouchStart}
@@ -1315,6 +1338,7 @@ export const ConversationPage = memo(function ConversationPage({
       )}
       {webChatCommands?.sendMessages ? (
         <ConversationComposer
+          key={selectedThreadId}
           status={webChatViewModel.status}
           models={webChatViewModel.models}
           usageTotals={webChatViewModel.usageTotals}
@@ -1333,6 +1357,8 @@ export const ConversationPage = memo(function ConversationPage({
           error={webChatViewModel.error}
           loadStickers={loadStickers}
           mediaUrls={mediaUrls}
+          onVoiceDraftPresenceChange={onVoiceDraftPresenceChange}
+          onVoiceDraftSendRequest={webChatCommands.sendVoiceDraft}
         />
       ) : null}
     </PageCard>

@@ -3,6 +3,9 @@ import type {
   WebChatMedia,
   WebChatModelResponse,
   WebChatSendEnvelope,
+  WebChatVoiceMessageCommand,
+  WebChatVoiceActionCommand,
+  WebChatSpeechRenditionCommand,
   WebChatSendResult,
   WebChatStatus,
 } from "../types/webChat";
@@ -307,6 +310,74 @@ async function uploadWebChatFile(
   }
 }
 
+async function sendWebChatVoiceMessage(
+  command: WebChatVoiceMessageCommand,
+  { timeoutMs = uploadTimeoutMs }: { timeoutMs?: number } = {},
+) {
+  const timeout = createSendTimeout(timeoutMs);
+  try {
+    return await requestChatJson<WebChatSendResult>(
+      "/api/chat/voice-messages",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": command.blob.type || "application/octet-stream",
+          "X-Cyberboss-Request-Id": encodeURIComponent(command.requestId),
+          "X-Cyberboss-Message-Id": encodeURIComponent(command.messageId),
+          "X-Cyberboss-Thread-Id": encodeURIComponent(command.threadId || ""),
+          "X-Cyberboss-Client-Id": encodeURIComponent(command.clientId),
+          "X-Cyberboss-New-Thread": String(Boolean(command.newThread)),
+          "X-Cyberboss-Received-At": encodeURIComponent(command.receivedAt || new Date().toISOString()),
+        },
+        body: command.blob,
+        signal: timeout.signal,
+      },
+      isWebChatSendResult,
+    );
+  } catch (error) {
+    if (timeout.signal.aborted) throw new WebChatUploadTimeoutError();
+    throw error;
+  } finally {
+    timeout.dispose();
+  }
+}
+
+function runWebChatVoiceAction(action: "retry" | "transcript", command: WebChatVoiceActionCommand) {
+  return requestChatJson<WebChatSendResult>(
+    `/api/chat/voice-messages/${encodeURIComponent(command.messageId)}/${action}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        requestId: command.requestId,
+        clientId: command.clientId,
+        ...(action === "transcript" ? { normalizedText: command.normalizedText || "" } : {}),
+      }),
+    },
+    isWebChatSendResult,
+  );
+}
+
+function retryWebChatVoiceMessage(command: WebChatVoiceActionCommand) {
+  return runWebChatVoiceAction("retry", command);
+}
+
+function confirmWebChatVoiceTranscript(command: WebChatVoiceActionCommand) {
+  return runWebChatVoiceAction("transcript", command);
+}
+
+function generateWebChatSpeechRendition(command: WebChatSpeechRenditionCommand) {
+  return requestChatJson<WebChatSendResult>(
+    `/api/chat/speech-renditions/${encodeURIComponent(command.messageId)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requestId: command.requestId }),
+    },
+    isWebChatSendResult,
+  );
+}
+
 function setWebChatEffort(effort: string) {
   return requestChatJson<WebChatStatus>("/api/chat/effort", {
     method: "POST",
@@ -381,6 +452,10 @@ return Object.freeze({
   sendMessages: sendWebChatMessages,
   isAmbiguousSendError: isAmbiguousWebChatSendError,
   uploadFile: uploadWebChatFile,
+  sendVoiceMessage: sendWebChatVoiceMessage,
+  retryVoiceMessage: retryWebChatVoiceMessage,
+  confirmVoiceTranscript: confirmWebChatVoiceTranscript,
+  generateSpeechRendition: generateWebChatSpeechRendition,
   subscribe: subscribeToWebChat,
   resolveAssetUrl: resolveWebChatAssetUrl,
 });

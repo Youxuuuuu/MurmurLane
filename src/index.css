@@ -79,6 +79,19 @@ textarea,
   );
 }
 
+#conversation-message-scroll {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.conversation-runtime-selection-lock,
+.conversation-runtime-selection-lock * {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 /* Android Chrome 的动态视口会随键盘缩短；iOS WebKit 的 PWA 外壳则需要
    固定 100vh 才能填满 Home Indicator 区域。
 

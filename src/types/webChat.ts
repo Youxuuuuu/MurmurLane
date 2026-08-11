@@ -69,6 +69,10 @@ export interface WebChatUsage {
   cacheCreationInputTokens?: number;
   currentTokens?: number;
   contextWindow?: number;
+  latestInputTokens?: number;
+  latestOutputTokens?: number;
+  latestCacheReadInputTokens?: number;
+  latestCacheCreationInputTokens?: number;
   [key: string]: unknown;
 }
 
@@ -94,6 +98,27 @@ export interface WebChatStatus {
   pendingApproval?: unknown;
   webClients?: number;
   eventCursor?: number;
+  voiceInput?: {
+    enabled?: boolean;
+    provider?: string;
+    model?: string;
+    configured?: boolean;
+    available?: boolean;
+  };
+  assistantVoice?: {
+    enabled?: boolean;
+    provider?: string;
+    model?: string;
+    configured?: boolean;
+    available?: boolean;
+  };
+  speechRendition?: {
+    enabled?: boolean;
+    provider?: string;
+    model?: string;
+    configured?: boolean;
+    available?: boolean;
+  };
   sendRequest?: {
     requestId?: string;
     status?: "accepted" | "failed" | "unknown" | string;
@@ -177,4 +202,26 @@ export interface WebChatSendResult {
   clientId?: string;
   clientMessageId?: string;
   messageIds?: string[];
+}
+
+export interface WebChatVoiceMessageCommand {
+  blob: Blob;
+  requestId: string;
+  messageId: string;
+  threadId?: string;
+  clientId: string;
+  newThread?: boolean;
+  receivedAt?: string;
+}
+
+export interface WebChatVoiceActionCommand {
+  messageId: string;
+  requestId: string;
+  clientId: string;
+  normalizedText?: string;
+}
+
+export interface WebChatSpeechRenditionCommand {
+  messageId: string;
+  requestId: string;
 }

@@ -7,7 +7,13 @@ import type { ConversationMediaItem } from "../types/conversation";
 export interface ConversationMediaDisplayGroups {
   stickers: ConversationMediaItem[];
   images: ConversationMediaItem[];
+  voices: ConversationMediaItem[];
   files: ConversationMediaItem[];
+}
+
+function isVoiceLikeMedia(item: ConversationMediaItem) {
+  return String(item.kind || "").toLowerCase() === "voice"
+    || String(item.contentType || "").toLowerCase().startsWith("audio/");
 }
 
 function normalizedMediaIdentity(item: ConversationMediaItem) {
@@ -51,11 +57,13 @@ export function getConversationMediaDisplayGroups(
         groups.stickers.push(item);
       } else if (isImageLikeMedia(item)) {
         groups.images.push(item);
+      } else if (isVoiceLikeMedia(item)) {
+        groups.voices.push(item);
       } else {
         groups.files.push(item);
       }
       return groups;
     },
-    { stickers: [], images: [], files: [] },
+    { stickers: [], images: [], voices: [], files: [] },
   );
 }

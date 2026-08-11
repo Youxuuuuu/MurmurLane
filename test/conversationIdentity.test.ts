@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   createBubbleId,
+  getSpeechRenditionRecordId,
   getConversationRenderId,
   getLegacyStableId,
   upsertConversationRecordByIdentity,
@@ -62,6 +63,22 @@ test("assistant identity follows its native item across transport and canonical 
   const expected = "assistant:thread-1:item-7";
   assert.equal(getConversationRenderId(live), expected);
   assert.equal(getConversationRenderId(archived), expected);
+});
+
+test("Speech Rendition uses messageId first and native assistant itemId as a fallback", () => {
+  const nativeOnly: ConversationRecord = {
+    id: "assistant-native-only",
+    type: "assistant",
+    itemId: "item-native-7",
+    text: "旧格式文字消息",
+  };
+  const withMessageId: ConversationRecord = {
+    ...nativeOnly,
+    messageId: "message-7",
+  };
+
+  assert.equal(getSpeechRenditionRecordId(nativeOnly), "item-native-7");
+  assert.equal(getSpeechRenditionRecordId(withMessageId), "message-7");
 });
 
 test("legacy identity uses sourceKey or record.id and never content", () => {
@@ -174,6 +191,71 @@ test("live and archived records reconcile without changing the logical mount key
   assert.equal(reconciled[0].text, "canonical text");
   assert.equal(reconciled[0].meta?.webChatLive, undefined);
   assert.equal(reconciled[0].meta?.uiMergeKey, undefined);
+});
+
+test("rapid Voice Message state updates and Canonical convergence keep one message mount identity", () => {
+  const base: ConversationRecord = {
+    id: "web-inbound-voice-1",
+    messageId: "voice-message-1",
+    type: "user",
+    threadId: "thread-voice",
+    timestamp: "2026-08-09T08:00:00.000Z",
+    text: "",
+    meta: {
+      messageId: "voice-message-1",
+      itemId: "voice-message-1",
+      ephemeral: true,
+      webChatLive: true,
+      voiceMessage: {
+        schemaVersion: 1,
+        processing: { state: "uploading", updatedAt: "2026-08-09T08:00:00.000Z" },
+      },
+    },
+  };
+  const transcribing: ConversationRecord = {
+    ...base,
+    meta: {
+      ...base.meta,
+      voiceMessage: {
+        schemaVersion: 1,
+        processing: { state: "transcribing", updatedAt: "2026-08-09T08:00:01.000Z" },
+      },
+    },
+  };
+  const liveDelivered: ConversationRecord = {
+    ...base,
+    text: "你好",
+    meta: {
+      ...base.meta,
+      voiceMessage: {
+        schemaVersion: 1,
+        processing: { state: "delivered", updatedAt: "2026-08-09T08:00:02.000Z" },
+        transcript: { normalizedText: "你好" },
+      },
+    },
+  };
+
+  let records = upsertConversationRecordByIdentity([], base, "thread-voice");
+  const mountId = getConversationRenderId(records[0], "thread-voice");
+  records = upsertConversationRecordByIdentity(records, transcribing, "thread-voice");
+  records = upsertConversationRecordByIdentity(records, liveDelivered, "thread-voice");
+  assert.equal(records.length, 1);
+  assert.equal(getConversationRenderId(records[0], "thread-voice"), mountId);
+  assert.equal((records[0].meta?.voiceMessage as { processing?: { state?: string } })?.processing?.state, "delivered");
+
+  const canonical: ConversationRecord = {
+    ...liveDelivered,
+    id: "archive-voice-1",
+    sourceKey: "web|voice-message-1|user",
+    meta: {
+      ...liveDelivered.meta,
+      sourceKey: "web|voice-message-1|user",
+    },
+  };
+  const converged = mergeConversationRecords([records[0], canonical], "thread-voice");
+  assert.equal(converged.length, 1);
+  assert.equal(getConversationRenderId(converged[0], "thread-voice"), mountId);
+  assert.equal(converged[0].id, "archive-voice-1");
 });
 
 test("legacy compatibility matching adopts itemId instead of content as identity", () => {

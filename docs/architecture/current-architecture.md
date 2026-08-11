@@ -228,6 +228,7 @@ Workspace 是领域规则、领域状态、View Model 和 Commands 的所有者�
 - Profile 领域状态。
 - Live Records、WebChat Cursor 和 Draft Thread。
 - 发送、上传、重试与 `sent / failed / unknown` 事务。
+- Voice Draft、Voice Message Command、转写重试/人工确认、Speech Rendition Command 与相关失败恢复。
 - 未读与通知。
 - Conversation Navigation Target 的解释。
 - Canonical 与 Live 对账。
@@ -240,6 +241,9 @@ Runtime 状态所有权遵循以下规则：
 - Model、Provider、Effort、Context Usage 与 Thread Usage Totals 的权威所有者仍是 Cyberboss。
 - `usageTotals` 在消费侧按 Thread 隔离，只向当前 Thread 暴露对应累计快照。
 - `contextUsage` 只展示 `threadId` 与当前 Thread 匹配的最近 Runtime Snapshot，不与 `usageTotals` 合并或互相回退。
+- 收起态 Runtime 状态条显示 `模型 · context 当前占用 / Runtime 实际窗口`，不显示 cache；Context 小于 10k 显示完整整数，否则使用 k。Codex 窗口消费 Runtime 报告值，ClaudeCode 窗口消费 Cyberboss 规范化的 200k / 显式 `[1m]` 1M 值。
+- 展开态四格只读取 `usageTotals`；累计值按已确认的完整整数/k/m 阈值格式化。最近一轮 `in / out / cache` 读取 `contextUsage` 的 latest 字段并始终显示完整整数。
+- Runtime Context Snapshot 当前不跨 Cyberboss 重启持久化；Cyberboss 不可用或重启后尚无新 Usage 时允许显示 0。MurmurLane 不读取 Raw Session、不使用浏览器持久化，也不把上次页面值伪装成实时 Context。
 - Runtime 内部模块不持久化设置或 Usage，不自行累计 Token，也不拥有 Runtime Activity、Turn、审批或连接状态。
 - `useConversationWorkspace` 继续拥有 Activity、Turn、审批、连接、消息和 SSE 生命周期，并将 Runtime 数据事件交给内部 Runtime 模块吸收。
 
@@ -263,6 +267,15 @@ buildConversationTranscript({
 - 输出可渲染展示条目。
 
 `src/lib/conversation*.ts` 目前继续保留原物理位置，但语义上属于 Conversation 领域内部实现，不是全应用 Shared。
+
+Conversation 语音消费遵循以下边界：
+
+- `useVoiceDraftRecorder` 只拥有当前页面内存中的 MediaRecorder/Voice Draft 生命周期；松手不上传，显式发送才交给 Workspace Command。
+- `meta.voiceMessage` 与 `meta.speechRendition` 是 Cyberboss 生产事实；Workspace 负责安全解析、Live/Canonical 稳定身份和失败恢复，不在页面推断 processing 状态。
+- `AudioPlaybackCoordinator` 是当前 Conversation 页面 Voice Draft、Voice Message 与 Speech Rendition 的单音频协调 seam；新播放暂停旧播放并保留旧进度，展开和对账不得重挂载音频。
+- `VoiceMessageBubble`、`SpeechRenditionControl` 与 `VoiceComposerBar` 是正式页和 `/dev/voice-ui` Preview 复用的生产组件，不存在第二套 Preview 播放器或 Composer。
+- 装饰波形只表达可点击的真实播放进度，不生成、保存或消费声学 peaks。
+- Runtime 模型面板不展示 Voice Input Provider、模型或“可用”技术元数据；Composer 仍按 WebChat status capability fail closed。
 
 ### Timeline Workspace
 
@@ -345,6 +358,7 @@ src/data/chatApi.ts
 - HTTP、EventSource、URL 和认证 Header。
 - Token Query、Timeout、Abort 和上传。
 - 媒体 URL。
+- Voice Message 二进制上传、转写重试/确认与 Speech Rendition 请求。
 - 外部 `unknown` 数据的运行时校验。
 - 技术错误归一化。
 
@@ -445,7 +459,7 @@ Server 规则：
 
 ## 当前实施与验证状态
 
-截至 2026-08-03：
+截至 2026-08-12：
 
 - ADR-0001 至 ADR-0019 均为 `Status: Accepted`、`Implementation: Complete`。
 - 架构迁移和统一浏览器/真机验收已完成。
@@ -454,12 +468,15 @@ Server 规则：
 - iOS 浏览器/PWA 的系统键盘辅助条不属于网页可控 UI；用户决定不引入当前 Windows 环境无法构建验证的 Capacitor iOS 原生壳。
 - 当前剩余的“后台页面重建恢复”是新增持久化能力。
 - 该后续问题不阻塞架构迁移完成状态。
+- Conversation Runtime 面板已分离 `contextUsage` 与 `usageTotals`，兼容 ClaudeCode/Codex 当前 Token 事件并落实 Context 窗口与数值格式规则；Context Snapshot 跨 Cyberboss 重启持久化由用户决定暂不实施，不阻塞当前功能完成状态。
+- WebChat 异步语音已完成桌面生产纵切面：内存 Voice Draft 显式发送、cloud Voice Bubble、页面级单音频协调、Qwen 转写/复核/重试、Assistant Voice Message 与 Speech Rendition 均已接线并由用户桌面实测；受信任局域网 HTTPS 手机录音仍待人工验收。
+- Voice Input Provider、模型与“可用”状态不在 Runtime 模型面板展示；该展示决定不改变内部 capability 或后端契约。
 
 当前自动基线：
 
 ```text
 npm test
-→ 175/175 通过
+→ 195/195 通过
 
 npm run typecheck:strict
 → 通过

@@ -95,7 +95,11 @@ export function ConversationSwipeRow({
             baseOffset: open ? -ACTION_WIDTH : 0,
             intent: "pending",
           };
-          event.currentTarget.setPointerCapture?.(event.pointerId);
+          // Mouse and pen capture belong to the thread button so its pointer-up
+          // can finish the click/long-press gesture. Touch has no inner capture.
+          if (event.pointerType === "touch") {
+            event.currentTarget.setPointerCapture?.(event.pointerId);
+          }
         }}
         onPointerMove={(event) => {
           const gesture = gestureRef.current;

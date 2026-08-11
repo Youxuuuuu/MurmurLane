@@ -460,7 +460,15 @@ export default function InsDiaryPrototype({
     [conversationCommands.openDate],
   );
   const handleSelectThread = conversationCommands.selectThread;
-  const openNewConversationThread = conversationCommands.openNewThread;
+  const [hasVoiceDraft, setHasVoiceDraft] = useState(false);
+  const confirmVoiceDraftDiscard = useCallback(() => (
+    !hasVoiceDraft || window.confirm("当前语音草稿尚未发送，离开后会丢弃。确定离开吗？")
+  ), [hasVoiceDraft]);
+  const openNewConversationThread = useCallback(() => {
+    if (!confirmVoiceDraftDiscard()) return "";
+    setHasVoiceDraft(false);
+    return conversationCommands.openNewThread();
+  }, [confirmVoiceDraftDiscard, conversationCommands.openNewThread]);
   const setUserProfile = conversationCommands.saveUserProfile;
   const updateThreadProfile =
     conversationCommands.updateThreadProfile;
@@ -816,10 +824,14 @@ export default function InsDiaryPrototype({
     );
 
   const handleSelectSection = (section) => {
+    if (section !== "Conversation" && !confirmVoiceDraftDiscard()) return;
+    if (section !== "Conversation") setHasVoiceDraft(false);
     activateSection(section);
   };
 
   const openConversationThread = (summary) => {
+    if (!confirmVoiceDraftDiscard()) return;
+    setHasVoiceDraft(false);
     conversationCommands.openThread(
       summary.threadId,
       summary.latestDate,
@@ -1146,6 +1158,7 @@ export default function InsDiaryPrototype({
                 diagnosticsEnabled={
                   dependencies.diagnostics.development
                 }
+                onVoiceDraftPresenceChange={setHasVoiceDraft}
               />
             )
           ) : (
